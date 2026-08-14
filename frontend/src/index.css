@@ -1,0 +1,105 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+
+/* =========================================
+   CSS VARIABLES — LIGHT MODE (Default)
+   ========================================= */
+:root {
+  --bg-base:       #f0f9ff;
+  --bg-surface:    #ffffff;
+  --bg-elevated:   #e0f2fe;
+  --border:        #bae6fd;
+  --text-primary:  #0f172a;
+  --text-muted:    #475569;
+  --accent:        #0ea5e9;
+  --accent-hover:  #0284c7;
+  --shadow:        rgba(14, 165, 233, 0.10);
+}
+
+/* =========================================
+   CSS VARIABLES — DARK MODE
+   ========================================= */
+.dark {
+  --bg-base:       #0d1117;
+  --bg-surface:    #161b27;
+  --bg-elevated:   #1e2637;
+  --border:        rgba(56, 189, 248, 0.12);
+  --text-primary:  #f0f9ff;
+  --text-muted:    #94a3b8;
+  --accent:        #38bdf8;
+  --accent-hover:  #0ea5e9;
+  --shadow:        rgba(56, 189, 248, 0.08);
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    background-color: var(--bg-base);
+    color: var(--text-primary);
+    font-family: 'Inter', system-ui, sans-serif;
+    transition: background-color 0.3s ease, color 0.3s ease;
+  }
+}
+
+/* =========================================
+   COMPONENT CLASSES
+   ========================================= */
+@layer components {
+  .surface {
+    background-color: var(--bg-surface);
+    border: 1px solid var(--border);
+    box-shadow: 0 4px 24px var(--shadow);
+  }
+
+  .surface-elevated {
+    background-color: var(--bg-elevated);
+    border: 1px solid var(--border);
+  }
+
+  .text-base-primary { color: var(--text-primary); }
+  .text-base-muted   { color: var(--text-muted); }
+  .border-theme      { border-color: var(--border); }
+
+  .glass-card {
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    box-shadow: 0 8px 32px var(--shadow);
+  }
+
+  .glass-card-hover {
+    transition: all 0.25s ease-in-out;
+  }
+  .glass-card-hover:hover {
+    border-color: var(--accent);
+    box-shadow: 0 10px 40px var(--shadow);
+    transform: translateY(-2px);
+  }
+
+  .btn-primary {
+    background-color: var(--accent);
+    color: #0f172a;
+    font-weight: 700;
+    padding: 0.625rem 1.5rem;
+    border-radius: 0.75rem;
+    transition: all 0.2s;
+  }
+  .btn-primary:hover {
+    background-color: var(--accent-hover);
+    box-shadow: 0 0 20px rgba(56,189,248,0.3);
+    transform: translateY(-1px);
+  }
+}
+
+/* =========================================
+   CUSTOM SCROLLBARS
+   ========================================= */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: var(--bg-base); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--accent); }

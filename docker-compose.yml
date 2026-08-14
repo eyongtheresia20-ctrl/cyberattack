@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: phishguard_db
+    environment:
+      POSTGRES_DB: phishguard
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgrespassword
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: always
+
+  backend:
+    build:
+      context: ./backend
+    container_name: phishguard_backend
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgrespassword@postgres:5432/phishguard
+      - USE_SQLITE_FALLBACK=False
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres
+    restart: always
+
+volumes:
+  postgres_data:
