@@ -71,8 +71,80 @@ SECURITY_KNOWLEDGE_BASE = {
     }
 }
 
+import requests
+import urllib3
+from app.core.config import settings
+
+# Disable insecure request warnings when ssl verification is bypassed locally
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
 @router.post("/chat")
 def security_assistant_chat(req: ChatRequest):
+    # 1. Try Live OpenAI API if key provided
+    if settings.OPENAI_API_KEY:
+        try:
+            res = requests.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {settings.OPENAI_API_KEY}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "model": "gpt-3.5-turbo",
+                    "messages": [
+                        {"role": "system", "content": "You are PhishGuard AI, an expert cybersecurity defense assistant specializing in phishing, threat intelligence, vulnerability mitigation, and incident analysis."},
+                        {"role": "user", "content": req.message}
+                    ],
+                    "max_tokens": 500
+                },
+                timeout=8,
+                verify=False
+            )
+            if res.status_code == 200:
+                data = res.json()
+                ai_text = data["choices"][0]["message"]["content"]
+                return {
+                    "reply": ai_text,
+                    "recommendations": [
+                        "Review PhishGuard threat scan logs",
+                        "Verify SHA-256 evidence digests",
+                        "Export incident investigation report"
+                    ]
+                }
+        except Exception as e:
+            print(f"[Warning] OpenAI API call failed: {e}. Using fallback knowledge base.")
+
+    # 2. Try Live Gemini API if key provided
+    if settings.GEMINI_API_KEY:
+        try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key={settings.GEMINI_API_KEY}"
+            res = requests.post(
+                url,
+                json={
+                    "contents": [{
+                        "parts": [{"text": f"You are PhishGuard AI Cybersecurity Assistant. Answer concisely for a security analyst:\n\nUser: {req.message}"}]
+                    }]
+                },
+                timeout=8,
+                verify=False
+            )
+            if res.status_code == 200:
+                data = res.json()
+                ai_text = data["candidates"][0]["content"]["parts"][0]["text"]
+                return {
+                    "reply": ai_text,
+                    "recommendations": [
+                        "Check incident evidence ledger",
+                        "Verify SHA-256 report checksum",
+                        "Configure firewall & WAF rules"
+                    ]
+                }
+            else:
+                print(f"[Warning] Gemini API status code {res.status_code}: {res.text}")
+        except Exception as e:
+            print(f"[Warning] Gemini API call failed: {e}. Using fallback knowledge base.")
+
+    # 3. Intelligent Security Knowledge Base (Offline Fallback)
     query = req.message.lower()
     
     # Context-aware matching
@@ -104,3 +176,5 @@ def security_assistant_chat(req: ChatRequest):
         "reply": reply_text,
         "recommendations": kb["recommendations"]
     }
+
+

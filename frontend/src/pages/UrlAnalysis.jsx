@@ -191,6 +191,25 @@ export default function UrlAnalysis() {
                 </div>
               </div>
 
+              {/* GeoIP & Network Location Metadata */}
+              {result.geoip_info && (
+                <div className="p-4 bg-slate-900/80 rounded-xl border border-slate-800 space-y-2 text-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-white flex items-center gap-1.5">
+                      📍 Localisation Réseau Apparente (GeoIP & ASN)
+                    </span>
+                    <span className="font-mono text-cyan-400 font-bold">{result.geoip_info.ip}</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-slate-300 font-mono">
+                    <div>Pays / Ville : <strong className="text-white">{result.geoip_info.country}, {result.geoip_info.city}</strong></div>
+                    <div>Réseau ASN : <strong className="text-white">{result.geoip_info.asn}</strong></div>
+                  </div>
+                  <p className="text-[10px] text-amber-400/90 italic bg-amber-950/30 p-2 rounded border border-amber-800/40 mt-1">
+                    ⚠️ {result.geoip_info.disclaimer || "Le système fournit la localisation réseau apparente. Un VPN, Proxy ou réseau Tor peut masquer l'auteur physique réel."}
+                  </p>
+                </div>
+              )}
+
               {/* Defensive Advice */}
               <div className="p-3 bg-cyan-500/10 border border-cyan-500/20 rounded-lg text-xs space-y-1">
                 <p className="font-semibold text-cyan-400">Defensive Remediation Advice:</p>

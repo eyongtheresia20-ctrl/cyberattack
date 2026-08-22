@@ -1,0 +1,21 @@
+# Python cache and byte-compiled files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.py[cod]
+
+# Environments and Secrets
+.env
+backend/.env
+venv/
+.venv/
+env/
+
+# Node / Frontend
+node_modules/
+
+# IDE / System
+.vscode/
+.idea/
+.DS_Store

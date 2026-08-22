@@ -8,29 +8,34 @@ def calculate_correlated_risk(
 ) -> Dict[str, Any]:
     """
     Fuse Machine Learning, Heuristic Rules, and Threat Intel into a unified risk assessment.
+    Uses dynamic weight normalization so that zero external threat intel hits do not dilute high ML & heuristic signals.
     """
-    # 1. Base ML Contribution (40% weight)
     ml_score = ml_probability * 100.0
+    rule_score = min(100.0, max(0.0, rule_score))
     
-    # 2. VirusTotal Contribution (30% weight)
-    vt_score = 0.0
-    if vt_data:
-        positives = vt_data.get("positives", 0)
-        if positives > 0:
-            vt_score = min(100.0, (positives / 10.0) * 100.0)
-            
-    # 3. Google Safe Browsing (20% weight)
-    gsb_score = 100.0 if (gsb_data and gsb_data.get("is_flagged")) else 0.0
-    
-    # 4. Rules & Heuristics (10% weight)
-    
-    # Combined weighted score
-    final_score = (ml_score * 0.40) + (vt_score * 0.30) + (gsb_score * 0.20) + (rule_score * 0.10)
+    vt_positives = vt_data.get("positives", 0) if vt_data else 0
+    gsb_flagged = bool(gsb_data and gsb_data.get("is_flagged"))
+
+    vt_score = min(100.0, (vt_positives / 5.0) * 100.0) if vt_positives > 0 else 0.0
+    gsb_score = 100.0 if gsb_flagged else 0.0
+
+    # Dynamic Weight Allocation
+    if vt_positives > 0 or gsb_flagged:
+        # Threat Intel present & confirmed
+        final_score = (ml_score * 0.35) + (vt_score * 0.35) + (gsb_score * 0.15) + (rule_score * 0.15)
+    else:
+        # Rely on Hybrid ML Engine & Heuristic Rule Signals (60% ML / 40% Rules)
+        final_score = (ml_score * 0.60) + (rule_score * 0.40)
+
+    # High Signal Threshold Override: If both ML > 85% and Rule score > 40%, ensure High Risk minimum
+    if ml_score >= 85.0 and rule_score >= 40.0:
+        final_score = max(final_score, 80.0)
+
     final_score = min(100.0, max(0.0, round(final_score, 1)))
 
     # Determine Verdict & Risk Level
-    if final_score >= 75.0:
-        risk_level = "CRITICAL" if final_score >= 90.0 else "HIGH"
+    if final_score >= 70.0:
+        risk_level = "CRITICAL" if final_score >= 88.0 else "HIGH"
         verdict = "PHISHING / MALICIOUS"
     elif final_score >= 45.0:
         risk_level = "MEDIUM"
@@ -44,8 +49,8 @@ def calculate_correlated_risk(
     if verdict != "LEGITIMATE / CLEAN":
         advice_list.append("Do NOT click or open any links or attachments contained within this content.")
         advice_list.append("Do NOT enter credentials, passwords, or personal financial details.")
-        advice_list.append("Report this domain to your organization's SOC / Security Team immediately.")
-        if gsb_data and gsb_data.get("is_flagged"):
+        advice_list.append("Report this domain/message to your organization's SOC / Security Team immediately.")
+        if gsb_flagged or vt_positives > 0:
             advice_list.append("Block domain at Firewall / DNS level via sinkhole rules.")
     else:
         advice_list.append("No immediate threat detected. Always verify sender identity for high-privilege requests.")
@@ -56,6 +61,7 @@ def calculate_correlated_risk(
         "verdict": verdict,
         "ml_score": round(ml_score, 1),
         "vt_score": round(vt_score, 1),
-        "gsb_flagged": gsb_data.get("is_flagged", False) if gsb_data else False,
+        "gsb_flagged": gsb_flagged,
         "defensive_advice": advice_list
     }
+

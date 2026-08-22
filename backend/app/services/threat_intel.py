@@ -1,6 +1,10 @@
 import requests
+import urllib3
 from typing import Dict, Any
 from app.core.config import settings
+
+# Disable insecure request warnings when ssl verification is bypassed locally
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 def query_virustotal_url_reputation(url: str) -> Dict[str, Any]:
     """Query VirusTotal v3 API for URL threat reputation with intelligent mock fallback."""
@@ -19,10 +23,9 @@ def query_virustotal_url_reputation(url: str) -> Dict[str, Any]:
 
     headers = {"x-apikey": api_key}
     try:
-        # VT URL ID is base64 without padding
         import base64
         url_id = base64.urlsafe_b64encode(url.encode()).decode().strip("=")
-        response = requests.get(f"https://www.virustotal.com/api/v3/urls/{url_id}", headers=headers, timeout=5)
+        response = requests.get(f"https://www.virustotal.com/api/v3/urls/{url_id}", headers=headers, timeout=5, verify=False)
         if response.status_code == 200:
             data = response.json()
             stats = data.get("data", {}).get("attributes", {}).get("last_analysis_stats", {})
@@ -69,7 +72,7 @@ def query_google_safebrowsing(url: str) -> Dict[str, Any]:
         }
     }
     try:
-        res = requests.post(endpoint, json=payload, timeout=5)
+        res = requests.post(endpoint, json=payload, timeout=5, verify=False)
         if res.status_code == 200:
             matches = res.json().get("matches", [])
             return {
@@ -86,3 +89,4 @@ def query_google_safebrowsing(url: str) -> Dict[str, Any]:
         "threat_types": [],
         "source": "Google Safe Browsing (Offline Fallback)"
     }
+

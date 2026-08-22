@@ -123,3 +123,109 @@ def generate_incident_report(incident_id: str, reporter_name: str = "Security In
         "report": report,
         "integrity_hash": integrity_hash
     }
+
+class StatusUpdateRequest(BaseModel):
+    status: str # NEW, INVESTIGATING, RESOLVED, CLOSED
+    notes: Optional[str] = None
+
+@router.patch("/{incident_id}/status")
+def update_incident_status(incident_id: str, req: StatusUpdateRequest, db: Session = Depends(get_db)):
+    incident = db.query(Incident).filter(Incident.id == incident_id).first()
+    if not incident:
+        raise HTTPException(status_code=404, detail="Incident non trouvé")
+    
+    if req.status not in ["NEW", "INVESTIGATING", "RESOLVED", "CLOSED"]:
+        raise HTTPException(status_code=400, detail="Statut d'incident invalide")
+    
+    incident.status = req.status
+    if req.notes:
+        incident.summary = f"{incident.summary}\n\n[Note Enquêteur - {req.status}]: {req.notes}"
+    
+    db.commit()
+    db.refresh(incident)
+    return incident
+
+class UserScanReportRequest(BaseModel):
+    title: str
+    target: str # URL or Email/SMS content
+    scan_type: str # URL, EMAIL, MESSAGE
+    verdict: str
+    risk_score: float
+    details: Optional[dict] = None
+    reporter_name: Optional[str] = "Utilisateur Standard"
+    reporter_email: Optional[str] = None
+
+@router.post("/submit-user-report")
+def submit_user_report(req: UserScanReportRequest, db: Session = Depends(get_db)):
+    inc_code = f"INC-2026-{random.randint(1000, 9999)}"
+    
+    summary_text = f"Signalement par {req.reporter_name} ({req.reporter_email or 'Anonyme'}). Target: {req.target}. Verdict: {req.verdict} (Risk: {req.risk_score}/100)."
+    
+    evidence_hash = generate_sha256_hash({
+        "code": inc_code,
+        "target": req.target,
+        "verdict": req.verdict,
+        "risk_score": req.risk_score,
+        "reporter": req.reporter_email
+    })
+    
+    incident = Incident(
+        incident_code=inc_code,
+        title=f"[User Report] {req.title}",
+        category="Phishing Campaign" if req.scan_type in ["URL", "EMAIL"] else "Social Engineering",
+        severity="HIGH" if req.risk_score >= 65 else ("MEDIUM" if req.risk_score >= 35 else "LOW"),
+        status="NEW",
+        source_type=f"{req.scan_type}_USER_REPORT",
+        summary=summary_text,
+        evidence_hash=evidence_hash
+    )
+    db.add(incident)
+    db.commit()
+    db.refresh(incident)
+    
+    # Auto-generate Evidence item
+    ev = Evidence(
+        incident_id=incident.id,
+        evidence_type="USER_SUBMISSION_PAYLOAD",
+        content=f"Payload: {req.target}\nDetails: {req.details}",
+        sha256_checksum=evidence_hash
+    )
+    db.add(ev)
+    
+    # Auto-generate sealed IncidentReport
+    report_code = f"RPT-2026-{random.randint(10000, 99999)}"
+    report_payload = {
+        "report_code": report_code,
+        "incident_code": inc_code,
+        "title": incident.title,
+        "category": incident.category,
+        "severity": incident.severity,
+        "reporter_name": req.reporter_name,
+        "reporter_email": req.reporter_email,
+        "target_content": req.target,
+        "verdict": req.verdict,
+        "risk_score": req.risk_score,
+        "analysis_details": req.details,
+        "evidence_hash": evidence_hash
+    }
+    integrity_hash = generate_sha256_hash(report_payload)
+    
+    report = IncidentReport(
+        report_code=report_code,
+        incident_id=incident.id,
+        reporter=req.reporter_name or "Utilisateur Standard",
+        report_payload=report_payload,
+        integrity_hash=integrity_hash,
+        verified=True
+    )
+    db.add(report)
+    db.commit()
+    db.refresh(report)
+    
+    return {
+        "incident": incident,
+        "report": report,
+        "integrity_hash": integrity_hash,
+        "message": "Signalement transmis avec succès à la file des enquêtes"
+    }
+

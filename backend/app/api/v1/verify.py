@@ -49,7 +49,9 @@ def verify_report_integrity(req: VerificationRequest, db: Session = Depends(get_
         if not analysis:
             raise HTTPException(status_code=404, detail=f"No analysis record found matching code: {code}")
         
-        computed_hash = generate_sha256_hash(analysis.details_json)
+        payload_copy = dict(analysis.details_json or {})
+        payload_copy.pop("integrity_hash", None)
+        computed_hash = generate_sha256_hash(payload_copy)
         hash_matched = (computed_hash == analysis.integrity_hash)
 
         return {

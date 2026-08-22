@@ -2,11 +2,24 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.db.database import engine, Base
-from app.api.v1 import analyze, monitor, incidents, verify, assistant
+from app.api.v1 import analyze, monitor, incidents, verify, assistant, auth, users
 
 # Create DB Tables automatically
 try:
     Base.metadata.create_all(bind=engine)
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        for table in ["utilisateurs_standards", "enqueteurs", "administrateurs"]:
+            try:
+                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN last_login DATETIME"))
+                conn.commit()
+            except Exception:
+                pass
+            try:
+                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN password_raw VARCHAR(255)"))
+                conn.commit()
+            except Exception:
+                pass
 except Exception as e:
     print(f"[Warning] Table creation deferred: {e}")
 
@@ -26,6 +39,8 @@ app.add_middleware(
 )
 
 # Include Routers
+app.include_router(auth.router, prefix=settings.API_V1_STR)
+app.include_router(users.router, prefix=settings.API_V1_STR)
 app.include_router(analyze.router, prefix=settings.API_V1_STR)
 app.include_router(monitor.router, prefix=settings.API_V1_STR)
 app.include_router(incidents.router, prefix=settings.API_V1_STR)
