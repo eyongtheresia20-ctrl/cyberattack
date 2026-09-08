@@ -51,18 +51,28 @@ def verify_report_integrity(req: VerificationRequest, db: Session = Depends(get_
         
         payload_copy = dict(analysis.details_json or {})
         payload_copy.pop("integrity_hash", None)
+        payload_copy.pop("id", None)
+        payload_copy.pop("analysis_id", None)
+        payload_copy.pop("created_at", None)
         computed_hash = generate_sha256_hash(payload_copy)
         hash_matched = (computed_hash == analysis.integrity_hash)
 
+        if req.provided_hash:
+            user_hash_matched = (req.provided_hash.strip().lower() == analysis.integrity_hash.lower())
+        else:
+            user_hash_matched = True
+
+        valid = hash_matched and user_hash_matched
+
         return {
-            "valid": hash_matched,
-            "status": "INTEGRITY_VERIFIED" if hash_matched else "TAMPERING_DETECTED",
+            "valid": valid,
+            "status": "INTEGRITY_VERIFIED" if valid else "TAMPERING_DETECTED",
             "lookup_code": code,
             "type": "ANALYSIS_RECORD",
             "db_hash": analysis.integrity_hash,
             "computed_hash": computed_hash,
             "analysis_details": analysis.details_json,
-            "verification_message": "Original analysis record verified and match confirmed in database." if hash_matched else "Hash verification failed!"
+            "verification_message": "Original analysis record verified and match confirmed in database." if valid else "Hash verification failed! Hash mismatch detected."
         }
 
     else:

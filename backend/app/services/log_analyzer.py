@@ -203,6 +203,17 @@ def analyze_http_log_entry(
                 "rule_triggered": f"Known Botnet/Scanner Agent Matched: {bot}"
             }
 
+    # 10. Test Brute-Force & Credential Stuffing
+    if ("login" in path.lower() or "auth" in path.lower() or "signin" in path.lower()) and method in ["POST", "PUT"] and status_code in [401, 403, 429]:
+        return {
+            "is_attack": True,
+            "attack_type": "Brute-Force / Credential Stuffing",
+            "severity": "HIGH",
+            "confidence": 0.94,
+            "matched_pattern": f"{method} {path} ({status_code})",
+            "rule_triggered": "High-Frequency Authentication Failure / Brute-Force Attempt"
+        }
+
     return {
         "is_attack": False,
         "attack_type": "BENIGN",

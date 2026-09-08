@@ -1,38 +1,39 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-
 /* =========================================
-   CSS VARIABLES — LIGHT MODE (Default)
+   CSS VARIABLES — LIGHT MODE
    ========================================= */
 :root {
-  --bg-base:       #f0f9ff;
+  --bg-base:       #f8fafc;
   --bg-surface:    #ffffff;
-  --bg-elevated:   #e0f2fe;
-  --border:        #bae6fd;
+  --bg-elevated:   #f1f5f9;
+  --border:        #e2e8f0;
+  --border-glow:   rgba(14, 165, 233, 0.25);
   --text-primary:  #0f172a;
-  --text-muted:    #475569;
-  --accent:        #0ea5e9;
-  --accent-hover:  #0284c7;
-  --shadow:        rgba(14, 165, 233, 0.10);
+  --text-muted:    #64748b;
+  --accent:        #0284c7;
+  --accent-hover:  #0369a1;
+  --shadow:        rgba(14, 165, 233, 0.08);
 }
 
 /* =========================================
-   CSS VARIABLES — DARK MODE
+   CSS VARIABLES — DARK MODE (Cyberpunk Sleek)
    ========================================= */
 .dark {
-  --bg-base:       #0d1117;
-  --bg-surface:    #161b27;
-  --bg-elevated:   #1e2637;
-  --border:        rgba(56, 189, 248, 0.12);
-  --text-primary:  #f0f9ff;
+  --bg-base:       #070a11;
+  --bg-surface:    #0f172a;
+  --bg-elevated:   #1e293b;
+  --border:        rgba(56, 189, 248, 0.15);
+  --border-glow:   rgba(56, 189, 248, 0.4);
+  --text-primary:  #f8fafc;
   --text-muted:    #94a3b8;
   --accent:        #38bdf8;
   --accent-hover:  #0ea5e9;
-  --shadow:        rgba(56, 189, 248, 0.08);
+  --shadow:        rgba(0, 0, 0, 0.4);
 }
 
 @layer base {
@@ -44,11 +45,16 @@
     color: var(--text-primary);
     font-family: 'Inter', system-ui, sans-serif;
     transition: background-color 0.3s ease, color 0.3s ease;
+    overflow-x: hidden;
+  }
+
+  h1, h2, h3, .font-heading {
+    font-family: 'Outfit', 'Inter', sans-serif;
   }
 }
 
 /* =========================================
-   COMPONENT CLASSES
+   COMPONENT CLASSES & GLASSMORPHISM SURFACES
    ========================================= */
 @layer components {
   .surface {
@@ -62,44 +68,71 @@
     border: 1px solid var(--border);
   }
 
-  .text-base-primary { color: var(--text-primary); }
-  .text-base-muted   { color: var(--text-muted); }
-  .border-theme      { border-color: var(--border); }
-
   .glass-card {
-    background: var(--bg-surface);
+    background: rgba(15, 23, 42, 0.75);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
     border: 1px solid var(--border);
-    box-shadow: 0 8px 32px var(--shadow);
+    box-shadow: 0 12px 40px var(--shadow);
   }
 
   .glass-card-hover {
-    transition: all 0.25s ease-in-out;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   }
   .glass-card-hover:hover {
-    border-color: var(--accent);
-    box-shadow: 0 10px 40px var(--shadow);
+    border-color: var(--border-glow);
+    box-shadow: 0 16px 48px rgba(14, 165, 233, 0.15);
     transform: translateY(-2px);
   }
 
-  .btn-primary {
-    background-color: var(--accent);
-    color: #0f172a;
-    font-weight: 700;
-    padding: 0.625rem 1.5rem;
-    border-radius: 0.75rem;
-    transition: all 0.2s;
+  .glow-cyan {
+    box-shadow: 0 0 30px rgba(6, 182, 212, 0.25);
   }
-  .btn-primary:hover {
-    background-color: var(--accent-hover);
-    box-shadow: 0 0 20px rgba(56,189,248,0.3);
+  .glow-emerald {
+    box-shadow: 0 0 30px rgba(16, 185, 129, 0.25);
+  }
+  .glow-red {
+    box-shadow: 0 0 30px rgba(244, 63, 94, 0.25);
+  }
+
+  .btn-gradient-cyan {
+    background: linear-gradient(135deg, #06b6d4 0%, #2563eb 100%);
+    color: #ffffff;
+    font-weight: 700;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .btn-gradient-cyan:hover {
+    background: linear-gradient(135deg, #22d3ee 0%, #3b82f6 100%);
+    box-shadow: 0 0 24px rgba(6, 182, 212, 0.4);
     transform: translateY(-1px);
+  }
+
+  .badge-glass-cyan {
+    background: rgba(6, 182, 212, 0.12);
+    border: 1px solid rgba(6, 182, 212, 0.3);
+    color: #22d3ee;
+  }
+  .badge-glass-red {
+    background: rgba(244, 63, 94, 0.12);
+    border: 1px solid rgba(244, 63, 94, 0.3);
+    color: #f43f5e;
+  }
+  .badge-glass-emerald {
+    background: rgba(16, 185, 129, 0.12);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    color: #34d399;
+  }
+  .badge-glass-amber {
+    background: rgba(245, 158, 11, 0.12);
+    border: 1px solid rgba(245, 158, 11, 0.3);
+    color: #fbbf24;
   }
 }
 
 /* =========================================
    CUSTOM SCROLLBARS
    ========================================= */
-::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: var(--bg-base); }
-::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+::-webkit-scrollbar-thumb { background: rgba(56, 189, 248, 0.25); border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--accent); }

@@ -171,10 +171,18 @@ def security_assistant_chat(req: ChatRequest):
             ]
         }
 
-    reply_text = f"### {kb['title']}\n\n**Analysis Context:** {kb['explanation']}\n\n**Recommended Defensive Hardening Actions:**"
+    recs_bullets = "\n".join([f"- {r}" for r in kb["recommendations"]])
+    reply_text = f"### {kb['title']}\n\n**Analysis Context:** {kb['explanation']}\n\n**Recommended Defensive Hardening Actions:**\n{recs_bullets}"
+    
+    follow_ups = [
+        "How do I verify a suspicious domain using PhishGuard?",
+        "What evidence is included in an Incident Report?",
+        "How does PhishGuard verify SHA-256 report integrity?"
+    ]
+    
     return {
         "reply": reply_text,
-        "recommendations": kb["recommendations"]
+        "recommendations": follow_ups
     }
 
 

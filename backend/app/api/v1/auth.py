@@ -46,15 +46,26 @@ def find_user_by_id(user_id: str, db: Session):
     user = db.query(Administrateur).filter(Administrateur.id == user_id).first()
     return user
 
-def get_current_user(authorization: str = Header(None), db: Session = Depends(get_db)):
-    if authorization and authorization.startswith("Bearer "):
-        token = authorization.split(" ")[1]
+def get_optional_user(authorization: str = Header(None), db: Session = Depends(get_db)):
+    if authorization:
+        auth_str = authorization.strip()
+        if auth_str.lower().startswith("bearer "):
+            token = auth_str[7:].strip()
+        else:
+            token = auth_str
         payload = decode_access_token(token)
         if payload:
             user_id = payload.get("sub")
-            user = find_user_by_id(user_id, db)
-            if user:
-                return user
+            if user_id:
+                user = find_user_by_id(str(user_id), db)
+                if user:
+                    return user
+    return None
+
+def get_current_user(authorization: str = Header(None), db: Session = Depends(get_db)):
+    user = get_optional_user(authorization, db)
+    if user:
+        return user
     
     # Fallback to primary standard user or admin from DB
     user = db.query(UtilisateurStandard).first()

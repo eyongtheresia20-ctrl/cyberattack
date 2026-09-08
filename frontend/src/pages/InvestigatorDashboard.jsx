@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
+import { NavLink } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { 
   ShieldCheck, AlertCircle, FileSearch, CheckCircle2, Lock, 
-  Search, RefreshCw, Eye, MessageSquare, Tag, Hash, ShieldAlert
+  Search, RefreshCw, Eye, MessageSquare, Tag, Hash, ShieldAlert, History
 } from 'lucide-react';
 
 export default function InvestigatorDashboard() {
@@ -106,12 +107,26 @@ export default function InvestigatorDashboard() {
           <h1 className="text-2xl font-bold text-white">Console d'Enquête — {user?.prenom} {user?.nom}</h1>
           <p className="text-slate-400 text-sm mt-1">Examinez les rapports soumis par les utilisateurs, vérifiez l'intégrité SHA-256 et gérez le cycle de vie des incidents.</p>
         </div>
-        <button
-          onClick={fetchIncidents}
-          className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 shadow-lg shadow-indigo-600/30 transition-all"
-        >
-          <RefreshCw size={14} /> Actualiser la File ({incidents.length})
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <NavLink
+            to="/scanner"
+            className="bg-sky-600 hover:bg-sky-500 text-white px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-lg shadow-sky-600/30 transition-all"
+          >
+            <ShieldAlert size={14} /> Scanner IA
+          </NavLink>
+          <NavLink
+            to="/history"
+            className="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all"
+          >
+            <History size={14} /> Historique
+          </NavLink>
+          <button
+            onClick={fetchIncidents}
+            className="bg-indigo-600 hover:bg-indigo-500 text-white px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-lg shadow-indigo-600/30 transition-all"
+          >
+            <RefreshCw size={14} /> Actualiser ({incidents.length})
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

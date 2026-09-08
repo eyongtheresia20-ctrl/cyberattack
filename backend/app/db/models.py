@@ -74,6 +74,7 @@ class AnalysisRecord(Base):
     __tablename__ = "analysis_records"
 
     id = Column(String(36), primary_key=True, default=generate_uuid)
+    user_id = Column(String(36), ForeignKey("utilisateurs_standards.id"), nullable=True, index=True)
     analysis_code = Column(String(20), unique=True, nullable=False, index=True) # e.g. ANL-2026-0001
     analysis_type = Column(String(20), nullable=False) # URL, EMAIL, MESSAGE
     target_content = Column(Text, nullable=False)

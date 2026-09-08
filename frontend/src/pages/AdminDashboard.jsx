@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
+import { NavLink } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { 
   Users, ShieldCheck, ShieldAlert, Lock, Activity, RefreshCw, 
-  UserCheck, AlertOctagon, CheckCircle2, FileText, Database
+  UserCheck, AlertOctagon, CheckCircle2, FileText, Database, History
 } from 'lucide-react';
 
 export default function AdminDashboard() {
@@ -77,12 +78,26 @@ export default function AdminDashboard() {
           <h1 className="text-2xl font-bold text-white">Gestion Système & Rôles — {user?.prenom} {user?.nom}</h1>
           <p className="text-slate-400 text-sm mt-1">Supervisez les comptes de la plateforme, affectez les rôles Enquêteur et consultez les métriques système.</p>
         </div>
-        <button
-          onClick={fetchUsers}
-          className="bg-amber-600 hover:bg-amber-500 text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 shadow-lg shadow-amber-600/30 transition-all"
-        >
-          <RefreshCw size={14} /> Actualiser les Utilisateurs
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <NavLink
+            to="/scanner"
+            className="bg-sky-600 hover:bg-sky-500 text-white px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-lg shadow-sky-600/30 transition-all"
+          >
+            <ShieldAlert size={14} /> Scanner IA
+          </NavLink>
+          <NavLink
+            to="/history"
+            className="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all"
+          >
+            <History size={14} /> Historique
+          </NavLink>
+          <button
+            onClick={fetchUsers}
+            className="bg-amber-600 hover:bg-amber-500 text-white px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-lg shadow-amber-600/30 transition-all"
+          >
+            <RefreshCw size={14} /> Actualiser
+          </button>
+        </div>
       </div>
 
       {/* Metrics Row */}

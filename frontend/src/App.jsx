@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Routes, Route, useLocation } from 'react-router-dom';
 import { ThemeProvider } from './context/ThemeContext';
 import { LanguageProvider } from './context/LanguageContext';
@@ -13,6 +13,7 @@ import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import Dashboard from './pages/Dashboard';
 import StandardDashboard from './pages/StandardDashboard';
+import HistoryPage from './pages/HistoryPage';
 import UrlAnalysis from './pages/UrlAnalysis';
 import TextAnalysis from './pages/TextAnalysis';
 import SiteMonitoring from './pages/SiteMonitoring';
@@ -27,6 +28,13 @@ function AppLayout() {
   const location = useLocation();
   const isPublic = PUBLIC_ROUTES.includes(location.pathname);
   const [authModalOpen, setAuthModalOpen] = useState(false);
+
+  // Automatically scroll main container to top on any route transition
+  useEffect(() => {
+    window.scrollTo(0, 0);
+    const mainEl = document.querySelector('main');
+    if (mainEl) mainEl.scrollTop = 0;
+  }, [location.pathname]);
 
   if (isPublic) {
     return (
@@ -51,7 +59,8 @@ function AppLayout() {
         <main className="flex-1 p-6 overflow-y-auto max-w-7xl mx-auto w-full">
           <Routes>
             <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/history" element={<StandardDashboard isHistoryView={true} />} />
+            <Route path="/scanner" element={<StandardDashboard />} />
+            <Route path="/history" element={<HistoryPage />} />
             <Route path="/url-analysis" element={<UrlAnalysis />} />
             <Route path="/text-analysis" element={<TextAnalysis />} />
             <Route path="/site-monitoring" element={<SiteMonitoring />} />

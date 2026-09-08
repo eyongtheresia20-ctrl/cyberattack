@@ -11,7 +11,12 @@ def query_virustotal_url_reputation(url: str) -> Dict[str, Any]:
     api_key = settings.VIRUSTOTAL_API_KEY
     if not api_key:
         # Realistic Threat Intelligence Simulation / Heuristic check
-        is_suspicious_domain = any(bad in url.lower() for bad in ['paypal', 'verify', 'bank', 'login', 'claim', 'xyz', 'top', '192.168.'])
+        suspicious_terms = [
+            'paypal', 'appleid', 'microsoft', 'google', 'bank', 'login', 'signin', 'verify', 'update',
+            'account', 'claim', 'wallet', 'crypto', 'billing', 'secure', 'token', 'recover', 'ssn',
+            '.xyz', '.top', '.club', '.work', '.info', '.biz', '.gq', '.cf', '.tk', '.ml', '.online', '.site', '192.168.'
+        ]
+        is_suspicious_domain = any(bad in url.lower() for bad in suspicious_terms)
         return {
             "status": "simulated",
             "positives": 7 if is_suspicious_domain else 0,
@@ -25,7 +30,7 @@ def query_virustotal_url_reputation(url: str) -> Dict[str, Any]:
     try:
         import base64
         url_id = base64.urlsafe_b64encode(url.encode()).decode().strip("=")
-        response = requests.get(f"https://www.virustotal.com/api/v3/urls/{url_id}", headers=headers, timeout=5, verify=False)
+        response = requests.get(f"https://www.virustotal.com/api/v3/urls/{url_id}", headers=headers, timeout=1.5, verify=False)
         if response.status_code == 200:
             data = response.json()
             stats = data.get("data", {}).get("attributes", {}).get("last_analysis_stats", {})
@@ -51,12 +56,17 @@ def query_virustotal_url_reputation(url: str) -> Dict[str, Any]:
 
 def query_google_safebrowsing(url: str) -> Dict[str, Any]:
     """Query Google Safe Browsing v4 API with mock fallback."""
+    suspicious_terms = [
+        'verify', 'suspend', 'claim', 'paypal', 'appleid', 'bank', 'login', 'signin', 'update',
+        'billing', 'secure', 'crypto', 'wallet', '.xyz', '.top', '.club', '.work', '.site', '.online'
+    ]
+    heuristic_bad = any(bad in url.lower() for bad in suspicious_terms)
+
     api_key = settings.GOOGLE_SAFE_BROWSING_API_KEY
     if not api_key:
-        is_bad = any(bad in url.lower() for bad in ['verify', 'suspend', 'claim', 'paypal', 'appleid'])
         return {
-            "is_flagged": is_bad,
-            "threat_types": ["MALWARE", "SOCIAL_ENGINEERING"] if is_bad else [],
+            "is_flagged": heuristic_bad,
+            "threat_types": ["MALWARE", "SOCIAL_ENGINEERING"] if heuristic_bad else [],
             "platform_type": "ANY_PLATFORM",
             "source": "Google Safe Browsing (Simulated)"
         }
@@ -72,12 +82,13 @@ def query_google_safebrowsing(url: str) -> Dict[str, Any]:
         }
     }
     try:
-        res = requests.post(endpoint, json=payload, timeout=5, verify=False)
+        res = requests.post(endpoint, json=payload, timeout=2.0, verify=False)
         if res.status_code == 200:
             matches = res.json().get("matches", [])
+            is_flagged = len(matches) > 0 or heuristic_bad
             return {
-                "is_flagged": len(matches) > 0,
-                "threat_types": [m.get("threatType") for m in matches],
+                "is_flagged": is_flagged,
+                "threat_types": [m.get("threatType") for m in matches] if matches else (["SOCIAL_ENGINEERING"] if heuristic_bad else []),
                 "platform_type": "ALL",
                 "source": "Google Safe Browsing Live API"
             }
@@ -85,8 +96,8 @@ def query_google_safebrowsing(url: str) -> Dict[str, Any]:
         print(f"[Warning] Google Safe Browsing API lookup error: {e}")
 
     return {
-        "is_flagged": False,
-        "threat_types": [],
+        "is_flagged": heuristic_bad,
+        "threat_types": ["SOCIAL_ENGINEERING"] if heuristic_bad else [],
         "source": "Google Safe Browsing (Offline Fallback)"
     }
 

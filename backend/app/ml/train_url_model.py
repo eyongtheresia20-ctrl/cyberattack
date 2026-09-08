@@ -81,10 +81,10 @@ def generate_synthetic_url_dataset():
     df = pd.DataFrame(augmented_data)
     return df
 
-def train_and_save_url_model(output_path: str = None):
-    """Train Random Forest model and save to disk."""
-    if output_path is None:
-        output_path = os.path.join(os.path.dirname(__file__), "phishguard_url_rf.joblib")
+def train_and_save_url_model(output_dir: str = None):
+    """Train Random Forest, Gradient Boosting, and MLP models and save to disk."""
+    if output_dir is None:
+        output_dir = os.path.dirname(__file__)
 
     df = generate_synthetic_url_dataset()
     X = df.drop(columns=['label'])
@@ -92,30 +92,44 @@ def train_and_save_url_model(output_path: str = None):
 
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25, random_state=42, stratify=y)
 
-    model = RandomForestClassifier(n_estimators=100, max_depth=10, random_state=42)
-    model.fit(X_train, y_train)
+    from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+    from sklearn.neural_network import MLPClassifier
+    from sklearn.preprocessing import StandardScaler
+    from sklearn.pipeline import make_pipeline
 
-    y_pred = model.predict(X_test)
-    acc = accuracy_score(y_test, y_pred)
-    prec = precision_score(y_test, y_pred, zero_division=0)
-    rec = recall_score(y_test, y_pred, zero_division=0)
-    f1 = f1_score(y_test, y_pred, zero_division=0)
-
-    print(f"=== URL Random Forest Model Training Metrics ===")
-    print(f"Accuracy : {acc * 100:.2f}%")
-    print(f"Precision: {prec * 100:.2f}%")
-    print(f"Recall   : {rec * 100:.2f}%")
-    print(f"F1-Score : {f1 * 100:.2f}%")
-
-    model_payload = {
-        "model": model,
-        "feature_names": list(X.columns),
-        "metrics": {"accuracy": acc, "precision": prec, "recall": rec, "f1_score": f1}
+    models_config = {
+        "rf": (RandomForestClassifier(n_estimators=100, max_depth=10, random_state=42), "phishguard_url_rf.joblib", "Random Forest Classifier"),
+        "gbm": (GradientBoostingClassifier(n_estimators=100, learning_rate=0.1, max_depth=5, random_state=42), "phishguard_url_gbm.joblib", "Gradient Boosting Classifier"),
+        "mlp": (make_pipeline(StandardScaler(), MLPClassifier(hidden_layer_sizes=(32, 16), max_iter=500, random_state=42)), "phishguard_url_mlp.joblib", "Multi-Layer Perceptron (MLP)")
     }
-    
-    joblib.dump(model_payload, output_path)
-    print(f"URL Model saved successfully to: {output_path}")
-    return model_payload
+
+    trained_payloads = {}
+
+    for key, (clf, filename, name) in models_config.items():
+        clf.fit(X_train, y_train)
+        y_pred = clf.predict(X_test)
+        acc = accuracy_score(y_test, y_pred)
+        prec = precision_score(y_test, y_pred, zero_division=0)
+        rec = recall_score(y_test, y_pred, zero_division=0)
+        f1 = f1_score(y_test, y_pred, zero_division=0)
+
+        print(f"=== {name} Training Metrics ===")
+        print(f"Accuracy : {acc * 100:.2f}% | Precision: {prec * 100:.2f}% | Recall: {rec * 100:.2f}% | F1: {f1 * 100:.2f}%")
+
+        payload = {
+            "model": clf,
+            "model_name": name,
+            "feature_names": list(X.columns),
+            "metrics": {"accuracy": float(acc), "precision": float(prec), "recall": float(rec), "f1_score": float(f1)}
+        }
+        
+        file_path = os.path.join(output_dir, filename)
+        joblib.dump(payload, file_path)
+        trained_payloads[key] = payload
+
+    print("Top 3 ML Models saved successfully!")
+    return trained_payloads
 
 if __name__ == "__main__":
     train_and_save_url_model()
+

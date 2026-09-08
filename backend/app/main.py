@@ -1,3 +1,9 @@
+import os
+import sys
+backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if backend_dir not in sys.path:
+    sys.path.insert(0, backend_dir)
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
@@ -20,6 +26,11 @@ try:
                 conn.commit()
             except Exception:
                 pass
+        try:
+            conn.execute(text("ALTER TABLE analysis_records ADD COLUMN IF NOT EXISTS user_id VARCHAR(36)"))
+            conn.commit()
+        except Exception:
+            pass
 except Exception as e:
     print(f"[Warning] Table creation deferred: {e}")
 
