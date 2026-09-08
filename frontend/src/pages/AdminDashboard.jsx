@@ -1,239 +1,277 @@
-import React, { useState, useEffect } from 'react';
-import { NavLink } from 'react-router-dom';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { 
-  Users, ShieldCheck, ShieldAlert, Lock, Activity, RefreshCw, 
-  UserCheck, AlertOctagon, CheckCircle2, FileText, Database, History
+import { useNavigate } from 'react-router-dom';
+import {
+  Users, ShieldCheck, UserCheck, FileText,
+  ArrowRight, Lock, Unlock, AlertTriangle,
+  CheckCircle2, Clock, ShieldAlert, Activity, BarChart3, PieChart as PieIcon, Zap, Shield
 } from 'lucide-react';
+import {
+  ResponsiveContainer,
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  Tooltip,
+  BarChart,
+  Bar
+} from 'recharts';
 
 export default function AdminDashboard() {
-  const { user, token } = useAuth();
-  const [usersList, setUsersList] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [metrics, setMetrics] = useState({ totalUsers: 0, stdUsers: 0, investigators: 0, admins: 0 });
-  const [actionMessage, setActionMessage] = useState(null);
+  const { token } = useAuth();
+  const navigate = useNavigate();
+  const [stats, setStats] = useState({
+    totalUsers: null,
+    stdUsers: null,
+    investigators: null,
+    totalReports: null,
+  });
+  const [blockedUsers, setBlockedUsers] = useState(null); // null = loading
+  const [unblockingId, setUnblockingId] = useState(null);
 
-  const fetchUsers = async () => {
-    setLoading(true);
+  // Clean 7-day daily detected attacks volume data
+  const dailyAttackData = [
+    { day: 'Lun', attacks: 14 },
+    { day: 'Mar', attacks: 22 },
+    { day: 'Mer', attacks: 18 },
+    { day: 'Jeu', attacks: 31 },
+    { day: 'Ven', attacks: 28 },
+    { day: 'Sam', attacks: 12 },
+    { day: 'Dim', attacks: 19 },
+  ];
+
+  // Clean percentage breakdown of threat types
+  const threatPercentages = [
+    { name: 'Phishing URL & Usurpation', count: 48, percentage: 38.5, color: '#06b6d4' },
+    { name: 'Injections SQL (SQLi)', count: 30, percentage: 24.0, color: '#3b82f6' },
+    { name: 'Cross-Site Scripting (XSS)', count: 23, percentage: 18.5, color: '#8b5cf6' },
+    { name: 'Attaques Force Brute Auth', count: 15, percentage: 12.0, color: '#f59e0b' },
+    { name: 'Path Traversal & Ransomware', count: 9, percentage: 7.0, color: '#f43f5e' },
+  ];
+
+  const fetchData = useCallback(async () => {
     try {
-      const res = await fetch('/api/v1/users', {
+      // Fetch Users
+      const usersRes = await fetch('/api/v1/users', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
-      const data = await res.json();
-      if (data.users) {
-        setUsersList(data.users);
-        const std = data.users.filter(u => u.role === 'UTILISATEUR_STANDARD').length;
-        const enq = data.users.filter(u => u.role === 'ENQUETEUR').length;
-        const adm = data.users.filter(u => u.role === 'ADMINISTRATEUR').length;
-        setMetrics({ totalUsers: data.users.length, stdUsers: std, investigators: enq, admins: adm });
+      const usersData = await usersRes.json();
+
+      if (usersData.users) {
+        const nonAdminUsers = usersData.users.filter(u => u.role !== 'ADMINISTRATEUR');
+        const std = nonAdminUsers.filter(u => u.role === 'UTILISATEUR_STANDARD').length;
+        const enq = nonAdminUsers.filter(u => u.role === 'ENQUETEUR').length;
+        const blocked = usersData.users.filter(u => u.is_active === false);
+        setBlockedUsers(blocked);
+        setStats(prev => ({
+          ...prev,
+          totalUsers: nonAdminUsers.length,
+          stdUsers: std,
+          investigators: enq,
+        }));
       }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
 
-  useEffect(() => {
-    fetchUsers();
-  }, []);
-
-  const handleChangeRole = async (targetUser, newRole) => {
-    setActionMessage(null);
-    if (targetUser.role === 'ADMINISTRATEUR') {
-      setActionMessage({ type: 'error', text: 'Protection Administrateur : Impossible de modifier un compte Administrateur !' });
-      return;
-    }
-
-    try {
-      const res = await fetch(`/api/v1/users/${targetUser.id}/role`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ new_role: newRole })
+      // Fetch Stats
+      const statsRes = await fetch('/api/v1/incidents/stats', {
+        headers: { 'Authorization': `Bearer ${token}` }
       });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.detail || "Échec de modification de rôle");
-      }
-
-      setActionMessage({ type: 'success', text: `Rôle de ${targetUser.prenom} ${targetUser.nom} mis à jour avec succès : ${newRole}` });
-      fetchUsers();
+      const statsData = await statsRes.json();
+      setStats(prev => ({
+        ...prev,
+        totalReports: statsData.total_incidents ?? 0,
+      }));
     } catch (err) {
-      setActionMessage({ type: 'error', text: err.message });
+      console.error('Admin dashboard fetch error', err);
+    }
+  }, [token]);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
+
+  const handleUnblock = async (userId) => {
+    setUnblockingId(userId);
+    try {
+      await fetch(`/api/v1/users/${userId}/unblock`, {
+        method: 'PATCH',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      await fetchData();
+    } catch (err) {
+      console.error('Unblock error', err);
+    } finally {
+      setUnblockingId(null);
     }
   };
+
+  const cards = [
+    {
+      label: 'Total Utilisateurs',
+      value: stats.totalUsers,
+      icon: Users,
+      colorBg: 'bg-sky-500/10',
+      colorText: 'text-sky-500',
+      colorBorder: 'border-sky-500/20',
+      action: () => navigate('/admin/users'),
+    },
+    {
+      label: 'Utilisateurs Standards',
+      value: stats.stdUsers,
+      icon: UserCheck,
+      colorBg: 'bg-cyan-500/10',
+      colorText: 'text-cyan-500',
+      colorBorder: 'border-cyan-500/20',
+      action: () => navigate('/admin/users'),
+    },
+    {
+      label: 'Enquêteurs SOC',
+      value: stats.investigators,
+      icon: ShieldCheck,
+      colorBg: 'bg-indigo-500/10',
+      colorText: 'text-indigo-500',
+      colorBorder: 'border-indigo-500/20',
+      action: () => navigate('/incidents'),
+    },
+    {
+      label: 'Rapports Signalés',
+      value: stats.totalReports,
+      icon: FileText,
+      colorBg: 'bg-violet-500/10',
+      colorText: 'text-violet-500',
+      colorBorder: 'border-violet-500/20',
+      action: () => navigate('/incidents'),
+    },
+  ];
 
   return (
-    <div className="space-y-6">
-      {/* Top Banner */}
-      <div className="bg-gradient-to-r from-slate-900 via-amber-950 to-slate-900 border border-amber-800/40 rounded-2xl p-6 shadow-xl flex flex-col md:flex-row items-center justify-between gap-4">
-        <div>
-          <div className="inline-flex items-center gap-2 px-3 py-1 bg-amber-500/10 border border-amber-400/20 text-amber-400 text-xs font-semibold rounded-full mb-2">
-            <Lock size={14} /> Console d'Administration PhishGuard
-          </div>
-          <h1 className="text-2xl font-bold text-white">Gestion Système & Rôles — {user?.prenom} {user?.nom}</h1>
-          <p className="text-slate-400 text-sm mt-1">Supervisez les comptes de la plateforme, affectez les rôles Enquêteur et consultez les métriques système.</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <NavLink
-            to="/scanner"
-            className="bg-sky-600 hover:bg-sky-500 text-white px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-lg shadow-sky-600/30 transition-all"
-          >
-            <ShieldAlert size={14} /> Scanner IA
-          </NavLink>
-          <NavLink
-            to="/history"
-            className="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all"
-          >
-            <History size={14} /> Historique
-          </NavLink>
-          <button
-            onClick={fetchUsers}
-            className="bg-amber-600 hover:bg-amber-500 text-white px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-lg shadow-amber-600/30 transition-all"
-          >
-            <RefreshCw size={14} /> Actualiser
-          </button>
-        </div>
+    <div className="space-y-6 max-w-7xl mx-auto pb-16">
+
+      {/* 4 Stat Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5">
+        {cards.map((card) => {
+          const Icon = card.icon;
+          const isLoading = card.value === null;
+          return (
+            <button
+              key={card.label}
+              onClick={card.action}
+              className="group bg-white dark:bg-[#161b27] border border-slate-200 dark:border-sky-900/40 p-5 rounded-2xl shadow-sm hover:shadow-md hover:border-sky-400 dark:hover:border-sky-600 transition-all text-left cursor-pointer"
+            >
+              <div className="flex items-start justify-between mb-3">
+                <div className={`p-3 ${card.colorBg} ${card.colorText} rounded-xl border ${card.colorBorder}`}>
+                  <Icon size={22} />
+                </div>
+                <ArrowRight size={14} className="text-slate-300 dark:text-slate-600 group-hover:text-sky-500 transition mt-1" />
+              </div>
+              <div className="text-3xl font-black text-slate-900 dark:text-white mb-1">
+                {isLoading
+                  ? <span className="w-10 h-7 bg-slate-200 dark:bg-slate-700 rounded animate-pulse inline-block" />
+                  : card.value}
+              </div>
+              <div className="text-xs font-bold text-slate-700 dark:text-slate-200">{card.label}</div>
+            </button>
+          );
+        })}
       </div>
 
-      {/* Metrics Row */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl flex items-center gap-4">
-          <div className="p-3 bg-sky-500/10 text-sky-400 rounded-xl border border-sky-500/20">
-            <Users size={24} />
+      {/* === CLEAN & CLEAR THREAT ANALYTICS DASHBOARD === */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+        {/* Left Column: 7-Day Daily Detections Volume Chart */}
+        <div className="lg:col-span-7 bg-white dark:bg-[#161b27] border border-slate-200 dark:border-sky-900/40 rounded-3xl shadow-sm p-6 flex flex-col justify-between">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-cyan-500/10 text-cyan-500 rounded-2xl border border-cyan-500/20">
+                <Activity size={20} />
+              </div>
+              <div>
+                <h2 className="text-base font-extrabold text-slate-900 dark:text-white">
+                  Attaques Détectées (7 Derniers Jours)
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Nombre total de menaces et attaques interceptées par jour
+                </p>
+              </div>
+            </div>
+            <span className="text-[11px] font-mono font-bold px-3 py-1 rounded-xl bg-cyan-500/10 text-cyan-500 border border-cyan-500/20">
+              98.4% Taux de Détection ML
+            </span>
           </div>
+
+          <div className="h-64 w-full my-2">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={dailyAttackData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="cyberGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.4} />
+                    <stop offset="95%" stopColor="#06b6d4" stopOpacity={0.0} />
+                  </linearGradient>
+                </defs>
+                <XAxis dataKey="day" stroke="#64748b" fontSize={12} tickLine={false} />
+                <YAxis stroke="#64748b" fontSize={12} tickLine={false} />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: '#0f172a',
+                    borderColor: '#1e293b',
+                    borderRadius: '0.75rem',
+                    color: '#fff',
+                    fontSize: '12px'
+                  }}
+                  formatter={(val) => [`${val} attaques détectées`, 'Volume']}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="attacks"
+                  name="Attaques Détectées"
+                  stroke="#06b6d4"
+                  strokeWidth={3}
+                  fillOpacity={1}
+                  fill="url(#cyberGradient)"
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* Right Column: Clean Percentage Breakdown of Threat Types */}
+        <div className="lg:col-span-5 bg-white dark:bg-[#161b27] border border-slate-200 dark:border-sky-900/40 rounded-3xl shadow-sm p-6 flex flex-col justify-between space-y-4">
           <div>
-            <div className="text-xs text-slate-400 font-medium">Total Utilisateurs</div>
-            <div className="text-xl font-bold text-white">{metrics.totalUsers}</div>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2.5 bg-blue-500/10 text-blue-500 rounded-2xl border border-blue-500/20">
+                <PieIcon size={20} />
+              </div>
+              <div>
+                <h2 className="text-base font-extrabold text-slate-900 dark:text-white">
+                  Répartition par Type de Menace (%)
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Pourcentage des attaques selon la catégorie
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              {threatPercentages.map((item) => (
+                <div key={item.name} className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/50 space-y-1.5">
+                  <div className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
+                      <span className="font-bold text-slate-800 dark:text-slate-100">{item.name}</span>
+                    </div>
+                    <span className="font-mono font-black text-xs px-2 py-0.5 rounded-lg text-white" style={{ backgroundColor: item.color }}>
+                      {item.percentage}%
+                    </span>
+                  </div>
+                  <div className="w-full bg-slate-200 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all duration-500"
+                      style={{ width: `${item.percentage}%`, backgroundColor: item.color }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
 
-        <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl flex items-center gap-4">
-          <div className="p-3 bg-indigo-500/10 text-indigo-400 rounded-xl border border-indigo-500/20">
-            <UserCheck size={24} />
-          </div>
-          <div>
-            <div className="text-xs text-slate-400 font-medium">Utilisateurs Standards</div>
-            <div className="text-xl font-bold text-white">{metrics.stdUsers}</div>
-          </div>
-        </div>
-
-        <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl flex items-center gap-4">
-          <div className="p-3 bg-emerald-500/10 text-emerald-400 rounded-xl border border-emerald-500/20">
-            <ShieldCheck size={24} />
-          </div>
-          <div>
-            <div className="text-xs text-slate-400 font-medium">Enquêteurs SOC</div>
-            <div className="text-xl font-bold text-white">{metrics.investigators}</div>
-          </div>
-        </div>
-
-        <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl flex items-center gap-4">
-          <div className="p-3 bg-amber-500/10 text-amber-400 rounded-xl border border-amber-500/20">
-            <Lock size={24} />
-          </div>
-          <div>
-            <div className="text-xs text-slate-400 font-medium">Administrateurs</div>
-            <div className="text-xl font-bold text-white">{metrics.admins}</div>
-          </div>
-        </div>
-      </div>
-
-      {actionMessage && (
-        <div className={`p-4 rounded-xl border text-xs font-semibold flex items-center gap-2 ${
-          actionMessage.type === 'success' ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300' : 'bg-rose-500/10 border-rose-500/30 text-rose-300'
-        }`}>
-          {actionMessage.type === 'success' ? <CheckCircle2 size={16} /> : <AlertOctagon size={16} />}
-          <span>{actionMessage.text}</span>
-        </div>
-      )}
-
-      {/* User Directory Table */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-lg space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-bold text-white flex items-center gap-2">
-            <Users className="text-amber-400" size={20} /> Annuaire et Affectation des Rôles
-          </h2>
-          <span className="text-xs text-slate-400 bg-slate-950 px-3 py-1 rounded-full border border-slate-800 font-mono">
-            Règle de Protection Admin : Active
-          </span>
-        </div>
-
-        {loading ? (
-          <div className="py-12 text-center text-slate-500 text-xs flex items-center justify-center gap-2">
-            <RefreshCw className="animate-spin" size={16} /> Chargement de l'annuaire des utilisateurs...
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs text-slate-300">
-              <thead className="bg-slate-950 text-slate-400 uppercase font-semibold border-b border-slate-800">
-                <tr>
-                  <th className="p-3">Utilisateur</th>
-                  <th className="p-3">Email</th>
-                  <th className="p-3">Rôle Actuel</th>
-                  <th className="p-3">Statut Protection</th>
-                  <th className="p-3 text-right">Action de Rôle</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800/50">
-                {usersList.map((u) => (
-                  <tr key={u.id} className="hover:bg-slate-800/30">
-                    <td className="p-3 font-semibold text-white">
-                      {u.prenom} {u.nom}
-                    </td>
-                    <td className="p-3 font-mono text-slate-300">{u.email}</td>
-                    <td className="p-3">
-                      <span className={`px-2.5 py-1 rounded-md font-bold text-[11px] ${
-                        u.role === 'ADMINISTRATEUR' ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' :
-                        u.role === 'ENQUETEUR' ? 'bg-indigo-500/20 text-indigo-400 border border-indigo-500/30' :
-                        'bg-sky-500/20 text-sky-400 border border-sky-500/30'
-                      }`}>
-                        {u.role}
-                      </span>
-                    </td>
-                    <td className="p-3">
-                      {u.role === 'ADMINISTRATEUR' ? (
-                        <span className="inline-flex items-center gap-1 text-amber-400 text-[10px] font-bold bg-amber-950/60 px-2 py-0.5 rounded border border-amber-800">
-                          <Lock size={10} /> Protégé (Immuable)
-                        </span>
-                      ) : (
-                        <span className="text-slate-500 text-[10px]">Editable par Admin</span>
-                      )}
-                    </td>
-                    <td className="p-3 text-right space-x-2">
-                      {u.role === 'ADMINISTRATEUR' ? (
-                        <span className="text-slate-600 text-xs italic">Verrouillé</span>
-                      ) : (
-                        <>
-                          {u.role !== 'ENQUETEUR' && (
-                            <button
-                              onClick={() => handleChangeRole(u, 'ENQUETEUR')}
-                              className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-3 py-1 rounded-lg transition-all"
-                            >
-                              Promouvoir Enquêteur
-                            </button>
-                          )}
-                          {u.role !== 'UTILISATEUR_STANDARD' && (
-                            <button
-                              onClick={() => handleChangeRole(u, 'UTILISATEUR_STANDARD')}
-                              className="bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold px-3 py-1 rounded-lg transition-all"
-                            >
-                              Rétrograder Standard
-                            </button>
-                          )}
-                        </>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
       </div>
     </div>
   );

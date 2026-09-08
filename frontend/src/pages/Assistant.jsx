@@ -6,7 +6,7 @@ export default function Assistant() {
   const [messages, setMessages] = useState([
     {
       sender: 'assistant',
-      text: "Hello! I am your **PhishGuard Defensive Security AI**. Ask me how to remediate detected threats (SQLi, XSS, Brute Force), harden email security (SPF/DKIM/DMARC), or protect your web application architecture.",
+      text: "Hello! I am your **CyberGuard Defensive Security AI**. Ask me how to remediate detected threats (SQLi, XSS, Brute Force), harden email security (SPF/DKIM/DMARC), or protect your web application architecture.",
       recommendations: [
         "How do I prevent SQL Injection attacks on my backend?",
         "How can I harden my email server against phishing impersonation?",
@@ -100,7 +100,7 @@ export default function Assistant() {
           {loading && (
             <div className="flex gap-2 items-center text-xs text-slate-500 font-mono">
               <Sparkles className="w-3.5 h-3.5 text-cyan-400 animate-spin" />
-              <span>PhishGuard Security AI is formulating defensive response...</span>
+              <span>CyberGuard Security AI is formulating defensive response...</span>
             </div>
           )}
         </div>

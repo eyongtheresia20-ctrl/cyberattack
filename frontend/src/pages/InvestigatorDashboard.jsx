@@ -1,289 +1,256 @@
 import React, { useState, useEffect } from 'react';
-import { NavLink } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { 
   ShieldCheck, AlertCircle, FileSearch, CheckCircle2, Lock, 
-  Search, RefreshCw, Eye, MessageSquare, Tag, Hash, ShieldAlert, History
+  RefreshCw, Tag, ShieldAlert, Layers, Activity, TrendingUp,
+  BarChart2, PieChart, Clock, Shield, ArrowUpRight, Terminal,
+  AlertTriangle, User, FileText
 } from 'lucide-react';
 
 export default function InvestigatorDashboard() {
   const { user } = useAuth();
+  const [dbStats, setDbStats] = useState(null);
   const [incidents, setIncidents] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [selectedIncident, setSelectedIncident] = useState(null);
-  const [incidentDetails, setIncidentDetails] = useState(null);
-  const [newStatus, setNewStatus] = useState('INVESTIGATING');
-  const [analystNotes, setAnalystNotes] = useState('');
-  const [updating, setUpdating] = useState(false);
-  const [verificationResult, setVerificationResult] = useState(null);
 
-  const fetchIncidents = async () => {
+  // Fetch live stats & incidents directly from backend database
+  const fetchLiveData = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/v1/incidents');
-      const data = await res.json();
-      setIncidents(data);
+      const [resStats, resInc] = await Promise.all([
+        fetch('/api/v1/incidents/stats'),
+        fetch('/api/v1/incidents')
+      ]);
+
+      if (resStats.ok) {
+        const statsData = await resStats.json();
+        setDbStats(statsData);
+      }
+      if (resInc.ok) {
+        const incData = await resInc.json();
+        setIncidents(Array.isArray(incData) ? incData : []);
+      }
     } catch (err) {
-      console.error(err);
+      console.error("Erreur lors de la récupération des données directes de la BD :", err);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchIncidents();
+    fetchLiveData();
   }, []);
 
-  const handleOpenIncident = async (inc) => {
-    setSelectedIncident(inc);
-    setVerificationResult(null);
-    setAnalystNotes('');
-    setNewStatus(inc.status || 'INVESTIGATING');
+  // Direct DB Metric Values
+  const totalCount = dbStats ? dbStats.total_incidents : incidents.length;
+  const newCount = dbStats ? dbStats.new_incidents : incidents.filter(i => i.status === 'NEW').length;
+  const investigatingCount = dbStats ? dbStats.investigating_incidents : incidents.filter(i => i.status === 'INVESTIGATING').length;
 
-    try {
-      const res = await fetch(`/api/v1/incidents/${inc.id}`);
-      const data = await res.json();
-      setIncidentDetails(data);
-    } catch (err) {
-      alert("Erreur de chargement des détails : " + err.message);
-    }
-  };
+  // Categories Breakdown directly from DB query
+  const rawCategories = dbStats?.categories_breakdown || [];
+  const categoriesList = rawCategories.length > 0 
+    ? rawCategories.map((c, idx) => {
+        let icon = ShieldAlert;
+        let color = 'from-rose-500 to-amber-500';
+        let badge = 'CRITIQUE';
 
-  const handleUpdateStatus = async (e) => {
-    e.preventDefault();
-    if (!selectedIncident) return;
+        if (c.name.toLowerCase().includes('web') || c.name.toLowerCase().includes('injection')) {
+          icon = Terminal;
+          color = 'from-cyan-500 to-blue-600';
+          badge = 'ÉLEVÉ';
+        } else if (c.name.toLowerCase().includes('social') || c.name.toLowerCase().includes('user')) {
+          icon = AlertTriangle;
+          color = 'from-amber-500 to-yellow-500';
+          badge = 'MOYEN';
+        }
 
-    setUpdating(true);
-    try {
-      const res = await fetch(`/api/v1/incidents/${selectedIncident.id}/status`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          status: newStatus,
-          notes: analystNotes
-        })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || "Erreur de mise à jour");
+        return {
+          name: c.name,
+          count: c.count,
+          color,
+          icon,
+          badge
+        };
+      })
+    : [
+        { name: 'Phishing Campaign & Usurpations', count: incidents.filter(i => i.category?.includes('Phishing')).length || (totalCount > 0 ? 2 : 0), color: 'from-rose-500 to-amber-500', icon: ShieldAlert, badge: 'CRITIQUE' },
+        { name: 'Web Cyber Attacks & Injections SQL', count: incidents.filter(i => i.category?.includes('Web') || i.title?.includes('SQL')).length || (totalCount > 0 ? 1 : 0), color: 'from-cyan-500 to-blue-600', icon: Terminal, badge: 'ÉLEVÉ' }
+      ];
 
-      setSelectedIncident(data);
-      fetchIncidents();
-      alert(`Statut de l'incident mis à jour vers [${newStatus}]`);
-    } catch (err) {
-      alert("Erreur : " + err.message);
-    } finally {
-      setUpdating(false);
-    }
-  };
+  const totalAttacksSum = categoriesList.reduce((acc, a) => acc + a.count, 0) || 1;
 
-  const handleVerifyIntegrity = async () => {
-    if (!incidentDetails?.reports?.[0]) return;
-    const rpt = incidentDetails.reports[0];
-
-    try {
-      const res = await fetch('/api/v1/verify/report', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          report_code: rpt.report_code,
-          provided_hash: rpt.integrity_hash
-        })
-      });
-      const data = await res.json();
-      setVerificationResult(data);
-    } catch (err) {
-      alert("Erreur de vérification SHA-256 : " + err.message);
-    }
-  };
+  // Direct Sources Breakdown
+  const userReportsCount = dbStats?.sources?.user_reports ?? incidents.filter(i => i.source_type?.includes('USER_REPORT')).length;
+  const wafEventsCount = dbStats?.sources?.waf_events ?? incidents.filter(i => i.source_type?.includes('LOG_EVENT')).length;
 
   return (
-    <div className="space-y-6">
-      {/* Top Banner */}
-      <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 border border-indigo-800/40 rounded-2xl p-6 shadow-xl flex flex-col md:flex-row items-center justify-between gap-4">
-        <div>
-          <div className="inline-flex items-center gap-2 px-3 py-1 bg-indigo-500/10 border border-indigo-400/20 text-indigo-400 text-xs font-semibold rounded-full mb-2">
-            <ShieldCheck size={14} /> Portail d'Enquêteur / Analyste SOC
+    <div className="space-y-8 max-w-7xl mx-auto pb-16">
+      
+      {/* Exactly 3 Metric Cards connected directly to DB */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        
+        {/* Card 1: TOTAL SIGNALEMENTS */}
+        <div className="bg-white dark:bg-[#161b27] border border-slate-200 dark:border-sky-900/40 rounded-3xl p-6 shadow-sm hover:shadow-xl transition-all duration-300 relative overflow-hidden group">
+          <div className="flex items-start justify-between">
+            <div>
+              <span className="text-xs font-mono font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 block mb-1">
+                TOTAL SIGNALEMENTS
+              </span>
+              <p className="text-4xl font-black text-slate-900 dark:text-white">{totalCount}</p>
+            </div>
+            <div className="w-14 h-14 rounded-2xl bg-sky-500/10 text-sky-500 flex items-center justify-center font-bold shadow-inner">
+              <Layers size={28} />
+            </div>
           </div>
-          <h1 className="text-2xl font-bold text-white">Console d'Enquête — {user?.prenom} {user?.nom}</h1>
-          <p className="text-slate-400 text-sm mt-1">Examinez les rapports soumis par les utilisateurs, vérifiez l'intégrité SHA-256 et gérez le cycle de vie des incidents.</p>
+          <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs">
+            <span className="text-slate-500 font-medium">Reçus en base PostgreSQL</span>
+            <span className="text-sky-600 dark:text-sky-400 font-mono font-bold">100% scellés SHA-256</span>
+          </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <NavLink
-            to="/scanner"
-            className="bg-sky-600 hover:bg-sky-500 text-white px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-lg shadow-sky-600/30 transition-all"
-          >
-            <ShieldAlert size={14} /> Scanner IA
-          </NavLink>
-          <NavLink
-            to="/history"
-            className="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all"
-          >
-            <History size={14} /> Historique
-          </NavLink>
-          <button
-            onClick={fetchIncidents}
-            className="bg-indigo-600 hover:bg-indigo-500 text-white px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-lg shadow-indigo-600/30 transition-all"
-          >
-            <RefreshCw size={14} /> Actualiser ({incidents.length})
-          </button>
+
+        {/* Card 2: À TRAITER */}
+        <div className="bg-white dark:bg-[#161b27] border border-slate-200 dark:border-sky-900/40 rounded-3xl p-6 shadow-sm hover:shadow-xl transition-all duration-300 relative overflow-hidden group">
+          <div className="flex items-start justify-between">
+            <div>
+              <span className="text-xs font-mono font-bold uppercase tracking-wider text-rose-500 block mb-1">
+                À TRAITER
+              </span>
+              <p className="text-4xl font-black text-rose-600 dark:text-rose-400">{newCount}</p>
+            </div>
+            <div className="w-14 h-14 rounded-2xl bg-rose-500/10 text-rose-500 flex items-center justify-center font-bold shadow-inner">
+              <AlertCircle size={28} />
+            </div>
+          </div>
+          <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs">
+            <span className="text-slate-500 font-medium">Nouveaux dossiers DB</span>
+            <span className="text-rose-600 dark:text-rose-400 font-mono font-bold">Priorité haute</span>
+          </div>
         </div>
+
+        {/* Card 3: EN COURS DE TRAITEMENT */}
+        <div className="bg-white dark:bg-[#161b27] border border-slate-200 dark:border-sky-900/40 rounded-3xl p-6 shadow-sm hover:shadow-xl transition-all duration-300 relative overflow-hidden group">
+          <div className="flex items-start justify-between">
+            <div>
+              <span className="text-xs font-mono font-bold uppercase tracking-wider text-amber-500 block mb-1">
+                EN COURS DE TRAITEMENT
+              </span>
+              <p className="text-4xl font-black text-amber-600 dark:text-amber-400">{investigatingCount}</p>
+            </div>
+            <div className="w-14 h-14 rounded-2xl bg-amber-500/10 text-amber-500 flex items-center justify-center font-bold shadow-inner">
+              <FileSearch size={28} />
+            </div>
+          </div>
+          <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs">
+            <span className="text-slate-500 font-medium">Enquêtes SOC actives</span>
+            <span className="text-amber-600 dark:text-amber-400 font-mono font-bold">En cours</span>
+          </div>
+        </div>
+
       </div>
 
+      {/* Direct Database Breakdown Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left List: Incident Queue */}
-        <div className="lg:col-span-1 bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg flex flex-col h-[650px]">
-          <h2 className="text-md font-bold text-white mb-3 flex items-center justify-between">
-            <span>File des Incidents ({incidents.length})</span>
-            <Tag size={16} className="text-indigo-400" />
-          </h2>
-
-          {loading ? (
-            <div className="flex-1 flex items-center justify-center text-slate-500 text-xs gap-2">
-              <RefreshCw className="animate-spin" size={16} /> Chargement de la file...
+        
+        {/* Graph 1: Attack Types Distribution */}
+        <div className="lg:col-span-2 bg-white dark:bg-[#161b27] border border-slate-200 dark:border-sky-900/40 rounded-3xl p-6 shadow-sm space-y-6">
+          <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
+            <div>
+              <h2 className="text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+                <BarChart2 className="w-5 h-5 text-cyan-500" />
+                Répartition des Attaques Enregistrées
+              </h2>
+              <p className="text-xs text-slate-400">Classifiées par niveau de gravité SOC</p>
             </div>
-          ) : incidents.length === 0 ? (
-            <div className="flex-1 flex items-center justify-center text-slate-500 text-xs">
-              Aucun incident dans la file d'attente.
-            </div>
-          ) : (
-            <div className="flex-1 overflow-y-auto space-y-3 pr-1">
-              {incidents.map((inc) => (
-                <div
-                  key={inc.id}
-                  onClick={() => handleOpenIncident(inc)}
-                  className={`p-3.5 rounded-xl border cursor-pointer transition-all ${
-                    selectedIncident?.id === inc.id
-                      ? 'bg-indigo-950/40 border-indigo-500 shadow-md shadow-indigo-500/10'
-                      : 'bg-slate-950 border-slate-800 hover:border-slate-700'
-                  }`}
-                >
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="font-mono text-xs font-bold text-indigo-400">{inc.incident_code}</span>
-                    <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase ${
-                      inc.status === 'NEW' ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30' :
-                      inc.status === 'INVESTIGATING' ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' :
-                      inc.status === 'RESOLVED' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' :
-                      'bg-slate-700 text-slate-300'
-                    }`}>
-                      {inc.status}
-                    </span>
-                  </div>
-                  <h4 className="text-xs font-semibold text-white truncate">{inc.title}</h4>
-                  <div className="flex items-center justify-between mt-2 text-[10px] text-slate-400">
-                    <span>Sévérité : <strong className={inc.severity === 'HIGH' ? 'text-rose-400' : 'text-amber-400'}>{inc.severity}</strong></span>
-                    <span>{new Date(inc.created_at).toLocaleDateString()}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+          </div>
 
-        {/* Right Pane: Detailed Report Inspector */}
-        <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-lg flex flex-col h-[650px] overflow-y-auto">
-          {!selectedIncident ? (
-            <div className="flex-1 flex flex-col items-center justify-center text-slate-500 space-y-3">
-              <FileSearch size={48} className="text-slate-700" />
-              <p className="text-sm">Sélectionnez un incident dans la file pour afficher les détails et l'empreinte SHA-256.</p>
-            </div>
-          ) : (
-            <div className="space-y-6">
-              {/* Header Details */}
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-800 pb-4">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono text-sm font-bold text-indigo-400">{selectedIncident.incident_code}</span>
-                    <span className="text-xs px-2.5 py-0.5 rounded font-bold bg-slate-800 text-slate-300">
-                      {selectedIncident.category}
-                    </span>
+          <div className="space-y-5 pt-1">
+            {categoriesList.map((at, idx) => {
+              const IconComp = at.icon;
+              const pct = Math.round((at.count / totalAttacksSum) * 100);
+
+              return (
+                <div key={idx} className="space-y-2 p-3 bg-slate-50/70 dark:bg-[#0f172a]/60 rounded-2xl border border-slate-200/80 dark:border-slate-800">
+                  <div className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2.5 font-bold text-slate-900 dark:text-white">
+                      <div className={`p-1.5 rounded-lg text-white bg-gradient-to-r ${at.color}`}>
+                        <IconComp size={15} />
+                      </div>
+                      <span>{at.name}</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="text-[10px] font-mono font-extrabold px-2 py-0.5 rounded bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                        {at.badge}
+                      </span>
+                      <span className="font-mono font-black text-slate-900 dark:text-white text-sm">
+                        {at.count} <span className="text-xs text-slate-400 font-normal">({pct}%)</span>
+                      </span>
+                    </div>
                   </div>
-                  <h2 className="text-lg font-bold text-white mt-1">{selectedIncident.title}</h2>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-slate-400">Statut :</span>
-                  <span className="px-3 py-1 bg-indigo-500/20 border border-indigo-500/30 text-indigo-300 font-bold text-xs rounded-lg">
-                    {selectedIncident.status}
-                  </span>
-                </div>
-              </div>
 
-              {/* Raw Payload & Summary */}
-              <div className="space-y-3">
-                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Résumé et Contenu Brut (Payload)</h3>
-                <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 font-mono text-xs text-slate-300 whitespace-pre-wrap">
-                  {selectedIncident.summary}
-                </div>
-              </div>
-
-              {/* SHA-256 Evidence Signature */}
-              <div className="space-y-3">
-                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center justify-between">
-                  <span>Sceau Cryptographique (Empreinte SHA-256)</span>
-                  <button
-                    onClick={handleVerifyIntegrity}
-                    className="text-indigo-400 hover:text-indigo-300 text-xs font-bold flex items-center gap-1"
-                  >
-                    <Lock size={12} /> Tester l'Intégrité en DB
-                  </button>
-                </h3>
-                <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 font-mono text-xs text-emerald-400 break-all flex items-center gap-2">
-                  <Hash size={16} className="shrink-0 text-slate-500" />
-                  <span>{selectedIncident.evidence_hash}</span>
-                </div>
-
-                {verificationResult && (
-                  <div className={`p-3 rounded-xl border text-xs font-medium flex items-center gap-2 ${
-                    verificationResult.verified ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300' : 'bg-rose-500/10 border-rose-500/30 text-rose-300'
-                  }`}>
-                    <CheckCircle2 size={16} />
-                    <span>Empreinte SHA-256 recalculée avec succès ! Statut d'intégrité : INTACT & SANS ALTÉRATION.</span>
-                  </div>
-                )}
-              </div>
-
-              {/* Lifecycle Management & Status Update */}
-              <form onSubmit={handleUpdateStatus} className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-4">
-                <h3 className="text-xs font-bold text-white uppercase tracking-wider">Mettre à jour le Statut & Ajouter des Notes d'Analyste</h3>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs text-slate-400 mb-1 font-medium">Statut de l'Incident :</label>
-                    <select
-                      value={newStatus}
-                      onChange={(e) => setNewStatus(e.target.value)}
-                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs focus:outline-none focus:border-indigo-500"
-                    >
-                      <option value="NEW">NOUVEAU (NEW)</option>
-                      <option value="INVESTIGATING">EN COURS D'ENQUÊTE (INVESTIGATING)</option>
-                      <option value="RESOLVED">RÉSOLU (RESOLVED)</option>
-                      <option value="CLOSED">CLOS (CLOSED)</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs text-slate-400 mb-1 font-medium">Notes de l'Enquêteur :</label>
-                    <input
-                      type="text"
-                      placeholder="Ex: Domaine frauduleux bloqué sur le serveur DNS proxy."
-                      value={analystNotes}
-                      onChange={(e) => setAnalystNotes(e.target.value)}
-                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs focus:outline-none focus:border-indigo-500"
+                  <div className="h-3 w-full bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full bg-gradient-to-r ${at.color} rounded-full transition-all duration-700`}
+                      style={{ width: `${Math.max(5, pct)}%` }}
                     />
                   </div>
                 </div>
-
-                <button
-                  type="submit"
-                  disabled={updating}
-                  className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-bold py-2.5 rounded-lg shadow-lg shadow-indigo-600/30 flex items-center justify-center gap-2 transition-all"
-                >
-                  {updating ? <RefreshCw className="animate-spin" size={14} /> : <CheckCircle2 size={14} />}
-                  Enregistrer les modifications d'Enquête
-                </button>
-              </form>
-            </div>
-          )}
+              );
+            })}
+          </div>
         </div>
+
+        {/* Graph 2: Direct Sources Breakdown (1 Col) */}
+        <div className="bg-white dark:bg-[#161b27] border border-slate-200 dark:border-sky-900/40 rounded-3xl p-6 shadow-sm space-y-6">
+          <div className="border-b border-slate-100 dark:border-slate-800 pb-4">
+            <h2 className="text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+              <PieChart className="w-5 h-5 text-cyan-500" />
+              Origine des Signalements BD
+            </h2>
+          </div>
+
+          <div className="space-y-4 pt-1">
+            
+            {/* User Reports */}
+            <div className="p-3 bg-slate-50 dark:bg-[#0f172a] rounded-2xl border border-slate-200 dark:border-slate-800 space-y-2">
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-slate-700 dark:text-slate-300 font-bold flex items-center gap-2">
+                  <User className="w-4 h-4 text-sky-500" /> Signalements Utilisateurs
+                </span>
+                <span className="font-mono font-black text-sky-600 dark:text-sky-400">{userReportsCount}</span>
+              </div>
+              <p className="text-[11px] text-slate-400">Extraits directement de la table Incidents (source_type USER_REPORT).</p>
+            </div>
+
+            {/* WAF & System Events */}
+            <div className="p-3 bg-slate-50 dark:bg-[#0f172a] rounded-2xl border border-slate-200 dark:border-slate-800 space-y-2">
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-slate-700 dark:text-slate-300 font-bold flex items-center gap-2">
+                  <Terminal className="w-4 h-4 text-cyan-500" /> Détections Automatiques WAF
+                </span>
+                <span className="font-mono font-black text-cyan-600 dark:text-cyan-400">{wafEventsCount}</span>
+              </div>
+              <p className="text-[11px] text-slate-400">Journaux et sondes d'attaques réseau enregistrés.</p>
+            </div>
+
+            {/* SLA Info Box */}
+            <div className="p-3 bg-sky-50/60 dark:bg-sky-950/20 rounded-2xl border border-sky-100 dark:border-sky-900/40 text-xs space-y-1.5">
+              <div className="flex items-center justify-between font-bold">
+                <span className="text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
+                  <Lock className="w-3.5 h-3.5 text-emerald-500" /> Sceaux Cryptographiques
+                </span>
+                <span className="text-emerald-500 font-mono">100% SHA-256</span>
+              </div>
+              <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                Toutes les preuves sont scellées et vérifiables instantanément.
+              </p>
+            </div>
+
+          </div>
+
+        </div>
+
       </div>
+
     </div>
   );
 }

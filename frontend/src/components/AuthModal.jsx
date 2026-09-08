@@ -48,7 +48,7 @@ export default function AuthModal({ isOpen, onClose }) {
             <ShieldCheck size={26} />
           </div>
           <h3 className="text-xl font-bold text-white">
-            {isRegister ? 'Créer un Compte PhishGuard' : 'Connexion à PhishGuard'}
+            {isRegister ? 'Créer un Compte CyberGuard' : 'Connexion à CyberGuard'}
           </h3>
           <p className="text-xs text-slate-400 mt-1">
             {isRegister ? 'Inscrivez-vous pour accéder au portail de détection anti-phishing.' : 'Entrez vos identifiants pour accéder à votre espace de rôle.'}

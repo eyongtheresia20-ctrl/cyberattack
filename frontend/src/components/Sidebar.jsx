@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, History, ShieldAlert, FileSearch, CheckCircle2, Users, Globe, Bot, ShieldCheck } from 'lucide-react';
+import { LayoutDashboard, History, FileSearch, Users, ShieldCheck, Activity } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 export default function Sidebar() {
@@ -12,20 +12,15 @@ export default function Sidebar() {
   ];
 
   const investigatorItems = [
-    { path: '/dashboard', label: 'Console d\'Enquête SOC', icon: LayoutDashboard },
-    { path: '/scanner', label: 'Scanner de Menaces IA', icon: ShieldAlert },
-    { path: '/history', label: 'Historique des Analyses', icon: History },
-    { path: '/incidents', label: 'File d\'Incidents', icon: FileSearch },
-    { path: '/verification', label: 'Vérification SHA-256', icon: CheckCircle2 },
-    { path: '/site-monitoring', label: 'Surveillance Attaques', icon: Globe },
+    { path: '/dashboard', label: 'Tableau de Bord', icon: LayoutDashboard },
+    { path: '/incidents', label: 'Rapports & Signalements', icon: FileSearch },
   ];
 
   const adminItems = [
-    { path: '/dashboard', label: 'Gestion & Rôles Admin', icon: Users },
-    { path: '/scanner', label: 'Scanner de Menaces IA', icon: ShieldAlert },
-    { path: '/history', label: 'Historique des Analyses', icon: History },
-    { path: '/site-monitoring', label: 'Moniteur d\'attaques', icon: Globe },
-    { path: '/incidents', label: 'Registre des Preuves', icon: FileSearch },
+    { path: '/dashboard', label: 'Tableau de Bord', icon: LayoutDashboard },
+    { path: '/admin/users', label: 'Gestion d\'utilisateur', icon: Users },
+    { path: '/activity-logs', label: 'Journal des Activites', icon: Activity },
+    { path: '/incidents', label: 'Signalements', icon: FileSearch },
   ];
 
   let navItems = stdItems;
@@ -66,20 +61,6 @@ export default function Sidebar() {
         })}
       </div>
 
-      {/* System Status Footer Box */}
-      <div className="p-3.5 bg-slate-50 dark:bg-[#1e293b]/70 border border-slate-200 dark:border-slate-800 rounded-2xl space-y-2">
-        <div className="flex items-center justify-between text-[11px]">
-          <span className="text-slate-500 dark:text-slate-400 font-medium">Moteur IA</span>
-          <span className="text-emerald-400 font-mono font-bold text-[10px] flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-            Ensemble 98.4%
-          </span>
-        </div>
-        <div className="flex items-center justify-between text-[11px]">
-          <span className="text-slate-500 dark:text-slate-400 font-medium">Serveur API</span>
-          <span className="text-cyan-400 font-mono font-bold text-[10px]">FastAPI 8000</span>
-        </div>
-      </div>
     </aside>
   );
 }

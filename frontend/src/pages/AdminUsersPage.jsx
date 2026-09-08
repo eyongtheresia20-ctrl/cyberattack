@@ -1,0 +1,241 @@
+import React, { useState, useEffect } from 'react';
+import { useAuth } from '../context/AuthContext';
+import {
+  Users, ShieldCheck, UserCheck,
+  AlertOctagon, CheckCircle2, Trash2, Search,
+  Filter, RefreshCw, Ban
+} from 'lucide-react';
+
+export default function AdminUsersPage() {
+  const { token } = useAuth();
+  const [usersList, setUsersList] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [roleFilter, setRoleFilter] = useState('ALL');
+  const [actionMessage, setActionMessage] = useState(null);
+  const [userToDelete, setUserToDelete] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const fetchUsers = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/v1/users', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (data.users) {
+        const nonAdminUsers = data.users.filter(u => u.role !== 'ADMINISTRATEUR');
+        setUsersList(nonAdminUsers);
+      }
+    } catch (err) {
+      console.error('Failed to fetch users', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { fetchUsers(); }, []);
+
+  const handleToggleBlockStatus = async (targetUser) => {
+    setActionMessage(null);
+    if (targetUser.role === 'ADMINISTRATEUR') {
+      setActionMessage({ type: 'error', text: 'Impossible de bloquer un compte Administrateur !' });
+      return;
+    }
+    try {
+      const shouldBeActive = !targetUser.is_active;
+      const res = await fetch(`/api/v1/users/${targetUser.id}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ is_active: shouldBeActive })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Echec du changement de statut");
+      setActionMessage({
+        type: 'success',
+        text: `Compte de ${targetUser.prenom} ${targetUser.nom} ${shouldBeActive ? 'debloque avec succes' : 'bloque avec succes'}.`
+      });
+      fetchUsers();
+    } catch (err) {
+      setActionMessage({ type: 'error', text: err.message });
+    }
+  };
+
+  const handleDeleteUser = async () => {
+    if (!userToDelete) return;
+    setActionMessage(null);
+    setIsDeleting(true);
+    try {
+      const res = await fetch(`/api/v1/users/${userToDelete.id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Echec de suppression");
+      setActionMessage({ type: 'success', text: `Utilisateur ${userToDelete.email} supprime avec succes.` });
+      setUserToDelete(null);
+      fetchUsers();
+    } catch (err) {
+      setActionMessage({ type: 'error', text: err.message });
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const filteredUsers = usersList.filter(u => {
+    const matchesSearch =
+      `${u.prenom} ${u.nom}`.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      u.email.toLowerCase().includes(searchQuery.toLowerCase());
+    if (roleFilter === 'STANDARD') return matchesSearch && u.role === 'UTILISATEUR_STANDARD';
+    if (roleFilter === 'ENQUETEUR') return matchesSearch && u.role === 'ENQUETEUR';
+    return matchesSearch;
+  });
+
+  return (
+    <div className="space-y-6 max-w-7xl mx-auto pb-16">
+
+      {actionMessage && (
+        <div className={`p-4 rounded-2xl border text-xs font-semibold flex items-center gap-2 shadow-sm ${
+          actionMessage.type === 'success'
+            ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400'
+            : 'bg-rose-500/10 border-rose-500/30 text-rose-600 dark:text-rose-400'
+        }`}>
+          {actionMessage.type === 'success' ? <CheckCircle2 size={16} /> : <AlertOctagon size={16} />}
+          <span>{actionMessage.text}</span>
+        </div>
+      )}
+
+      <div className="bg-white dark:bg-[#161b27] border border-slate-200 dark:border-sky-900/40 rounded-3xl p-6 shadow-sm space-y-5">
+        {/* Search & Filter Controls */}
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="relative w-full sm:w-80">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              placeholder="Rechercher utilisateur ou email..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 bg-slate-50 dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-sky-500"
+            />
+          </div>
+          <div className="flex items-center gap-2 text-xs">
+            <Filter size={14} className="text-sky-500" />
+            <span className="text-slate-500 font-medium">Filtrer par role :</span>
+            <select
+              value={roleFilter}
+              onChange={(e) => setRoleFilter(e.target.value)}
+              className="bg-slate-50 dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white rounded-xl px-3 py-1.5 text-xs font-semibold focus:outline-none focus:border-sky-500"
+            >
+              <option value="ALL">Tous les comptes</option>
+              <option value="STANDARD">Utilisateurs Standards</option>
+              <option value="ENQUETEUR">Enqueteurs SOC</option>
+            </select>
+          </div>
+        </div>
+
+        {loading ? (
+          <div className="py-12 text-center text-slate-500 text-xs flex items-center justify-center gap-2">
+            <RefreshCw className="animate-spin text-sky-500" size={16} /> Chargement des utilisateurs...
+          </div>
+        ) : (
+          <div className="overflow-x-auto border border-slate-200 dark:border-slate-800/80 rounded-2xl">
+            <table className="w-full text-left text-xs text-slate-700 dark:text-slate-300">
+              <thead className="bg-slate-50 dark:bg-[#0f172a] text-slate-500 dark:text-slate-400 uppercase font-bold border-b border-slate-200 dark:border-slate-800">
+                <tr>
+                  <th className="p-3.5">Nom et Prenom</th>
+                  <th className="p-3.5">Email</th>
+                  <th className="p-3.5">Role</th>
+                  <th className="p-3.5">Statut Compte</th>
+                  <th className="p-3.5 text-right">Actions Admin</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
+                {filteredUsers.map((u) => {
+                  const isBlocked = u.is_active === false;
+                  return (
+                    <tr key={u.id} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/30 transition">
+                      <td className="p-3.5 font-bold text-slate-900 dark:text-white">{u.prenom} {u.nom}</td>
+                      <td className="p-3.5 font-mono text-slate-600 dark:text-slate-400">{u.email}</td>
+                      <td className="p-3.5">
+                        <span className={`px-2.5 py-1 rounded-lg font-bold text-[10px] ${
+                          u.role === 'ENQUETEUR'
+                            ? 'bg-indigo-500/20 text-indigo-500 border border-indigo-500/30'
+                            : 'bg-sky-100 dark:bg-sky-950/50 text-sky-600 dark:text-sky-300 border border-sky-200 dark:border-sky-800'
+                        }`}>
+                          {u.role === 'ENQUETEUR' ? 'SOC ENQUETEUR' : 'UTILISATEUR'}
+                        </span>
+                      </td>
+                      <td className="p-3.5">
+                        <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold border ${
+                          !isBlocked
+                            ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30'
+                            : 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/30'
+                        }`}>
+                          {!isBlocked
+                            ? <><CheckCircle2 size={11} /> Actif</>
+                            : <><Ban size={11} /> Bloque</>}
+                        </span>
+                      </td>
+                      <td className="p-3.5 text-right space-x-2">
+                        <button
+                          onClick={() => handleToggleBlockStatus(u)}
+                          className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer inline-flex items-center gap-1.5 ${
+                            !isBlocked
+                              ? 'bg-amber-500/10 hover:bg-amber-500 hover:text-white text-amber-600 dark:text-amber-400 border border-amber-500/30'
+                              : 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-md shadow-emerald-500/20'
+                          }`}
+                        >
+                          {!isBlocked ? <><Ban size={13} /> Bloquer</> : <><CheckCircle2 size={13} /> Debloquer</>}
+                        </button>
+                        <button
+                          onClick={() => setUserToDelete(u)}
+                          className="bg-rose-500/10 hover:bg-rose-500 text-rose-600 hover:text-white border border-rose-500/20 p-1.5 rounded-xl transition cursor-pointer inline-flex items-center justify-center"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Confirm Delete Modal */}
+      {userToDelete && (
+        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-sky-900/60 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4">
+            <div className="flex items-center gap-3 text-rose-500">
+              <div className="p-3 bg-rose-500/10 rounded-2xl border border-rose-500/20"><Trash2 size={24} /></div>
+              <div>
+                <h3 className="font-extrabold text-slate-900 dark:text-white text-base">Supprimer l'utilisateur ?</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Cette action est irreversible.</p>
+              </div>
+            </div>
+            <p className="text-xs text-slate-600 dark:text-slate-300">
+              Etes-vous sur de vouloir supprimer le compte de{' '}
+              <strong>{userToDelete.prenom} {userToDelete.nom}</strong> ({userToDelete.email}) ?
+            </p>
+            <div className="flex items-center justify-end gap-3 pt-3">
+              <button
+                onClick={() => setUserToDelete(null)}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={handleDeleteUser}
+                disabled={isDeleting}
+                className="px-4 py-2 bg-rose-500 hover:bg-rose-600 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition shadow-md shadow-rose-500/20 cursor-pointer flex items-center gap-2"
+              >
+                {isDeleting ? "Suppression..." : "Confirmer la suppression"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

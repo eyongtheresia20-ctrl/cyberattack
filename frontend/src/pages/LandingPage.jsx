@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  Shield, Globe, MessageSquare, ShieldCheck, FileSearch, MapPin,
-  Sun, Moon, ArrowRight, Lock, Zap,
-  Github, Twitter, Linkedin, Mail, ChevronLeft, ChevronRight
+  Globe, MessageSquare, ShieldCheck, FileSearch, MapPin,
+  Sun, Moon, Lock, Zap,
+  ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useLanguage } from '../context/LanguageContext';
+import CyberGuardLogo from '../components/CyberGuardLogo';
 
 export default function LandingPage() {
   const { isDark, toggle: toggleTheme } = useTheme();
@@ -80,13 +81,8 @@ export default function LandingPage() {
         <div className="max-w-7xl mx-auto px-6 h-18 py-4 flex items-center justify-between gap-6">
 
           {/* Logo */}
-          <Link to="/" className="flex items-center gap-3 group shrink-0">
-            <div className="p-2 rounded-xl bg-sky-500 group-hover:bg-sky-600 transition-colors shadow-md shadow-sky-500/20">
-              <Shield className="w-5 h-5 text-white stroke-[2.5]" />
-            </div>
-            <span className="font-extrabold text-xl tracking-tight text-slate-900 dark:text-white">
-              Phish<span className="text-sky-500">Guard</span>
-            </span>
+          <Link to="/">
+            <CyberGuardLogo size="md" />
           </Link>
 
           {/* Center Nav */}
@@ -128,35 +124,23 @@ export default function LandingPage() {
 
       <main className="flex-1">
 
-        {/* ===== HERO SECTION (Cyber Defense Image as Background Image with Centered Text) ===== */}
+        {/* ===== HERO SECTION ===== */}
         <section
           className="relative overflow-hidden py-28 md:py-36 px-6 text-center bg-cover bg-center"
-          style={{
-            backgroundImage: `url('/images/hero-defense.jpg')`,
-          }}
+          style={{ backgroundImage: `url('/images/hero-defense.jpg')` }}
         >
-          {/* Whitish Sky-Blue soft overlay to make text crisp and beautiful */}
           <div className="absolute inset-0 bg-gradient-to-b from-[#f0f9ff]/90 via-[#f0f9ff]/80 to-[#f0f9ff] dark:from-[#0d1117]/90 dark:via-[#0d1117]/85 dark:to-[#0d1117] pointer-events-none" />
 
           <div className="relative max-w-4xl mx-auto space-y-7">
-            {/* Centered Title */}
             <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight leading-tight text-slate-900 dark:text-white drop-shadow-sm">
               {t('hero_title')}
             </h1>
 
-            {/* Centered Subtitle */}
             <p className="text-base sm:text-lg text-slate-700 dark:text-slate-200 max-w-2xl mx-auto leading-relaxed font-medium">
               {t('hero_subtitle')}
             </p>
 
-            {/* Centered CTA Buttons */}
             <div className="flex flex-wrap justify-center gap-4 pt-3">
-              <Link
-                to="/dashboard"
-                className="flex items-center gap-2 px-7 py-3.5 rounded-xl bg-sky-500 hover:bg-sky-600 text-white font-bold text-sm sm:text-base shadow-lg shadow-sky-500/25 hover:shadow-sky-500/35 hover:scale-[1.01] transition-all"
-              >
-                {t('hero_cta')} <ArrowRight className="w-4 h-4" />
-              </Link>
               <a
                 href="#about"
                 className="flex items-center gap-2 px-7 py-3.5 rounded-xl border border-sky-300 dark:border-sky-700 text-sky-700 dark:text-sky-300 bg-white/90 dark:bg-[#161b27]/90 hover:bg-white dark:hover:bg-sky-500/10 font-bold text-sm sm:text-base transition shadow-sm backdrop-blur-sm"
@@ -202,17 +186,16 @@ export default function LandingPage() {
               })}
             </div>
 
-            {/* Carousel Navigation (Previous / Next / Dots) */}
+            {/* Carousel Navigation */}
             <div className="flex items-center justify-center gap-6 pt-2">
               <button
                 onClick={prevSlide}
                 className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-sky-200 dark:border-sky-800 bg-white dark:bg-[#1e2637] text-slate-700 dark:text-slate-300 hover:text-sky-600 dark:hover:text-sky-400 hover:border-sky-400 font-bold text-xs shadow-xs transition"
               >
                 <ChevronLeft className="w-4 h-4" />
-                {lang === 'en' ? 'Previous' : 'Précédent'}
+                {t('carousel_prev')}
               </button>
 
-              {/* Step Dots */}
               <div className="flex items-center gap-2">
                 {Array.from({ length: maxIndex + 1 }).map((_, idx) => (
                   <button
@@ -232,22 +215,19 @@ export default function LandingPage() {
                 onClick={nextSlide}
                 className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-sky-200 dark:border-sky-800 bg-white dark:bg-[#1e2637] text-slate-700 dark:text-slate-300 hover:text-sky-600 dark:hover:text-sky-400 hover:border-sky-400 font-bold text-xs shadow-xs transition"
               >
-                {lang === 'en' ? 'Next' : 'Suivant'}
+                {t('carousel_next')}
                 <ChevronRight className="w-4 h-4" />
               </button>
             </div>
           </div>
         </section>
 
-        {/* ===== ABOUT SECTION (Cyber Defense Shield Background with Direct Centered Text) ===== */}
+        {/* ===== ABOUT SECTION ===== */}
         <section
           id="about"
           className="relative overflow-hidden py-28 md:py-36 px-6 bg-cover bg-center text-center"
-          style={{
-            backgroundImage: `url('/images/about-clean.jpg')`,
-          }}
+          style={{ backgroundImage: `url('/images/about-clean.jpg')` }}
         >
-          {/* Whitish Sky-Blue soft overlay */}
           <div className="absolute inset-0 bg-gradient-to-b from-[#f0f9ff]/90 via-[#f0f9ff]/80 to-[#f0f9ff] dark:from-[#0d1117]/90 dark:via-[#0d1117]/85 dark:to-[#0d1117] pointer-events-none" />
 
           <div className="relative max-w-3xl mx-auto space-y-6">
@@ -266,28 +246,14 @@ export default function LandingPage() {
 
       </main>
 
-      {/* ===== FOOTER (Rich Cold Dark Navy Footer) ===== */}
+      {/* ===== FOOTER ===== */}
       <footer className="bg-slate-900 dark:bg-[#070b12] text-slate-400 border-t border-slate-800">
         <div className="max-w-7xl mx-auto px-6 py-14 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-10">
 
           {/* Brand */}
           <div className="space-y-4 lg:col-span-1">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-xl bg-sky-500 shadow-md shadow-sky-500/20">
-                <Shield className="w-5 h-5 text-white stroke-[2.5]" />
-              </div>
-              <span className="font-extrabold text-xl text-white">
-                Phish<span className="text-sky-400">Guard</span>
-              </span>
-            </div>
+            <CyberGuardLogo size="md" className="[&_span]:text-white" />
             <p className="text-xs leading-relaxed text-slate-400">{t('footer_desc')}</p>
-            <div className="flex items-center gap-2.5 pt-1">
-              {[Github, Twitter, Linkedin, Mail].map((SocialIcon, i) => (
-                <a key={i} href="#" className="p-2 rounded-lg bg-slate-800 hover:bg-sky-500/20 hover:text-sky-400 border border-slate-700 hover:border-sky-500/40 transition">
-                  <SocialIcon className="w-3.5 h-3.5" />
-                </a>
-              ))}
-            </div>
           </div>
 
           {/* Platform */}
@@ -295,12 +261,12 @@ export default function LandingPage() {
             <h4 className="text-xs font-bold text-white uppercase tracking-widest">{t('footer_platform')}</h4>
             <ul className="space-y-2 text-xs">
               {[
-                { label: lang === 'en' ? 'SOC Dashboard' : 'Tableau de bord SOC', to: '/dashboard' },
-                { label: lang === 'en' ? 'URL Scanner' : "Scanner d'URL", to: '/url-analysis' },
-                { label: lang === 'en' ? 'SMS & Email Analysis' : 'Analyse SMS & Email', to: '/text-analysis' },
-                { label: lang === 'en' ? 'Web Attack Monitor' : "Moniteur d'attaques web", to: '/site-monitoring' },
-              ].map((l, i) => (
-                <li key={i}><Link to={l.to} className="hover:text-sky-400 transition">{l.label}</Link></li>
+                { key: 'footer_soc_dash', to: '/dashboard' },
+                { key: 'footer_url_scan', to: '/url-analysis' },
+                { key: 'footer_sms_email', to: '/text-analysis' },
+                { key: 'footer_waf', to: '/site-monitoring' },
+              ].map((l) => (
+                <li key={l.key}><Link to={l.to} className="hover:text-sky-400 transition">{t(l.key)}</Link></li>
               ))}
             </ul>
           </div>
@@ -310,12 +276,12 @@ export default function LandingPage() {
             <h4 className="text-xs font-bold text-white uppercase tracking-widest">{t('footer_features')}</h4>
             <ul className="space-y-2 text-xs">
               {[
-                { label: lang === 'en' ? 'Incidents & Evidence' : 'Incidents & Preuves', to: '/incidents' },
-                { label: lang === 'en' ? 'Investigator Portal' : 'Portail investigateur', to: '/verification' },
-                { label: lang === 'en' ? 'AI Security Advisor' : 'Conseiller IA sécurité', to: '/assistant' },
-                { label: lang === 'en' ? 'GeoIP Threat Tracing' : 'Traçage GeoIP', to: '/site-monitoring' },
-              ].map((l, i) => (
-                <li key={i}><Link to={l.to} className="hover:text-sky-400 transition">{l.label}</Link></li>
+                { key: 'footer_incidents', to: '/incidents' },
+                { key: 'footer_investigator', to: '/verification' },
+                { key: 'footer_ai', to: '/assistant' },
+                { key: 'footer_geoip', to: '/site-monitoring' },
+              ].map((l) => (
+                <li key={l.key}><Link to={l.to} className="hover:text-sky-400 transition">{t(l.key)}</Link></li>
               ))}
             </ul>
           </div>
@@ -324,27 +290,17 @@ export default function LandingPage() {
           <div className="space-y-3">
             <h4 className="text-xs font-bold text-white uppercase tracking-widest">{t('footer_legal')}</h4>
             <ul className="space-y-2 text-xs">
-              {[
-                { label: lang === 'en' ? 'Privacy Policy' : 'Politique de confidentialité' },
-                { label: lang === 'en' ? 'Terms of Service' : "Conditions d'utilisation" },
-                { label: lang === 'en' ? 'Security Research' : 'Recherche en sécurité' },
-                { label: lang === 'en' ? 'Contact Us' : 'Nous contacter' },
-              ].map((l, i) => (
-                <li key={i}><a href="#" className="hover:text-sky-400 transition">{l.label}</a></li>
+              {['footer_privacy', 'footer_terms', 'footer_research', 'footer_contact'].map((key) => (
+                <li key={key}><a href="#" className="hover:text-sky-400 transition">{t(key)}</a></li>
               ))}
             </ul>
           </div>
         </div>
 
-        {/* Bottom bar */}
+        {/* Bottom bar — copyright only */}
         <div className="border-t border-slate-800 py-4 px-6">
-          <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+          <div className="max-w-7xl mx-auto flex items-center justify-center text-xs">
             <p className="text-slate-500">{t('footer_copy')}</p>
-            <div className="flex items-center gap-2 text-slate-500">
-              <span className="w-2 h-2 rounded-full bg-sky-500 animate-pulse" />
-              {lang === 'en' ? 'All systems operational' : 'Tous les systèmes opérationnels'}
-              <span className="ml-1 px-2 py-0.5 rounded-full bg-sky-500/10 text-sky-400 font-mono font-bold border border-sky-700/40">v1.0 SOC</span>
-            </div>
           </div>
         </div>
       </footer>

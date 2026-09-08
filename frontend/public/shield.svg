@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#06b6d4"/>
+      <stop offset="60%" stop-color="#2563eb"/>
+      <stop offset="100%" stop-color="#4f46e5"/>
+    </linearGradient>
+    <linearGradient id="glow" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#06b6d4" stop-opacity="0.5"/>
+      <stop offset="100%" stop-color="#06b6d4" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <!-- Background rounded square -->
+  <rect width="32" height="32" rx="8" fill="url(#bg)"/>
+  <!-- Radial glow -->
+  <ellipse cx="16" cy="26" rx="12" ry="7" fill="url(#glow)"/>
+  <!-- Cyber Shield outline -->
+  <path d="M16 4L7 7.5V14.5C7 20.1 10.9 25.3 16 27C21.1 25.3 25 20.1 25 14.5V7.5L16 4Z"
+        stroke="white" stroke-width="1.8" stroke-linejoin="round" fill="none"/>
+  <!-- Lightning bolt / energy core -->
+  <path d="M18 9L12 17H16L15 23L21 15H17L18 9Z" fill="white"/>
+  <!-- Cyber nodes -->
+  <circle cx="16" cy="5.5" r="1.1" fill="#38bdf8"/>
+  <circle cx="9" cy="9" r="1" fill="#38bdf8"/>
+  <circle cx="23" cy="9" r="1" fill="#38bdf8"/>
+</svg>

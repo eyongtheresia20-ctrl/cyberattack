@@ -20,6 +20,8 @@ import SiteMonitoring from './pages/SiteMonitoring';
 import Incidents from './pages/Incidents';
 import Verification from './pages/Verification';
 import Assistant from './pages/Assistant';
+import AdminUsersPage from './pages/AdminUsersPage';
+import ActivityLogsPage from './pages/ActivityLogsPage';
 
 const PUBLIC_ROUTES = ['/', '/login', '/register'];
 
@@ -67,6 +69,8 @@ function AppLayout() {
             <Route path="/incidents" element={<Incidents />} />
             <Route path="/verification" element={<Verification />} />
             <Route path="/assistant" element={<Assistant />} />
+            <Route path="/admin/users" element={<AdminUsersPage />} />
+            <Route path="/activity-logs" element={<ActivityLogsPage />} />
           </Routes>
         </main>
       </div>

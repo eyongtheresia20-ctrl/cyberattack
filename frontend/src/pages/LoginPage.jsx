@@ -1,34 +1,87 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Shield, Lock, Eye, EyeOff, ArrowRight, Sun, Moon } from 'lucide-react';
+import { Shield, Lock, Eye, EyeOff, ArrowRight, Sun, Moon, AlertCircle, RefreshCw, UserCheck, ShieldAlert, Sparkles } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useLanguage } from '../context/LanguageContext';
+import { useAuth } from '../context/AuthContext';
+import CyberGuardLogo from '../components/CyberGuardLogo';
 
 export default function LoginPage() {
   const { isDark, toggle: toggleTheme } = useTheme();
   const { lang, toggle: toggleLang, t } = useLanguage();
+  const { login } = useAuth();
   const navigate = useNavigate();
 
   const [showPass, setShowPass] = useState(false);
   const [form, setForm] = useState({ email: '', password: '' });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    navigate('/dashboard');
+    setError(null);
+    setLoading(true);
+    try {
+      await login(form.email.trim(), form.password);
+      navigate('/dashboard');
+    } catch (err) {
+      setError(err.message || t('login_invalid'));
+    } finally {
+      setLoading(false);
+    }
   };
+
+  const handleDemoLogin = async (email, password) => {
+    setForm({ email, password });
+    setError(null);
+    setLoading(true);
+    try {
+      await login(email, password);
+      navigate('/dashboard');
+    } catch (err) {
+      setError(err.message || t('login_failed'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const demoAccounts = [
+    {
+      role: 'ENQUETEUR',
+      label: t('demo_soc_label'),
+      desc: t('demo_soc_desc'),
+      email: 'investigator@phishguard.security',
+      password: 'phishguard2026',
+      badgeColor: 'bg-indigo-500/10 text-indigo-500 border-indigo-500/30 hover:bg-indigo-500/20 hover:border-indigo-500',
+      icon: ShieldAlert
+    },
+    {
+      role: 'ADMINISTRATEUR',
+      label: t('demo_admin_label'),
+      desc: t('demo_admin_desc'),
+      email: 'admin@phishguard.security',
+      password: 'phishguard2026',
+      badgeColor: 'bg-amber-500/10 text-amber-500 border-amber-500/30 hover:bg-amber-500/20 hover:border-amber-500',
+      icon: Lock
+    },
+    {
+      role: 'UTILISATEUR_STANDARD',
+      label: t('demo_user_label'),
+      desc: t('demo_user_desc'),
+      email: 'alice.martin@example.com',
+      password: 'User123!',
+      badgeColor: 'bg-sky-500/10 text-sky-500 border-sky-500/30 hover:bg-sky-500/20 hover:border-sky-500',
+      icon: UserCheck
+    }
+  ];
 
   return (
     <div className="min-h-screen flex flex-col bg-[#f0f9ff] dark:bg-[#0d1117] text-slate-900 dark:text-slate-100 transition-colors duration-300">
 
       {/* Minimal Header */}
       <header className="border-b border-sky-200 dark:border-sky-900/60 bg-white/80 dark:bg-[#161b27]/80 backdrop-blur-md px-6 py-4 flex items-center justify-between">
-        <Link to="/" className="flex items-center gap-3 group">
-          <div className="p-2 rounded-xl bg-sky-500 group-hover:bg-sky-600 transition-colors shadow-md shadow-sky-500/20">
-            <Shield className="w-5 h-5 text-white stroke-[2.5]" />
-          </div>
-          <span className="font-extrabold text-xl tracking-tight text-slate-900 dark:text-white">
-            Phish<span className="text-sky-500">Guard</span>
-          </span>
+        <Link to="/">
+          <CyberGuardLogo size="md" />
         </Link>
         <div className="flex items-center gap-2">
           <button
@@ -44,8 +97,8 @@ export default function LoginPage() {
       </header>
 
       {/* Card */}
-      <main className="flex-1 flex items-center justify-center px-6 py-16">
-        <div className="w-full max-w-md space-y-8">
+      <main className="flex-1 flex items-center justify-center px-6 py-12">
+        <div className="w-full max-w-lg space-y-6">
 
           {/* Card Header */}
           <div className="text-center space-y-2">
@@ -55,13 +108,23 @@ export default function LoginPage() {
               </div>
             </div>
             <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white">{t('login_title')}</h1>
-            <p className="text-sm text-slate-500 dark:text-slate-400">{t('login_sub')}</p>
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              {t('login_sub_creds')}
+            </p>
           </div>
 
-          {/* Form */}
+          {/* Error Message */}
+          {error && (
+            <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-600 dark:text-rose-300 text-xs font-semibold flex items-center gap-2 animate-fade-in">
+              <AlertCircle className="w-4 h-4 shrink-0 text-rose-500" />
+              <span>{error}</span>
+            </div>
+          )}
+
+          {/* Standard Form */}
           <form
             onSubmit={handleSubmit}
-            className="bg-white dark:bg-[#161b27] border border-sky-100 dark:border-sky-900/50 rounded-2xl shadow-xl shadow-sky-500/5 p-8 space-y-5"
+            className="bg-white dark:bg-[#161b27] border border-sky-100 dark:border-sky-900/50 rounded-2xl shadow-xl shadow-sky-500/5 p-7 space-y-4"
           >
             {/* Email */}
             <div className="space-y-1.5">
@@ -71,7 +134,7 @@ export default function LoginPage() {
                 required
                 value={form.email}
                 onChange={e => setForm({ ...form, email: e.target.value })}
-                placeholder="analyst@phishguard.io"
+                placeholder="investigator@cyberguard.security"
                 className="w-full px-4 py-3 rounded-xl bg-sky-50 dark:bg-[#1e2637] border border-sky-200 dark:border-sky-800/60 text-slate-900 dark:text-white text-sm placeholder-slate-400 focus:outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 transition"
               />
             </div>
@@ -104,9 +167,19 @@ export default function LoginPage() {
             {/* Submit */}
             <button
               type="submit"
-              className="w-full py-3.5 rounded-xl bg-sky-500 hover:bg-sky-600 text-white font-extrabold text-sm shadow-lg shadow-sky-500/20 hover:shadow-sky-500/30 transition-all hover:scale-[1.01] flex items-center justify-center gap-2"
+              disabled={loading}
+              className="w-full py-3.5 rounded-xl bg-sky-500 hover:bg-sky-600 disabled:opacity-60 text-white font-extrabold text-sm shadow-lg shadow-sky-500/20 hover:shadow-sky-500/30 transition-all hover:scale-[1.01] flex items-center justify-center gap-2 cursor-pointer"
             >
-              {t('login_btn')} <ArrowRight className="w-4 h-4" />
+              {loading ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  {t('login_authenticating')}
+                </>
+              ) : (
+                <>
+                  {t('login_btn')} <ArrowRight className="w-4 h-4" />
+                </>
+              )}
             </button>
           </form>
 
@@ -118,7 +191,7 @@ export default function LoginPage() {
 
           {/* Back to home */}
           <p className="text-center text-xs text-slate-400">
-            <Link to="/" className="hover:text-sky-500 transition">← {lang === 'en' ? 'Back to Home' : 'Retour à l\'accueil'}</Link>
+            <Link to="/" className="hover:text-sky-500 transition">{t('login_back_home')}</Link>
           </p>
 
         </div>

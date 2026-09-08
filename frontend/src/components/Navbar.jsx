@@ -1,14 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { Shield, Globe, LogOut, User, Sun, Moon, History, X, Mail, CheckCircle2, Clock, AlertCircle, Eye, EyeOff, Activity, Lock } from 'lucide-react';
+import { Shield, Globe, LogOut, User, Sun, Moon, History, X, Mail, CheckCircle2, Clock, AlertCircle, Eye, EyeOff, Activity, Lock, ShieldAlert, Sparkles, ShieldCheck } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useTheme } from '../context/ThemeContext';
 import { useLanguage } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
 
+import CyberGuardLogo from './CyberGuardLogo';
+
 export default function Navbar({ onOpenAuth, onOpenHistory }) {
   const { isDark, toggle: toggleTheme } = useTheme();
   const { lang, toggle: toggleLang } = useLanguage();
-  const { user, logout, updateUser, updateProfile } = useAuth();
+  const { user, logout, updateUser, updateProfile, login } = useAuth();
   const navigate = useNavigate();
 
   const [showDropdown, setShowDropdown] = useState(false);
@@ -34,6 +36,22 @@ export default function Navbar({ onOpenAuth, onOpenHistory }) {
     const secs = totalSeconds % 60;
     const pad = (n) => String(n).padStart(2, '0');
     return hrs > 0 ? `${pad(hrs)}:${pad(mins)}:${pad(secs)}` : `${pad(mins)}:${pad(secs)}`;
+  };
+
+  const handleSwitchRole = async (targetRole) => {
+    setShowDropdown(false);
+    try {
+      if (targetRole === 'ENQUETEUR') {
+        await login('investigator@phishguard.security', 'phishguard2026');
+      } else if (targetRole === 'ADMINISTRATEUR') {
+        await login('admin@phishguard.security', 'phishguard2026');
+      } else {
+        await login('alice.martin@example.com', 'User123!');
+      }
+      navigate('/dashboard');
+    } catch (e) {
+      console.error('Failed to switch role', e);
+    }
   };
 
   const activeUser = user || {
@@ -118,26 +136,38 @@ export default function Navbar({ onOpenAuth, onOpenHistory }) {
         
         {/* Left Brand & Welcome Banner */}
         <div className="flex items-center gap-6">
-          <Link to="/" className="flex items-center gap-3 group">
-            <div className="p-2 bg-gradient-to-tr from-cyan-500 to-blue-600 rounded-xl shadow-lg shadow-cyan-500/25 group-hover:scale-105 transition-transform duration-200">
-              <Shield className="w-5 h-5 text-white stroke-[2.5]" />
-            </div>
-            <div>
-              <h1 className="font-heading font-extrabold tracking-wider text-xl text-slate-900 dark:text-white flex items-center gap-1.5">
-                PHISH<span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-500">GUARD</span>
-              </h1>
-            </div>
+          <Link to="/">
+            <CyberGuardLogo size="md" />
           </Link>
 
           {/* Operational Status Pill & Live Clock */}
           <div className="hidden lg:flex items-center gap-3 pl-5 border-l border-slate-200 dark:border-slate-800">
-            <div className="flex items-center gap-2 bg-cyan-500/10 border border-cyan-500/30 px-3 py-1 rounded-full text-xs font-semibold">
+            <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold border ${
+              activeUser.role === 'ADMINISTRATEUR'
+                ? 'bg-amber-500/10 border-amber-500/30 text-amber-500'
+                : activeUser.role === 'ENQUETEUR'
+                ? 'bg-indigo-500/10 border-indigo-500/30 text-indigo-400'
+                : 'bg-cyan-500/10 border-cyan-500/30 text-cyan-600 dark:text-cyan-400'
+            }`}>
               <span className="relative flex h-2.5 w-2.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-cyan-500"></span>
+                <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
+                  activeUser.role === 'ADMINISTRATEUR' ? 'bg-amber-400' : activeUser.role === 'ENQUETEUR' ? 'bg-indigo-400' : 'bg-cyan-400'
+                }`}></span>
+                <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${
+                  activeUser.role === 'ADMINISTRATEUR' ? 'bg-amber-500' : activeUser.role === 'ENQUETEUR' ? 'bg-indigo-500' : 'bg-cyan-500'
+                }`}></span>
               </span>
               <span className="text-slate-800 dark:text-slate-200 font-sans">
-                Bienvenue, <strong className="text-cyan-600 dark:text-cyan-400 font-bold">{activeUser.prenom} {activeUser.nom}</strong>
+                Bienvenue, <strong className="font-bold">{activeUser.prenom} {activeUser.nom}</strong>
+              </span>
+              <span className={`text-[10px] font-mono font-extrabold uppercase px-2 py-0.5 rounded-full ${
+                activeUser.role === 'ADMINISTRATEUR'
+                  ? 'bg-amber-500/20 text-amber-500 border border-amber-500/30'
+                  : activeUser.role === 'ENQUETEUR'
+                  ? 'bg-indigo-500/20 text-indigo-400 border border-indigo-500/30'
+                  : 'bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 border border-cyan-500/30'
+              }`}>
+                {activeUser.role === 'ADMINISTRATEUR' ? 'ADMIN' : activeUser.role === 'ENQUETEUR' ? 'SOC ENQUÊTEUR' : 'UTILISATEUR'}
               </span>
             </div>
 
@@ -171,7 +201,7 @@ export default function Navbar({ onOpenAuth, onOpenHistory }) {
           </button>
 
           {/* History Button */}
-          {onOpenHistory && (
+          {onOpenHistory && activeUser.role !== 'ENQUETEUR' && activeUser.role !== 'ADMINISTRATEUR' && (
             <button
               onClick={onOpenHistory}
               className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl btn-gradient-cyan text-xs font-bold shadow-md transition cursor-pointer"
@@ -184,28 +214,39 @@ export default function Navbar({ onOpenAuth, onOpenHistory }) {
           <div className="pl-3 border-l border-slate-200 dark:border-slate-800">
             <button
               onClick={() => setShowDropdown(!showDropdown)}
-              className="w-9 h-9 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 text-white flex items-center justify-center font-bold text-xs shadow-md shadow-cyan-500/20 hover:scale-105 transition cursor-pointer"
-              title={`Compte : ${activeUser.prenom} ${activeUser.nom}`}
+              className="w-9 h-9 rounded-xl text-white flex items-center justify-center font-bold text-xs shadow-md shadow-cyan-500/20 bg-gradient-to-br from-cyan-500 to-blue-600 hover:scale-105 transition cursor-pointer"
+              title={`Compte : ${activeUser.prenom} ${activeUser.nom} (${activeUser.role})`}
             >
-              <User className="w-5 h-5" />
+              <User className="w-5 h-5 text-white" />
             </button>
 
-            {/* Sleek Floating Dropdown Menu */}
+            {/* Floating Dropdown Menu */}
             {showDropdown && (
-              <div className="absolute right-0 top-12 z-50 w-72 bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-sky-900/60 rounded-2xl shadow-2xl p-3 space-y-2 animate-fade-in">
-                <div className="p-3 bg-slate-50 dark:bg-[#1e293b] rounded-xl border border-slate-200 dark:border-slate-800 space-y-1">
-                  <p className="font-extrabold text-xs text-slate-900 dark:text-white font-heading">{activeUser.prenom} {activeUser.nom}</p>
-                  <p className="text-[10px] text-slate-500 dark:text-slate-400 font-mono truncate">{activeUser.email}</p>
-                  
-                  <div className="flex items-center justify-between pt-1">
-                    <span className="inline-block px-2 py-0.5 rounded-md badge-glass-cyan font-mono font-bold text-[9px]">
-                      {activeUser.role}
+              <div className="absolute right-0 top-12 z-50 w-64 bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-sky-900/60 rounded-2xl shadow-2xl p-3 space-y-2 animate-fade-in">
+                <div className="p-3 bg-slate-50 dark:bg-[#1e293b] rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="font-extrabold text-xs text-slate-900 dark:text-white font-heading">
+                      {activeUser.prenom} {activeUser.nom}
+                    </p>
+                    <span className="text-[10px] font-mono text-slate-500 font-bold">
+                      ⏱️ {formatDuration(sessionSeconds)}
                     </span>
-                    <span className="text-[10px] font-mono text-slate-500">⏱️ {formatDuration(sessionSeconds)}</span>
+                  </div>
+                  
+                  <div>
+                    <span className={`inline-block px-2.5 py-0.5 rounded-md font-mono font-bold text-[9px] uppercase tracking-wider ${
+                      activeUser.role === 'ADMINISTRATEUR'
+                        ? 'bg-amber-500/20 text-amber-500 border border-amber-500/30'
+                        : activeUser.role === 'ENQUETEUR'
+                        ? 'bg-indigo-500/20 text-indigo-400 border border-indigo-500/30'
+                        : 'badge-glass-cyan'
+                    }`}>
+                      {activeUser.role === 'ADMINISTRATEUR' ? 'Administrateur' : activeUser.role === 'ENQUETEUR' ? 'Enquêteur SOC' : 'Utilisateur Standard'}
+                    </span>
                   </div>
                 </div>
 
-                <div className="space-y-1 pt-1">
+                <div className="space-y-1 pt-1 border-t border-slate-200 dark:border-slate-800">
                   <button
                     onClick={handleOpenProfile}
                     className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#1e293b] hover:text-cyan-500 rounded-xl transition cursor-pointer"

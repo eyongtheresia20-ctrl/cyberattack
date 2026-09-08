@@ -1,28 +1,58 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Shield, UserPlus, Eye, EyeOff, ArrowRight, Sun, Moon, CheckCircle2 } from 'lucide-react';
+import { Shield, UserPlus, Eye, EyeOff, ArrowRight, Sun, Moon, CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useLanguage } from '../context/LanguageContext';
+import { useAuth } from '../context/AuthContext';
+import CyberGuardLogo from '../components/CyberGuardLogo';
 
 export default function RegisterPage() {
   const { isDark, toggle: toggleTheme } = useTheme();
   const { lang, toggle: toggleLang, t } = useLanguage();
+  const { register } = useAuth();
   const navigate = useNavigate();
 
   const [showPass, setShowPass] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [done, setDone] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
   const [form, setForm] = useState({
-    name: '', email: '', password: '', confirm: '', role: 'analyst', terms: false,
+    name: '', email: '', password: '', confirm: '', terms: false,
   });
 
   const set = (key) => (e) => setForm({ ...form, [key]: e.target.type === 'checkbox' ? e.target.checked : e.target.value });
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    setDone(true);
-    setTimeout(() => navigate('/dashboard'), 2000);
+    setError(null);
+
+    if (form.password !== form.confirm) {
+      setError(lang === 'en' ? 'Passwords do not match.' : 'Les mots de passe ne correspondent pas.');
+      return;
+    }
+
+    if (form.password.length < 6) {
+      setError(lang === 'en' ? 'Password must be at least 6 characters.' : 'Le mot de passe doit contenir au moins 6 caractères.');
+      return;
+    }
+
+    const parts = form.name.trim().split(' ');
+    const prenom = parts[0] || 'Utilisateur';
+    const nom = parts.slice(1).join(' ') || 'CyberGuard';
+
+    setLoading(true);
+    try {
+      await register(nom, prenom, form.email.trim(), form.password);
+      setDone(true);
+      setTimeout(() => navigate('/dashboard'), 1500);
+    } catch (err) {
+      setError(err.message || (lang === 'en' ? 'Registration failed.' : "Échec de l'inscription."));
+    } finally {
+      setLoading(false);
+    }
   };
+
 
   const inputClass = "w-full px-4 py-3 rounded-xl bg-sky-50 dark:bg-[#1e2637] border border-sky-200 dark:border-sky-800/60 text-slate-900 dark:text-white text-sm placeholder-slate-400 focus:outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 transition";
   const labelClass = "text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider";
@@ -32,13 +62,8 @@ export default function RegisterPage() {
 
       {/* Minimal Header */}
       <header className="border-b border-sky-200 dark:border-sky-900/60 bg-white/80 dark:bg-[#161b27]/80 backdrop-blur-md px-6 py-4 flex items-center justify-between">
-        <Link to="/" className="flex items-center gap-3 group">
-          <div className="p-2 rounded-xl bg-sky-500 group-hover:bg-sky-600 transition-colors shadow-md">
-            <Shield className="w-5 h-5 text-white stroke-[2.5]" />
-          </div>
-          <span className="font-extrabold text-xl tracking-tight text-slate-900 dark:text-white">
-            Phish<span className="text-sky-500">Guard</span>
-          </span>
+        <Link to="/">
+          <CyberGuardLogo size="md" />
         </Link>
         <div className="flex items-center gap-2">
           <button onClick={toggleLang} className="px-3 py-1.5 rounded-lg text-xs font-bold border border-sky-200 dark:border-sky-800/60 bg-white dark:bg-[#1e2637] text-sky-700 dark:text-sky-300 hover:border-sky-400 transition">
@@ -84,6 +109,14 @@ export default function RegisterPage() {
                 <p className="text-sm text-slate-500 dark:text-slate-400">{t('register_sub')}</p>
               </div>
 
+              {/* Error Banner */}
+              {error && (
+                <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-600 dark:text-rose-300 text-xs font-semibold flex items-center gap-2 animate-fade-in">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-500" />
+                  <span>{error}</span>
+                </div>
+              )}
+
               {/* Form */}
               <form
                 onSubmit={handleSubmit}
@@ -98,7 +131,7 @@ export default function RegisterPage() {
                 {/* Email */}
                 <div className="space-y-1.5">
                   <label className={labelClass}>{t('register_email')}</label>
-                  <input type="email" required value={form.email} onChange={set('email')} placeholder="analyst@phishguard.io" className={inputClass} />
+                  <input type="email" required value={form.email} onChange={set('email')} placeholder="analyst@cyberguard.io" className={inputClass} />
                 </div>
 
                 {/* Password */}
@@ -138,9 +171,19 @@ export default function RegisterPage() {
                 {/* Submit */}
                 <button
                   type="submit"
-                  className="w-full py-3.5 rounded-xl bg-sky-500 hover:bg-sky-600 text-white font-extrabold text-sm shadow-lg shadow-sky-500/20 hover:shadow-sky-500/30 transition-all hover:scale-[1.01] flex items-center justify-center gap-2"
+                  disabled={loading}
+                  className="w-full py-3.5 rounded-xl bg-sky-500 hover:bg-sky-600 disabled:opacity-60 text-white font-extrabold text-sm shadow-lg shadow-sky-500/20 hover:shadow-sky-500/30 transition-all hover:scale-[1.01] flex items-center justify-center gap-2 cursor-pointer"
                 >
-                  {t('register_btn')} <ArrowRight className="w-4 h-4" />
+                  {loading ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      {lang === 'en' ? 'Creating account...' : 'Création du compte...'}
+                    </>
+                  ) : (
+                    <>
+                      {t('register_btn')} <ArrowRight className="w-4 h-4" />
+                    </>
+                  )}
                 </button>
               </form>
 

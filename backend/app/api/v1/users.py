@@ -115,3 +115,102 @@ def update_user_role(
             "table": target_user.__tablename__
         }
     }
+
+class StatusUpdateRequest(BaseModel):
+    is_active: bool
+
+@router.patch("/{user_id}/status", response_model=dict)
+def toggle_user_status(
+    user_id: str,
+    req: StatusUpdateRequest,
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    if current_user.role != "ADMINISTRATEUR":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Accès réservé aux Administrateurs")
+
+    target_user = find_user_by_id(user_id, db)
+    if not target_user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Utilisateur introuvable")
+
+    if target_user.role == "ADMINISTRATEUR" or isinstance(target_user, Administrateur):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Protégé : Les comptes Administrateur ne peuvent pas être désactivés.")
+
+    target_user.is_active = req.is_active
+    audit = AuditLog(
+        actor=f"{current_user.prenom} {current_user.nom}",
+        action="UPDATE_USER_STATUS",
+        target=target_user.email,
+        details=f"Statut utilisateur mis à jour : {'Activé / Approuvé' if req.is_active else 'Désactivé'}"
+    )
+    db.add(audit)
+    db.commit()
+
+    return {"success": True, "message": f"Statut de {target_user.email} mis à jour : {'Activé' if req.is_active else 'Désactivé'}", "is_active": target_user.is_active}
+
+@router.delete("/{user_id}", response_model=dict)
+def delete_user(
+    user_id: str,
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    if current_user.role != "ADMINISTRATEUR":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Accès réservé aux Administrateurs")
+
+    target_user = find_user_by_id(user_id, db)
+    if not target_user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Utilisateur introuvable")
+
+    if target_user.role == "ADMINISTRATEUR" or isinstance(target_user, Administrateur):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Protégé : Les comptes Administrateur ne peuvent pas être supprimés.")
+
+    target_email = target_user.email
+    db.delete(target_user)
+    audit = AuditLog(
+        actor=f"{current_user.prenom} {current_user.nom}",
+        action="DELETE_USER",
+        target=target_email,
+        details="Suppression définitive du compte par l'Administrateur"
+    )
+    db.add(audit)
+    db.commit()
+
+    return {"success": True, "message": f"Compte {target_email} supprimé avec succès."}
+
+@router.get("/activity-logs", response_model=dict)
+def get_user_activity_logs(
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    if current_user.role != "ADMINISTRATEUR":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Accès réservé aux Administrateurs")
+
+    logs = db.query(AuditLog).order_by(AuditLog.timestamp.desc()).limit(100).all()
+    records = db.query(AnalysisRecord).order_by(AnalysisRecord.created_at.desc()).limit(50).all()
+
+    activations = []
+    for l in logs:
+        activations.append({
+            "id": l.id,
+            "actor": l.actor,
+            "type": "AUDIT",
+            "action": l.action,
+            "target": l.target,
+            "details": l.details,
+            "timestamp": l.timestamp.isoformat() if l.timestamp else None
+        })
+
+    for r in records:
+        activations.append({
+            "id": r.id,
+            "actor": "Utilisateur Standard",
+            "type": "SCAN_RESEARCH",
+            "action": f"SCAN_{r.analysis_type}",
+            "target": r.target_content,
+            "details": f"Verdict: {r.verdict} (Risk: {r.risk_score}/100) - SHA: {r.analysis_code}",
+            "timestamp": r.created_at.isoformat() if r.created_at else None
+        })
+
+    activations.sort(key=lambda x: x["timestamp"] or "", reverse=True)
+    return {"activities": activations, "total": len(activations)}
+

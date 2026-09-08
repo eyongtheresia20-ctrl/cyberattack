@@ -2,7 +2,7 @@ import re
 import socket
 import ssl
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any, List
 from urllib.parse import urlparse
 import requests
@@ -358,5 +358,5 @@ def inspect_endpoint_deeply(url_or_domain: str) -> Dict[str, Any]:
         "ssl": ssl_info,
         "http": http_info,
         "brand_impersonation": brand_info,
-        "inspected_at": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
+        "inspected_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
     }
