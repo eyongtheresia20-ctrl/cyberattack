@@ -2,25 +2,27 @@ import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { LayoutDashboard, History, FileSearch, Users, ShieldCheck, Activity } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useLanguage } from '../context/LanguageContext';
 
 export default function Sidebar() {
   const { user } = useAuth();
+  const { lang } = useLanguage();
 
   const stdItems = [
-    { path: '/dashboard', label: 'Scanner & Tableau de Bord', icon: LayoutDashboard },
-    { path: '/history', label: 'Historique des Analyses', icon: History },
+    { path: '/dashboard', label: lang === 'fr' ? 'Scanner & Tableau de Bord' : 'Scanner & Dashboard', icon: LayoutDashboard },
+    { path: '/history', label: lang === 'fr' ? 'Historique des Analyses' : 'Analysis History', icon: History },
   ];
 
   const investigatorItems = [
-    { path: '/dashboard', label: 'Tableau de Bord', icon: LayoutDashboard },
-    { path: '/incidents', label: 'Rapports & Signalements', icon: FileSearch },
+    { path: '/dashboard', label: lang === 'fr' ? 'Tableau de Bord' : 'Dashboard', icon: LayoutDashboard },
+    { path: '/incidents', label: lang === 'fr' ? 'Rapports & Signalements' : 'Reports & Evidence', icon: FileSearch },
   ];
 
   const adminItems = [
-    { path: '/dashboard', label: 'Tableau de Bord', icon: LayoutDashboard },
-    { path: '/admin/users', label: 'Gestion d\'utilisateur', icon: Users },
-    { path: '/activity-logs', label: 'Journal des Activites', icon: Activity },
-    { path: '/incidents', label: 'Signalements', icon: FileSearch },
+    { path: '/dashboard', label: lang === 'fr' ? 'Tableau de Bord' : 'Dashboard', icon: LayoutDashboard },
+    { path: '/admin/users', label: lang === 'fr' ? 'Gestion d\'utilisateurs' : 'User Management', icon: Users },
+    { path: '/activity-logs', label: lang === 'fr' ? 'Journal des Activités' : 'Activity Logs', icon: Activity },
+    { path: '/incidents', label: lang === 'fr' ? 'Signalements' : 'Incident Reports', icon: FileSearch },
   ];
 
   let navItems = stdItems;
@@ -32,11 +34,11 @@ export default function Sidebar() {
       <div className="space-y-1.5">
         <div className="px-3 mb-4 flex items-center justify-between">
           <p className="text-[10px] uppercase font-mono tracking-widest text-slate-400 dark:text-slate-500 font-bold">
-            NAVIGATION SOC
+            {lang === 'fr' ? 'NAVIGATION SOC' : 'SOC NAVIGATION'}
           </p>
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full badge-glass-cyan text-[9px] font-mono font-bold">
             <ShieldCheck className="w-3 h-3 text-cyan-400" />
-            {user ? user.role.split('_')[0] : 'GUEST'}
+            {user?.role === 'ENQUETEUR' ? (lang === 'fr' ? 'ENQUÊTEUR' : 'INVESTIGATOR') : user?.role === 'ADMINISTRATEUR' ? 'ADMIN' : (lang === 'fr' ? 'UTILISATEUR' : 'USER')}
           </span>
         </div>
 

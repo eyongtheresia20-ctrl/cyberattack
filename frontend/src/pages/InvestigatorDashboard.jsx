@@ -1,14 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useLanguage } from '../context/LanguageContext';
 import { 
   ShieldCheck, AlertCircle, FileSearch, CheckCircle2, Lock, 
   RefreshCw, Tag, ShieldAlert, Layers, Activity, TrendingUp,
   BarChart2, PieChart, Clock, Shield, ArrowUpRight, Terminal,
-  AlertTriangle, User, FileText
+  AlertTriangle, User, FileText, ExternalLink
 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 export default function InvestigatorDashboard() {
   const { user } = useAuth();
+  const { lang } = useLanguage();
   const [dbStats, setDbStats] = useState(null);
   const [incidents, setIncidents] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -49,19 +52,19 @@ export default function InvestigatorDashboard() {
   // Categories Breakdown directly from DB query
   const rawCategories = dbStats?.categories_breakdown || [];
   const categoriesList = rawCategories.length > 0 
-    ? rawCategories.map((c, idx) => {
+    ? rawCategories.map((c) => {
         let icon = ShieldAlert;
         let color = 'from-rose-500 to-amber-500';
-        let badge = 'CRITIQUE';
+        let badge = lang === 'fr' ? 'CRITIQUE' : 'CRITICAL';
 
         if (c.name.toLowerCase().includes('web') || c.name.toLowerCase().includes('injection')) {
           icon = Terminal;
           color = 'from-cyan-500 to-blue-600';
-          badge = 'ÉLEVÉ';
+          badge = lang === 'fr' ? 'ÉLEVÉ' : 'HIGH';
         } else if (c.name.toLowerCase().includes('social') || c.name.toLowerCase().includes('user')) {
           icon = AlertTriangle;
           color = 'from-amber-500 to-yellow-500';
-          badge = 'MOYEN';
+          badge = lang === 'fr' ? 'MOYEN' : 'MEDIUM';
         }
 
         return {
@@ -73,8 +76,8 @@ export default function InvestigatorDashboard() {
         };
       })
     : [
-        { name: 'Phishing Campaign & Usurpations', count: incidents.filter(i => i.category?.includes('Phishing')).length || (totalCount > 0 ? 2 : 0), color: 'from-rose-500 to-amber-500', icon: ShieldAlert, badge: 'CRITIQUE' },
-        { name: 'Web Cyber Attacks & Injections SQL', count: incidents.filter(i => i.category?.includes('Web') || i.title?.includes('SQL')).length || (totalCount > 0 ? 1 : 0), color: 'from-cyan-500 to-blue-600', icon: Terminal, badge: 'ÉLEVÉ' }
+        { name: lang === 'fr' ? 'Campagne de Phishing & Usurpations' : 'Phishing Campaigns & Spoofing', count: incidents.filter(i => i.category?.includes('Phishing')).length || (totalCount > 0 ? 2 : 0), color: 'from-rose-500 to-amber-500', icon: ShieldAlert, badge: lang === 'fr' ? 'CRITIQUE' : 'CRITICAL' },
+        { name: lang === 'fr' ? 'Attaques Web & Injections SQL' : 'Web Attacks & SQL Injections', count: incidents.filter(i => i.category?.includes('Web') || i.title?.includes('SQL')).length || (totalCount > 0 ? 1 : 0), color: 'from-cyan-500 to-blue-600', icon: Terminal, badge: lang === 'fr' ? 'ÉLEVÉ' : 'HIGH' }
       ];
 
   const totalAttacksSum = categoriesList.reduce((acc, a) => acc + a.count, 0) || 1;
@@ -94,7 +97,7 @@ export default function InvestigatorDashboard() {
           <div className="flex items-start justify-between">
             <div>
               <span className="text-xs font-mono font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 block mb-1">
-                TOTAL SIGNALEMENTS
+                {lang === 'fr' ? 'TOTAL SIGNALEMENTS' : 'TOTAL REPORTS'}
               </span>
               <p className="text-4xl font-black text-slate-900 dark:text-white">{totalCount}</p>
             </div>
@@ -103,8 +106,8 @@ export default function InvestigatorDashboard() {
             </div>
           </div>
           <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs">
-            <span className="text-slate-500 font-medium">Reçus en base PostgreSQL</span>
-            <span className="text-sky-600 dark:text-sky-400 font-mono font-bold">100% scellés SHA-256</span>
+            <span className="text-slate-500 font-medium">{lang === 'fr' ? 'Base de données SOC' : 'SOC Database Ledger'}</span>
+            <span className="text-sky-600 dark:text-sky-400 font-mono font-bold">{lang === 'fr' ? '100% scellés SHA-256' : '100% SHA-256 Sealed'}</span>
           </div>
         </div>
 
@@ -113,7 +116,7 @@ export default function InvestigatorDashboard() {
           <div className="flex items-start justify-between">
             <div>
               <span className="text-xs font-mono font-bold uppercase tracking-wider text-rose-500 block mb-1">
-                À TRAITER
+                {lang === 'fr' ? 'À TRAITER (NOUVEAUX)' : 'ACTION REQUIRED (NEW)'}
               </span>
               <p className="text-4xl font-black text-rose-600 dark:text-rose-400">{newCount}</p>
             </div>
@@ -122,8 +125,8 @@ export default function InvestigatorDashboard() {
             </div>
           </div>
           <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs">
-            <span className="text-slate-500 font-medium">Nouveaux dossiers DB</span>
-            <span className="text-rose-600 dark:text-rose-400 font-mono font-bold">Priorité haute</span>
+            <span className="text-slate-500 font-medium">{lang === 'fr' ? 'Nouveaux dossiers DB' : 'New DB Records'}</span>
+            <span className="text-rose-600 dark:text-rose-400 font-mono font-bold">{lang === 'fr' ? 'Priorité haute' : 'High Priority'}</span>
           </div>
         </div>
 
@@ -132,7 +135,7 @@ export default function InvestigatorDashboard() {
           <div className="flex items-start justify-between">
             <div>
               <span className="text-xs font-mono font-bold uppercase tracking-wider text-amber-500 block mb-1">
-                EN COURS DE TRAITEMENT
+                {lang === 'fr' ? 'EN COURS DE TRAITEMENT' : 'INVESTIGATIONS IN PROGRESS'}
               </span>
               <p className="text-4xl font-black text-amber-600 dark:text-amber-400">{investigatingCount}</p>
             </div>
@@ -141,8 +144,8 @@ export default function InvestigatorDashboard() {
             </div>
           </div>
           <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs">
-            <span className="text-slate-500 font-medium">Enquêtes SOC actives</span>
-            <span className="text-amber-600 dark:text-amber-400 font-mono font-bold">En cours</span>
+            <span className="text-slate-500 font-medium">{lang === 'fr' ? 'Enquêtes SOC actives' : 'Active SOC Cases'}</span>
+            <span className="text-amber-600 dark:text-amber-400 font-mono font-bold">{lang === 'fr' ? 'En cours' : 'Active'}</span>
           </div>
         </div>
 
@@ -157,9 +160,11 @@ export default function InvestigatorDashboard() {
             <div>
               <h2 className="text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
                 <BarChart2 className="w-5 h-5 text-cyan-500" />
-                Répartition des Attaques Enregistrées
+                {lang === 'fr' ? 'Répartition des Attaques Enregistrées' : 'Recorded Attacks Distribution'}
               </h2>
-              <p className="text-xs text-slate-400">Classifiées par niveau de gravité SOC</p>
+              <p className="text-xs text-slate-400">
+                {lang === 'fr' ? 'Classifiées par niveau de gravité SOC' : 'Classified by SOC severity rating'}
+              </p>
             </div>
           </div>
 
@@ -199,54 +204,61 @@ export default function InvestigatorDashboard() {
           </div>
         </div>
 
-        {/* Graph 2: Direct Sources Breakdown (1 Col) */}
-        <div className="bg-white dark:bg-[#161b27] border border-slate-200 dark:border-sky-900/40 rounded-3xl p-6 shadow-sm space-y-6">
-          <div className="border-b border-slate-100 dark:border-slate-800 pb-4">
-            <h2 className="text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
-              <PieChart className="w-5 h-5 text-cyan-500" />
-              Origine des Signalements BD
-            </h2>
-          </div>
-
-          <div className="space-y-4 pt-1">
-            
-            {/* User Reports */}
-            <div className="p-3 bg-slate-50 dark:bg-[#0f172a] rounded-2xl border border-slate-200 dark:border-slate-800 space-y-2">
-              <div className="flex justify-between items-center text-xs">
-                <span className="text-slate-700 dark:text-slate-300 font-bold flex items-center gap-2">
-                  <User className="w-4 h-4 text-sky-500" /> Signalements Utilisateurs
-                </span>
-                <span className="font-mono font-black text-sky-600 dark:text-sky-400">{userReportsCount}</span>
-              </div>
-              <p className="text-[11px] text-slate-400">Extraits directement de la table Incidents (source_type USER_REPORT).</p>
-            </div>
-
-            {/* WAF & System Events */}
-            <div className="p-3 bg-slate-50 dark:bg-[#0f172a] rounded-2xl border border-slate-200 dark:border-slate-800 space-y-2">
-              <div className="flex justify-between items-center text-xs">
-                <span className="text-slate-700 dark:text-slate-300 font-bold flex items-center gap-2">
-                  <Terminal className="w-4 h-4 text-cyan-500" /> Détections Automatiques WAF
-                </span>
-                <span className="font-mono font-black text-cyan-600 dark:text-cyan-400">{wafEventsCount}</span>
-              </div>
-              <p className="text-[11px] text-slate-400">Journaux et sondes d'attaques réseau enregistrés.</p>
-            </div>
-
-            {/* SLA Info Box */}
-            <div className="p-3 bg-sky-50/60 dark:bg-sky-950/20 rounded-2xl border border-sky-100 dark:border-sky-900/40 text-xs space-y-1.5">
-              <div className="flex items-center justify-between font-bold">
-                <span className="text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
-                  <Lock className="w-3.5 h-3.5 text-emerald-500" /> Sceaux Cryptographiques
-                </span>
-                <span className="text-emerald-500 font-mono">100% SHA-256</span>
-              </div>
-              <p className="text-[10px] text-slate-500 dark:text-slate-400">
-                Toutes les preuves sont scellées et vérifiables instantanément.
+        {/* Graph 2: Origin Sources Breakdown */}
+        <div className="bg-white dark:bg-[#161b27] border border-slate-200 dark:border-sky-900/40 rounded-3xl p-6 shadow-sm flex flex-col justify-between space-y-6">
+          <div className="space-y-4">
+            <div className="border-b border-slate-100 dark:border-slate-800 pb-4">
+              <h2 className="text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+                <PieChart className="w-5 h-5 text-indigo-500" />
+                {lang === 'fr' ? 'Origine des Signalements' : 'Report Sources Breakdown'}
+              </h2>
+              <p className="text-xs text-slate-400">
+                {lang === 'fr' ? 'Sources de renseignement SOC' : 'SOC intelligence origin feeds'}
               </p>
             </div>
 
+            <div className="space-y-4 pt-2">
+              <div className="p-4 bg-slate-50 dark:bg-[#0f172a] rounded-2xl border border-slate-200 dark:border-slate-800 space-y-2">
+                <div className="flex justify-between items-center text-xs">
+                  <span className="font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                    <User className="w-4 h-4 text-cyan-400" />
+                    {lang === 'fr' ? 'Signalements Utilisateurs' : 'User Reports'}
+                  </span>
+                  <span className="font-mono font-extrabold text-cyan-500">{userReportsCount}</span>
+                </div>
+                <div className="h-2 w-full bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-cyan-500 rounded-full" 
+                    style={{ width: `${Math.max(10, Math.round((userReportsCount / totalCount) * 100))}%` }} 
+                  />
+                </div>
+              </div>
+
+              <div className="p-4 bg-slate-50 dark:bg-[#0f172a] rounded-2xl border border-slate-200 dark:border-slate-800 space-y-2">
+                <div className="flex justify-between items-center text-xs">
+                  <span className="font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                    <Terminal className="w-4 h-4 text-rose-400" />
+                    {lang === 'fr' ? 'Journaux WAF & Alertes Système' : 'WAF Logs & System Alerts'}
+                  </span>
+                  <span className="font-mono font-extrabold text-rose-500">{wafEventsCount}</span>
+                </div>
+                <div className="h-2 w-full bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-rose-500 rounded-full" 
+                    style={{ width: `${Math.max(10, Math.round((wafEventsCount / totalCount) * 100))}%` }} 
+                  />
+                </div>
+              </div>
+            </div>
           </div>
 
+          <Link
+            to="/incidents"
+            className="w-full py-3 bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-600 hover:to-indigo-700 text-white font-extrabold text-xs rounded-2xl flex items-center justify-center gap-2 shadow-lg shadow-sky-500/20 transition"
+          >
+            <FileSearch size={16} />
+            <span>{lang === 'fr' ? 'Consulter le Registre Complet' : 'Access Full Evidence Ledger'}</span>
+          </Link>
         </div>
 
       </div>

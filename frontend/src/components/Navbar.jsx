@@ -158,7 +158,7 @@ export default function Navbar({ onOpenAuth, onOpenHistory }) {
                 }`}></span>
               </span>
               <span className="text-slate-800 dark:text-slate-200 font-sans">
-                Bienvenue, <strong className="font-bold">{activeUser.prenom} {activeUser.nom}</strong>
+                {lang === 'fr' ? 'Bienvenue,' : 'Welcome,'} <strong className="font-bold">{activeUser.prenom} {activeUser.nom}</strong>
               </span>
               <span className={`text-[10px] font-mono font-extrabold uppercase px-2 py-0.5 rounded-full ${
                 activeUser.role === 'ADMINISTRATEUR'
@@ -167,7 +167,7 @@ export default function Navbar({ onOpenAuth, onOpenHistory }) {
                   ? 'bg-indigo-500/20 text-indigo-400 border border-indigo-500/30'
                   : 'bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 border border-cyan-500/30'
               }`}>
-                {activeUser.role === 'ADMINISTRATEUR' ? 'ADMIN' : activeUser.role === 'ENQUETEUR' ? 'SOC ENQUÊTEUR' : 'UTILISATEUR'}
+                {activeUser.role === 'ADMINISTRATEUR' ? 'ADMIN' : activeUser.role === 'ENQUETEUR' ? (lang === 'fr' ? 'SOC ENQUÊTEUR' : 'SOC INVESTIGATOR') : (lang === 'fr' ? 'UTILISATEUR' : 'USER')}
               </span>
             </div>
 
@@ -175,7 +175,7 @@ export default function Navbar({ onOpenAuth, onOpenHistory }) {
               <Clock className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
               <span>Session : <strong className="text-slate-900 dark:text-white">{getLoginTimeString()}</strong></span>
               <span className="text-slate-300 dark:text-slate-700">|</span>
-              <span>Actif : <strong className="text-cyan-600 dark:text-cyan-400 font-bold">{formatDuration(sessionSeconds)}</strong></span>
+              <span>{lang === 'fr' ? 'Actif :' : 'Active :'} <strong className="text-cyan-600 dark:text-cyan-400 font-bold">{formatDuration(sessionSeconds)}</strong></span>
             </div>
           </div>
         </div>

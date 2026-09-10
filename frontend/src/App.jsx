@@ -23,6 +23,8 @@ import Assistant from './pages/Assistant';
 import AdminUsersPage from './pages/AdminUsersPage';
 import ActivityLogsPage from './pages/ActivityLogsPage';
 
+import FloatingAiAssistant from './components/FloatingAiAssistant';
+
 const PUBLIC_ROUTES = ['/', '/login', '/register'];
 
 function AppLayout() {
@@ -74,6 +76,7 @@ function AppLayout() {
           </Routes>
         </main>
       </div>
+      <FloatingAiAssistant />
       <AuthModal isOpen={authModalOpen} onClose={() => setAuthModalOpen(false)} />
     </div>
   );

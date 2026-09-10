@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.db.database import engine, Base
-from app.api.v1 import analyze, monitor, incidents, verify, assistant, auth, users
+from app.api.v1 import analyze, monitor, incidents, verify, assistant, auth, users, ml_metrics
 
 # Create DB Tables automatically
 try:
@@ -57,6 +57,7 @@ app.include_router(monitor.router, prefix=settings.API_V1_STR)
 app.include_router(incidents.router, prefix=settings.API_V1_STR)
 app.include_router(verify.router, prefix=settings.API_V1_STR)
 app.include_router(assistant.router, prefix=settings.API_V1_STR)
+app.include_router(ml_metrics.router, prefix=settings.API_V1_STR)
 
 @app.get("/")
 def root():

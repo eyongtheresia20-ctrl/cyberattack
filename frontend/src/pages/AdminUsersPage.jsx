@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useLanguage } from '../context/LanguageContext';
 import {
   Users, ShieldCheck, UserCheck,
   AlertOctagon, CheckCircle2, Trash2, Search,
@@ -8,6 +9,7 @@ import {
 
 export default function AdminUsersPage() {
   const { token } = useAuth();
+  const { lang } = useLanguage();
   const [usersList, setUsersList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -39,7 +41,10 @@ export default function AdminUsersPage() {
   const handleToggleBlockStatus = async (targetUser) => {
     setActionMessage(null);
     if (targetUser.role === 'ADMINISTRATEUR') {
-      setActionMessage({ type: 'error', text: 'Impossible de bloquer un compte Administrateur !' });
+      setActionMessage({ 
+        type: 'error', 
+        text: lang === 'fr' ? 'Impossible de bloquer un compte Administrateur !' : 'Cannot block Administrator account!' 
+      });
       return;
     }
     try {
@@ -53,7 +58,9 @@ export default function AdminUsersPage() {
       if (!res.ok) throw new Error(data.detail || "Echec du changement de statut");
       setActionMessage({
         type: 'success',
-        text: `Compte de ${targetUser.prenom} ${targetUser.nom} ${shouldBeActive ? 'debloque avec succes' : 'bloque avec succes'}.`
+        text: lang === 'fr'
+          ? `Compte de ${targetUser.prenom} ${targetUser.nom} ${shouldBeActive ? 'débloqué avec succès' : 'bloqué avec succès'}.`
+          : `Account for ${targetUser.prenom} ${targetUser.nom} ${shouldBeActive ? 'unblocked successfully' : 'blocked successfully'}.`
       });
       fetchUsers();
     } catch (err) {
@@ -72,7 +79,10 @@ export default function AdminUsersPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || "Echec de suppression");
-      setActionMessage({ type: 'success', text: `Utilisateur ${userToDelete.email} supprime avec succes.` });
+      setActionMessage({ 
+        type: 'success', 
+        text: lang === 'fr' ? `Utilisateur ${userToDelete.email} supprimé avec succès.` : `User ${userToDelete.email} deleted successfully.` 
+      });
       setUserToDelete(null);
       fetchUsers();
     } catch (err) {
@@ -112,41 +122,42 @@ export default function AdminUsersPage() {
             <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
             <input
               type="text"
-              placeholder="Rechercher utilisateur ou email..."
+              placeholder={lang === 'fr' ? "Rechercher utilisateur ou email..." : "Search user name or email..."}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-10 pr-4 py-2 bg-slate-50 dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-sky-500"
             />
           </div>
+
           <div className="flex items-center gap-2 text-xs">
             <Filter size={14} className="text-sky-500" />
-            <span className="text-slate-500 font-medium">Filtrer par role :</span>
+            <span className="text-slate-500 font-medium">{lang === 'fr' ? 'Filtrer par rôle :' : 'Filter by role:'}</span>
             <select
               value={roleFilter}
               onChange={(e) => setRoleFilter(e.target.value)}
-              className="bg-slate-50 dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white rounded-xl px-3 py-1.5 text-xs font-semibold focus:outline-none focus:border-sky-500"
+              className="bg-slate-50 dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white rounded-xl px-3 py-1.5 text-xs font-semibold focus:outline-none focus:border-sky-500 cursor-pointer"
             >
-              <option value="ALL">Tous les comptes</option>
-              <option value="STANDARD">Utilisateurs Standards</option>
-              <option value="ENQUETEUR">Enqueteurs SOC</option>
+              <option value="ALL">{lang === 'fr' ? 'Tous les comptes' : 'All Accounts'}</option>
+              <option value="STANDARD">{lang === 'fr' ? 'Utilisateurs Standards' : 'Standard Users'}</option>
+              <option value="ENQUETEUR">{lang === 'fr' ? 'Enquêteurs SOC' : 'SOC Investigators'}</option>
             </select>
           </div>
         </div>
 
         {loading ? (
           <div className="py-12 text-center text-slate-500 text-xs flex items-center justify-center gap-2">
-            <RefreshCw className="animate-spin text-sky-500" size={16} /> Chargement des utilisateurs...
+            <RefreshCw className="animate-spin text-sky-500" size={16} /> {lang === 'fr' ? 'Chargement des utilisateurs...' : 'Loading user list...'}
           </div>
         ) : (
           <div className="overflow-x-auto border border-slate-200 dark:border-slate-800/80 rounded-2xl">
             <table className="w-full text-left text-xs text-slate-700 dark:text-slate-300">
               <thead className="bg-slate-50 dark:bg-[#0f172a] text-slate-500 dark:text-slate-400 uppercase font-bold border-b border-slate-200 dark:border-slate-800">
                 <tr>
-                  <th className="p-3.5">Nom et Prenom</th>
+                  <th className="p-3.5">{lang === 'fr' ? 'Nom et Prénom' : 'Full Name'}</th>
                   <th className="p-3.5">Email</th>
-                  <th className="p-3.5">Role</th>
-                  <th className="p-3.5">Statut Compte</th>
-                  <th className="p-3.5 text-right">Actions Admin</th>
+                  <th className="p-3.5">{lang === 'fr' ? 'Rôle' : 'Role'}</th>
+                  <th className="p-3.5">{lang === 'fr' ? 'Statut Compte' : 'Account Status'}</th>
+                  <th className="p-3.5 text-right">{lang === 'fr' ? 'Actions Admin' : 'Admin Actions'}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
@@ -162,7 +173,7 @@ export default function AdminUsersPage() {
                             ? 'bg-indigo-500/20 text-indigo-500 border border-indigo-500/30'
                             : 'bg-sky-100 dark:bg-sky-950/50 text-sky-600 dark:text-sky-300 border border-sky-200 dark:border-sky-800'
                         }`}>
-                          {u.role === 'ENQUETEUR' ? 'SOC ENQUETEUR' : 'UTILISATEUR'}
+                          {u.role === 'ENQUETEUR' ? (lang === 'fr' ? 'SOC ENQUÊTEUR' : 'SOC INVESTIGATOR') : (lang === 'fr' ? 'UTILISATEUR' : 'STANDARD USER')}
                         </span>
                       </td>
                       <td className="p-3.5">
@@ -172,8 +183,8 @@ export default function AdminUsersPage() {
                             : 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/30'
                         }`}>
                           {!isBlocked
-                            ? <><CheckCircle2 size={11} /> Actif</>
-                            : <><Ban size={11} /> Bloque</>}
+                            ? <><CheckCircle2 size={11} /> {lang === 'fr' ? 'Actif' : 'Active'}</>
+                            : <><Ban size={11} /> {lang === 'fr' ? 'Bloqué' : 'Blocked'}</>}
                         </span>
                       </td>
                       <td className="p-3.5 text-right space-x-2">
@@ -185,7 +196,7 @@ export default function AdminUsersPage() {
                               : 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-md shadow-emerald-500/20'
                           }`}
                         >
-                          {!isBlocked ? <><Ban size={13} /> Bloquer</> : <><CheckCircle2 size={13} /> Debloquer</>}
+                          {!isBlocked ? <><Ban size={13} /> {lang === 'fr' ? 'Bloquer' : 'Block'}</> : <><CheckCircle2 size={13} /> {lang === 'fr' ? 'Débloquer' : 'Unblock'}</>}
                         </button>
                         <button
                           onClick={() => setUserToDelete(u)}
@@ -210,12 +221,14 @@ export default function AdminUsersPage() {
             <div className="flex items-center gap-3 text-rose-500">
               <div className="p-3 bg-rose-500/10 rounded-2xl border border-rose-500/20"><Trash2 size={24} /></div>
               <div>
-                <h3 className="font-extrabold text-slate-900 dark:text-white text-base">Supprimer l'utilisateur ?</h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400">Cette action est irreversible.</p>
+                <h3 className="font-extrabold text-slate-900 dark:text-white text-base">
+                  {lang === 'fr' ? "Supprimer l'utilisateur ?" : "Delete user account?"}
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">{lang === 'fr' ? 'Cette action est irréversible.' : 'This action cannot be undone.'}</p>
               </div>
             </div>
             <p className="text-xs text-slate-600 dark:text-slate-300">
-              Etes-vous sur de vouloir supprimer le compte de{' '}
+              {lang === 'fr' ? 'Êtes-vous sûr de vouloir supprimer le compte de ' : 'Are you sure you want to delete account for '}
               <strong>{userToDelete.prenom} {userToDelete.nom}</strong> ({userToDelete.email}) ?
             </p>
             <div className="flex items-center justify-end gap-3 pt-3">
@@ -223,14 +236,14 @@ export default function AdminUsersPage() {
                 onClick={() => setUserToDelete(null)}
                 className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
               >
-                Annuler
+                {lang === 'fr' ? 'Annuler' : 'Cancel'}
               </button>
               <button
                 onClick={handleDeleteUser}
                 disabled={isDeleting}
                 className="px-4 py-2 bg-rose-500 hover:bg-rose-600 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition shadow-md shadow-rose-500/20 cursor-pointer flex items-center gap-2"
               >
-                {isDeleting ? "Suppression..." : "Confirmer la suppression"}
+                {isDeleting ? (lang === 'fr' ? "Suppression..." : "Deleting...") : (lang === 'fr' ? "Confirmer la suppression" : "Confirm Delete")}
               </button>
             </div>
           </div>

@@ -1,0 +1,1141 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Diagramme de Classes UML — CyberGuard / PhishGuard</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d2e;
+    --border: #2d3154;
+    --text: #e2e8f0;
+    --text-muted: #94a3b8;
+    --blue: #3b82f6;
+    --purple: #8b5cf6;
+    --green: #10b981;
+    --orange: #f59e0b;
+    --red: #ef4444;
+    --cyan: #06b6d4;
+    --pink: #ec4899;
+
+    /* Module colors */
+    --m1: #1e3a5f;
+    --m1-border: #3b82f6;
+    --m1-header: #2563eb;
+
+    --m2: #1a3a2e;
+    --m2-border: #10b981;
+    --m2-header: #059669;
+
+    --m3: #2d1f4e;
+    --m3-border: #8b5cf6;
+    --m3-header: #7c3aed;
+
+    --m4: #3d2010;
+    --m4-border: #f59e0b;
+    --m4-header: #d97706;
+
+    --m5: #1a2d3d;
+    --m5-border: #06b6d4;
+    --m5-header: #0891b2;
+
+    --m6: #2d1a2d;
+    --m6-border: #ec4899;
+    --m6-header: #db2777;
+
+    --abstract-bg: #0f1f3d;
+    --abstract-border: #60a5fa;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    padding: 20px;
+    min-height: 100vh;
+  }
+
+  /* ─── HEADER ─── */
+  .page-header {
+    text-align: center;
+    margin-bottom: 32px;
+    padding: 24px;
+    background: linear-gradient(135deg, #1a1d2e 0%, #0f1117 100%);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+  }
+  .page-header h1 {
+    font-size: 28px;
+    font-weight: 700;
+    background: linear-gradient(90deg, #3b82f6, #8b5cf6, #06b6d4);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 8px;
+  }
+  .page-header p { color: var(--text-muted); font-size: 14px; }
+  .badge {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 600;
+    margin: 4px;
+    letter-spacing: 0.5px;
+  }
+  .badge-blue { background: #1e3a5f; color: #93c5fd; border: 1px solid #3b82f6; }
+  .badge-green { background: #1a3a2e; color: #6ee7b7; border: 1px solid #10b981; }
+  .badge-purple { background: #2d1f4e; color: #c4b5fd; border: 1px solid #8b5cf6; }
+
+  /* ─── PRINT BUTTON ─── */
+  .print-bar {
+    text-align: center;
+    margin-bottom: 24px;
+  }
+  .btn-print {
+    background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+    color: white;
+    border: none;
+    padding: 12px 32px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    letter-spacing: 0.5px;
+    transition: all 0.2s;
+  }
+  .btn-print:hover { opacity: 0.85; transform: translateY(-1px); }
+
+  /* ─── MODULE WRAPPER ─── */
+  .module {
+    border-radius: 16px;
+    padding: 20px;
+    margin-bottom: 28px;
+    position: relative;
+  }
+  .module-label {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 16px;
+    padding: 6px 14px;
+    border-radius: 6px;
+    display: inline-block;
+  }
+  .module-1 { background: var(--m1); border: 2px solid var(--m1-border); }
+  .module-1 .module-label { background: var(--m1-header); color: #bfdbfe; }
+  .module-2 { background: var(--m2); border: 2px solid var(--m2-border); }
+  .module-2 .module-label { background: var(--m2-header); color: #a7f3d0; }
+  .module-3 { background: var(--m3); border: 2px solid var(--m3-border); }
+  .module-3 .module-label { background: var(--m3-header); color: #ddd6fe; }
+  .module-4 { background: var(--m4); border: 2px solid var(--m4-border); }
+  .module-4 .module-label { background: var(--m4-header); color: #fde68a; }
+  .module-5 { background: var(--m5); border: 2px solid var(--m5-border); }
+  .module-5 .module-label { background: var(--m5-header); color: #a5f3fc; }
+  .module-6 { background: var(--m6); border: 2px solid var(--m6-border); }
+  .module-6 .module-label { background: var(--m6-header); color: #fbcfe8; }
+
+  /* ─── CLASS CARDS ─── */
+  .classes-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    align-items: flex-start;
+  }
+
+  .uml-class {
+    background: #0d1117;
+    border-radius: 10px;
+    overflow: hidden;
+    min-width: 210px;
+    flex: 1;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+  }
+  .uml-class.abstract { border: 2px dashed var(--abstract-border); background: var(--abstract-bg); }
+  .uml-class.entity { border: 2px solid #475569; }
+  .uml-class.service { border: 2px dotted #64748b; }
+
+  .class-header {
+    padding: 10px 14px;
+    text-align: center;
+    font-weight: 700;
+    font-size: 13px;
+    letter-spacing: 0.3px;
+  }
+  .stereotype {
+    display: block;
+    font-size: 10px;
+    font-weight: 400;
+    font-style: italic;
+    opacity: 0.8;
+    margin-bottom: 2px;
+  }
+  .class-name { font-size: 14px; font-weight: 700; }
+
+  /* Module header colors */
+  .module-1 .class-header { background: #1d4ed8; color: #dbeafe; }
+  .module-1 .class-header.abstract-h { background: #1e3a5f; color: #93c5fd; border-bottom: 2px dashed #3b82f6; }
+  .module-2 .class-header { background: #047857; color: #d1fae5; }
+  .module-3 .class-header { background: #6d28d9; color: #ede9fe; }
+  .module-3 .class-header.abstract-h { background: #2d1f4e; color: #c4b5fd; border-bottom: 2px dashed #8b5cf6; }
+  .module-4 .class-header { background: #b45309; color: #fef3c7; }
+  .module-5 .class-header { background: #0e7490; color: #cffafe; }
+  .module-6 .class-header { background: #be185d; color: #fce7f3; }
+
+  .class-section {
+    padding: 8px 12px;
+    border-top: 1px solid #1e293b;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    line-height: 1.8;
+  }
+  .section-title {
+    font-family: 'Inter', sans-serif;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: #475569;
+    margin-bottom: 4px;
+    display: block;
+  }
+  .attr { color: #94a3b8; }
+  .attr .vis { color: #f59e0b; }
+  .attr .type { color: #06b6d4; }
+  .attr .name { color: #e2e8f0; }
+  .method { color: #94a3b8; }
+  .method .vis { color: #10b981; }
+  .method .ret { color: #8b5cf6; }
+  .method .mname { color: #e2e8f0; }
+  .method .param { color: #f59e0b; }
+
+  /* ─── RELATIONS SECTION ─── */
+  .relations-section {
+    background: #0d1117;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 28px;
+  }
+  .relations-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--blue);
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .rel-table { width: 100%; border-collapse: collapse; }
+  .rel-table th {
+    background: #1e293b;
+    color: #94a3b8;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    padding: 8px 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+  }
+  .rel-table td {
+    padding: 8px 12px;
+    border-bottom: 1px solid #1e293b;
+    font-size: 12px;
+    vertical-align: middle;
+  }
+  .rel-table tr:hover td { background: #111827; }
+  .rel-source { color: #60a5fa; font-weight: 600; font-family: 'JetBrains Mono', monospace; }
+  .rel-target { color: #34d399; font-weight: 600; font-family: 'JetBrains Mono', monospace; }
+  .rel-mult { color: #f59e0b; font-family: 'JetBrains Mono', monospace; font-size: 11px; }
+  .rel-label { color: #c4b5fd; font-style: italic; }
+
+  .tag {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+  }
+  .tag-inheritance { background: #1e3a5f; color: #93c5fd; }
+  .tag-composition { background: #1a3a2e; color: #6ee7b7; }
+  .tag-association { background: #2d1f4e; color: #c4b5fd; }
+  .tag-dependency { background: #3d2010; color: #fcd34d; }
+
+  /* ─── LEGEND ─── */
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 16px;
+    background: #0d1117;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    margin-bottom: 24px;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+  .legend-line {
+    width: 36px;
+    height: 2px;
+  }
+  .line-solid { background: white; }
+  .line-dashed { background: repeating-linear-gradient(90deg, white 0px, white 4px, transparent 4px, transparent 8px); }
+  .line-dotted { background: repeating-linear-gradient(90deg, white 0px, white 2px, transparent 2px, transparent 6px); }
+  .arrow-symbol { font-size: 16px; }
+
+  /* ─── PRINT STYLES ─── */
+  @media print {
+    body { background: white; color: black; padding: 10px; font-size: 11px; }
+    .print-bar, .btn-print { display: none !important; }
+    .module { break-inside: avoid; }
+    .page-header { background: #f8fafc; border: 1px solid #e2e8f0; }
+    .page-header h1 { -webkit-text-fill-color: #1e40af; color: #1e40af; }
+    .uml-class { background: white; border: 1px solid #e2e8f0 !important; }
+    .class-header { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .module { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ─── HEADER ─── -->
+<div class="page-header">
+  <h1>📐 Diagramme de Classes UML</h1>
+  <p style="font-size:16px; font-weight:600; color:#e2e8f0; margin:8px 0">CyberGuard / PhishGuard — Architecture Orientée Objet</p>
+  <p style="margin-bottom:12px">Système de détection de phishing par Intelligence Artificielle</p>
+  <span class="badge badge-blue">6 Modules</span>
+  <span class="badge badge-green">17 Classes</span>
+  <span class="badge badge-purple">Corrections UML Appliquées ✅</span>
+</div>
+
+<!-- ─── PRINT BUTTON ─── -->
+<div class="print-bar">
+  <button class="btn-print" onclick="window.print()">🖨️ Imprimer / Exporter PDF</button>
+</div>
+
+<!-- ─── LEGEND ─── -->
+<div class="legend">
+  <strong style="color:var(--text); width:100%; margin-bottom:4px;">Légende des Relations</strong>
+  <div class="legend-item"><div class="arrow-symbol" style="color:#60a5fa">◁——</div> Héritage (généralisation)</div>
+  <div class="legend-item"><div class="arrow-symbol" style="color:#10b981">◆——</div> Composition (cycle de vie partagé)</div>
+  <div class="legend-item"><div class="arrow-symbol" style="color:#c4b5fd">——→</div> Association (navigation)</div>
+  <div class="legend-item"><div class="arrow-symbol" style="color:#f59e0b">- - →</div> Dépendance (utilise)</div>
+  <div class="legend-item"><div style="padding:2px 6px;background:#1e3a5f;border:1px dashed #3b82f6;border-radius:4px;font-size:11px;">«Abstract»</div> Classe abstraite</div>
+  <div class="legend-item"><div style="padding:2px 6px;background:#0e7490;border:1px dotted #06b6d4;border-radius:4px;font-size:11px;">«Service»</div> Service métier</div>
+  <div class="legend-item"><div style="padding:2px 6px;background:#1a3a2e;border:1px solid #10b981;border-radius:4px;font-size:11px;">«Entity»</div> Entité persistante</div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- MODULE 1 -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="module module-1">
+  <div class="module-label">📋 Module 1 — Identité, Rôles et Signalement</div>
+  <div class="classes-row">
+
+    <!-- User Abstract -->
+    <div class="uml-class abstract" style="min-width:230px;">
+      <div class="class-header abstract-h">
+        <span class="stereotype">«Abstract»</span>
+        <span class="class-name">User</span>
+      </div>
+      <div class="class-section">
+        <span class="section-title">Attributs</span>
+        <div class="attr"><span class="vis">#</span> <span class="name">nom</span> : <span class="type">String</span></div>
+        <div class="attr"><span class="vis">#</span> <span class="name">prenom</span> : <span class="type">String</span></div>
+        <div class="attr"><span class="vis">#</span> <span class="name">email</span> : <span class="type">String</span></div>
+        <div class="attr"><span class="vis">#</span> <span class="name">motDePasse</span> : <span class="type">String</span></div>
+        <div class="attr"><span class="vis">#</span> <span class="name">dateDeCreation</span> : <span class="type">Date</span></div>
+      </div>
+      <div class="class-section">
+        <span class="section-title">Méthodes</span>
+        <div class="method"><span class="vis">+</span> <span class="mname">sAuthentifier</span>() : <span class="ret">bool</span></div>
+        <div class="method"><span class="vis">+</span> <span class="mname">seDeconnecter</span>() : <span class="ret">void</span></div>
+        <div class="method"><span class="vis">+</span> <span class="mname">gererProfil</span>() : <span class="ret">void</span></div>
+      </div>
+    </div>
+
+    <!-- UtilisateurStandard -->
+    <div class="uml-class entity" style="min-width:240px;">
+      <div class="class-header">
+        <span class="stereotype">«Entity»</span>
+        <span class="class-name">UtilisateurStandard</span>
+      </div>
+      <div class="class-section">
+        <span class="section-title">Attributs</span>
+        <div class="attr"><span class="vis">+</span> <span class="name">id</span> : <span class="type">int</span></div>
+        <div class="attr"><span class="vis">+</span> <span class="name">role</span> : <span class="type">String</span></div>
+      </div>
+      <div class="class-section">
+        <span class="section-title">Méthodes</span>
+        <div class="method"><span class="vis">+</span> <span class="mname">analyserUrl</span>(<span class="param">url: String</span>) : <span class="ret">Analyse</span></div>
+        <div class="method"><span class="vis">+</span> <span class="mname">consulterResultat</span>(<span class="param">idAnalyse: int</span>) : <span class="ret">Analyse</span></div>
+        <div class="method"><span class="vis">+</span> <span class="mname">consulterHistorique</span>() : <span class="ret">List&lt;Analyse&gt;</span></div>
+        <div class="method"><span class="vis">+</span> <span class="mname">rechercherUrl</span>(<span class="param">q: String</span>) : <span class="ret">List&lt;Analyse&gt;</span></div>
+        <div class="method"><span class="vis">+</span> <span class="mname">epinglerUrl</span>(<span class="param">id: int</span>) : <span class="ret">void</span></div>
+        <div class="method"><span class="vis">+</span> <span class="mname">supprimerUrl</span>(<span class="param">id: int</span>) : <span class="ret">void</span></div>
+      </div>
+    </div>
+
+    <!-- Administrateur -->
+    <div class="uml-class entity" style="min-width:230px;">
+      <div class="class-header">
+        <span class="stereotype">«Entity»</span>
+        <span class="class-name">Administrateur</span>
+      </div>
+      <div class="class-section">
+        <span class="section-title">Attributs</span>
+        <div class="attr"><span class="vis">+</span> <span class="name">id</span> : <span class="type">int</span></div>
+        <div class="attr"><span class="vis">+</span> <span class="name">role</span> : <span class="type">String</span></div>
+      </div>
+      <div class="class-section">
+        <span class="section-title">Méthodes</span>
+        <div class="method"><span class="vis">+</span> <span class="mname">ajouterUser</span>(<span class="param">u: User</span>) : <span class="ret">bool</span></div>
+        <div class="method"><span class="vis">+</span> <span class="mname">supprimerUser</span>(<span class="param">id: int</span>) : <span class="ret">bool</span></div>
+        <div class="method"><span class="vis">+</span> <span class="mname">modifierUrl</span>(<span class="param">id: int</span>) : <span class="ret">void</span></div>
+        <div class="method"><span class="vis">+</span> <span class="mname">consulterStatistique</span>() : <span class="ret">Statistique</span></div>
+        <div class="method"><span class="vis">+</span> <span class="mname">consulterJournal</span>() : <span class="ret">List&lt;JournalAudit&gt;</span></div>
+      </div>
+    </div>
+
+    <!-- Enqueteur -->
+    <div class="uml-class entity" style="min-width:260px;">
+      <div class="class-header">
+        <span class="stereotype">«Entity»</span>
+        <span class="class-name">Enqueteur</span>
+      </div>
+      <div class="class-section">
+        <span class="section-title">Attributs</span>
+        <div class="attr"><span class="vis">+</span> <span class="name">id</span> : <span class="type">int</span></div>
+        <div class="attr"><span class="vis">+</span> <span class="name">role</span> : <span class="type">String</span></div>
+        <div class="attr"><span class="vis">+</span> <span class="name">numeroBadge</span> : <span class="type">String</span></div>
+        <div class="attr"><span class="vis">+</span> <span class="name">niveauHabilitation</span> : <span class="type">String</span></div>
+      </div>
+      <div class="class-section">
+        <span class="section-title">Méthodes</span>
+        <div class="method"><span class="vis">+</span> <span class="mname">recevoirSignalement</span>() : <span class="ret">List&lt;Signalement&gt;</span></div>
+        <div class="method"><span class="vis">+</span> <span class="mname">traiterSignalement</span>(<span class="param">id: int</span>) : <span class="ret">void</span></div>
+        <div class="method"><span class="vis">+</span> <span class="mname">cloturerSignalement</span>(<span class="param">id: int</span>) : <span class="ret">void</span></div>
+        <div class="method"><span class="vis">+</span> <span class="mname">genererConclusion</span>(<span class="param">id: int, txt: String</span>) : <span class="ret">void</span></div>
+        <div class="method"><span class="vis">+</span> <span class="mname">gererRapport</span>(<span class="param">id: int</span>) : <span class="ret">Rapport</span></div>
+      </div>
+    </div>
+
+    <!-- Signalement -->
+    <div class="uml-class entity" style="min-width:220px;">
+      <div class="class-header">
+        <span class="stereotype">«Entity»</span>
+        <span class="class-name">Signalement</span>
+      </div>
+      <div class="class-section">
+        <span class="section-title">Attributs</span>
+        <div class="attr"><span class="vis">+</span> <span class="name">id</span> : <span class="type">int</span></div>
+        <div class="attr"><span class="vis">+</span> <span class="name">dateEnvoi</span> : <span class="type">Date</span></div>
+        <div class="attr"><span class="vis">+</span> <span class="name">description</span> : <span class="type">String</span></div>
+        <div class="attr"><span class="vis">+</span> <span class="name">statut</span> : <span class="type">String</span></div>
+        <div class="attr"><span class="vis">+</span> <span class="name">priorite</span> : <span class="type">String</span></div>
+        <div class="attr"><span class="vis">+</span> <span class="name">conclusion</span> : <span class="type">String</span></div>
+      </div>
+      <div class="class-section">
+        <span class="section-title">Méthodes</span>
+        <div class="method"><span class="vis">+</span> <span class="mname">envoyerSignalement</span>() : <span class="ret">void</span></div>
+        <div class="method"><span class="vis">+</span> <span class="mname">traiterSignalement</span>() : <span class="ret">void</span></div>
+        <div class="method"><span class="vis">+</span> <span class="mname">cloturerSignalement</span>() : <span class="ret">void</span></div>
+      </div>
+    </div>
+
+  </div><!-- end classes-row -->
+</div><!-- end module 1 -->
+
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- MODULE 2 -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="module module-2">
+  <div class="module-label">🔍 Module 2 — Analyse et Détection de Phishing (Mode 1)</div>
+  <div class="classes-row">
+
+    <!-- Analyse -->
+    <div class="uml-class entity" style="min-width:240px;">
+      <div class="class-header">
+        <span class="stereotype">«Entity»</span>
+        <span class="class-name">Analyse</span>
+      </div>
+      <div class="class-section">
+        <span class="section-title">Attributs</span>
+        <div class="attr"><span class="vis">+</span> <span class="name">id</span> : <span class="type">int</span></div>
+        <div class="attr"><span class="vis">+</span> <span class="name">url</span> : <span class="type">String</span></div>
+        <div class="attr"><span class="vis">+</span> <span class="name">dateAnalyse</span> : <span class="type">Date</span></div>
+        <div class="attr"><span class="vis">+</span> <span class="name">statut</span> : <span class="type">String</span></div>
+        <div class="attr"><span class="vis">+</span> <span class="name">classification</span> : <span class="type">String</span></div>
+        <div class="attr"><span class="vis">+</span> <span class="name">scoreRisque</span> : <span class="type">double</span></div>
+        <div class="attr"><span class="vis">+</span> <span class="name">niveauRisque</span> : <span class="type">String</span></div>
+        <div class="attr"><span class="vis">+</span> <span class="name">epingle</span> : <span class="type">bool</span></div>
+      </div>
+      <div class="class-section">
+        <span class="section-title">Méthodes</span>
+        <div class="method"><span class="vis">+</span> <span class="mname">lancerAnalyse</span>() : <span class="ret">EvaluationRisque</span></div>
+        <div class="method"><span class="vis">+</span> <span class="mname">consulterResultat</span>() : <span class="ret">void</span></div>
+        <div class="method"><span class="vis">+</span> <span class="mname">supprimerAnalyse</span>() : <span class="ret">void</span></div>
+        <div class="method"><span class="vis">+</span> <span class="mname">epingler</span>() : <span class="ret">void</span></div>
+        <div class="method"><span class="vis">+</span> <span class="mname">desepingler</span>() : <span class="ret">void</span></div>
+      </div>
+    </div>
+
+    <!-- CaracteristiqueUrl -->
+    <div class="uml-class entity" style="min-width:240px;">
+      <div class="class-header">
+        <span class="stereotype">«Entity»</span>
+        <span class="class-name">CaracteristiqueUrl</span>
+      </div>
+      <div class="class-section">
+        <span class="section-title">Attributs</span>
+        <div class="attr"><span class="vis">+</span> <span class="name">id</span> : <span class="type">int</span></div>
+        <div class="attr"><span class="vis">+</span> <span class="name">longueurUrl</span> : <span class="type">int</span></div>
+        <div class="attr"><span class="vis">+</span> <span class="name">nbPoints</span> : <span class="type">int</span></div>
+        <div class="attr"><span class="vis">+</span> <span class="name">nbTirets</span> : <span class="type">int</span></div>
+        <div class="attr"><span class="vis">+</span> <span class="name">contientAdresseIP</span> : <span class="type">bool</span></div>
+        <div class="attr"><span class="vis">+</span> <span class="name">HTTPS</span> : <span class="type">bool</span></div>
+        <div class="attr"><span class="vis">+</span> <span class="name">ageDomaine</span> : <span class="type">int</span></div>
+        <div class="attr"><span class="vis">+</span> <span class="name">nbRedirections</span> : <span class="type">int</span></div>
+        <div class="attr"><span class="vis">+</span> <span class="name">contientFormulaireConnexion</span> : <span class="type">bool</span></div>
+        <div class="attr"><span class="vis">+</span> <span class="name">nbLiensExternes</span> : <span class="type">int</span></div>
+        <div class="attr"><span class="vis">+</span> <span class="name">motsSuspects</span> : <span class="type">int</span></div>
+        <div class="attr"><span class="vis">+</span> <span class="name">popularite</span> : <span class="type">double</span></div>
+      </div>
+      <div class="class-section">
+        <span class="section-title">Méthodes</span>
+        <div class="method"><span class="vis">+</span> <span class="mname">extraireCaracteristiques</span>() : <span class="ret">void</span></div>
+      </div>
+    </div>
+
+    <!-- PredictionML -->
+    <div class="uml-class entity" style="min-width:220px;">
+      <div class="class-header">
+        <span class="stereotype">«Entity»</span>
+        <span class="class-name">PredictionML</span>
+      </div>
+      <div class="class-section">
+        <span class="section-title">Attributs</span>
+        <div class="attr"><span class="vis">+</span> <span class="name">id</span> : <span class="type">int</span></div>
+        <div class="attr"><span class="vis">+</span> <span class="name">prediction</span> : <span class="type">String</span></div>
+        <div class="attr"><span class="vis">+</span> <span class="name">probabilite</span> : <span class="type">double</span></div>
+        <div class="attr"><span class="vis">+</span> <span class="name">versionModele</span> : <span class="type">String</span></div>
+        <div class="attr"><span class="vis">+</span> <span class="name">datePrediction</span> : <span class="type">Date</span></div>
+      </div>
+      <div class="class-section">
+        <span class="section-title">Méthodes</span>
+        <div class="method"><span class="vis">+</span> <span class="mname">predire</span>() : <span class="ret">void</span></div>
+      </div>
+    </div>
+
+    <!-- EvaluationRisque -->
+    <div class="uml-class entity" style="min-width:220px;">
+      <div class="class-header">
+        <span class="stereotype">«Entity»</span>
+        <span class="class-name">EvaluationRisque</span>
+      </div>
+      <div class="class-section">
+        <span class="section-title">Attributs</span>
+        <div class="attr"><span class="vis">+</span> <span class="name">id</span> : <span class="type">int</span></div>
+        <div class="attr"><span class="vis">+</span> <span class="name">scoreFinal</span> : <span class="type">double</span></div>
+        <div class="attr"><span class="vis">+</span> <span class="name">niveau</span> : <span class="type">String</span></div>
+        <div class="attr"><span class="vis">+</span> <span class="name">verdictFinal</span> : <span class="type">String</span></div>
+      </div>
+      <div class="class-section">
+        <span class="section-title">Méthodes</span>
+        <div class="method"><span class="vis">+</span> <span class="mname">evaluerRisque</span>() : <span class="ret">void</span></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- MODULE 3 -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="module module-3">
+  <div class="module-label">🌐 Module 3 — Vérification Externe et Explicabilité</div>
+  <div class="classes-row">
+
+    <!-- VerificationExterne -->
+    <div class="uml-class abstract" style="min-width:220px;">
+      <div class="class-header abstract-h">
+        <span class="stereotype">«Abstract»</span>
+        <span class="class-name">VerificationExterne</span>
+      </div>
+      <div class="class-section">
+        <span class="section-title">Attributs</span>
+        <div class="attr"><span class="vis">+</span> <span class="name">id</span> : <span class="type">int</span></div>
+        <div class="attr"><span class="vis">+</span> <span class="name">service</span> : <span class="type">String</span></div>
+        <div class="attr"><span class="vis">+</span> <span class="name">verdict</span> : <span class="type">String</span></div>
+        <div class="attr"><span class="vis">+</span> <span class="name">score</span> : <span class="type">double</span></div>
+        <div class="attr"><span class="vis">+</span> <span class="name">dateVerif</span> : <span class="type">Date</span></div>
+      </div>
+      <div class="class-section">
+        <span class="section-title">Méthodes</span>
+        <div class="method"><span class="vis">+</span> <span class="mname">verifier</span>() : <span class="ret">void</span></div>
+      </div>
+    </div>
+
+    <!-- VirusTotal -->
+    <div class="uml-class" style="min-width:200px;">
+      <div class="class-header">
+        <span class="stereotype">«ExternalAPI»</span>
+        <span class="class-name">VirusTotal</span>
+      </div>
+      <div class="class-section">
+        <span class="section-title">Attributs</span>
+        <div class="attr"><span class="vis">+</span> <span class="name">apiKey</span> : <span class="type">String</span></div>
+        <div class="attr"><span class="vis">+</span> <span class="name">reponse</span> : <span class="type">String</span></div>
+        <div class="attr"><span class="vis">+</span> <span class="name">nbMoteursDetectes</span> : <span class="type">int</span></div>
+      </div>
+      <div class="class-section">
+        <span class="section-title">Méthodes</span>
+        <div class="method"><span class="vis">+</span> <span class="mname">analyserURL</span>() : <span class="ret">void</span></div>
+      </div>
+    </div>
+
+    <!-- GoogleSafeBrowsing -->
+    <div class="uml-class" style="min-width:220px;">
+      <div class="class-header">
+        <span class="stereotype">«ExternalAPI»</span>
+        <span class="class-name">GoogleSafeBrowsing</span>
+      </div>
+      <div class="class-section">
+        <span class="section-title">Attributs</span>
+        <div class="attr"><span class="vis">+</span> <span class="name">apiKey</span> : <span class="type">String</span></div>
+        <div class="attr"><span class="vis">+</span> <span class="name">reponse</span> : <span class="type">String</span></div>
+      </div>
+      <div class="class-section">
+        <span class="section-title">Méthodes</span>
+        <div class="method"><span class="vis">+</span> <span class="mname">verifierURL</span>() : <span class="ret">void</span></div>
+      </div>
+    </div>
+
+    <!-- ExplicationIA -->
+    <div class="uml-class entity" style="min-width:200px;">
+      <div class="class-header">
+        <span class="stereotype">«Entity»</span>
+        <span class="class-name">ExplicationIA</span>
+      </div>
+      <div class="class-section">
+        <span class="section-title">Attributs</span>
+        <div class="attr"><span class="vis">+</span> <span class="name">id</span> : <span class="type">int</span></div>
+        <div class="attr"><span class="vis">+</span> <span class="name">contenu</span> : <span class="type">String</span></div>
+        <div class="attr"><span class="vis">+</span> <span class="name">dateGeneration</span> : <span class="type">Date</span></div>
+      </div>
+      <div class="class-section">
+        <span class="section-title">Méthodes</span>
+        <div class="method"><span class="vis">+</span> <span class="mname">genererExplication</span>() : <span class="ret">void</span></div>
+      </div>
+    </div>
+
+    <!-- Statistique -->
+    <div class="uml-class entity" style="min-width:220px;">
+      <div class="class-header">
+        <span class="stereotype">«Entity»</span>
+        <span class="class-name">Statistique</span>
+      </div>
+      <div class="class-section">
+        <span class="section-title">Attributs</span>
+        <div class="attr"><span class="vis">+</span> <span class="name">id</span> : <span class="type">int</span></div>
+        <div class="attr"><span class="vis">+</span> <span class="name">periodeDebut</span> : <span class="type">Date</span></div>
+        <div class="attr"><span class="vis">+</span> <span class="name">periodeFin</span> : <span class="type">Date</span></div>
+        <div class="attr"><span class="vis">+</span> <span class="name">nbAnalyses</span> : <span class="type">int</span></div>
+        <div class="attr"><span class="vis">+</span> <span class="name">nbPhishing</span> : <span class="type">int</span></div>
+        <div class="attr"><span class="vis">+</span> <span class="name">nbSures</span> : <span class="type">int</span></div>
+        <div class="attr"><span class="vis">+</span> <span class="name">nbDangereuses</span> : <span class="type">int</span></div>
+      </div>
+      <div class="class-section">
+        <span class="section-title">Méthodes</span>
+        <div class="method"><span class="vis">+</span> <span class="mname">calculerStatistiques</span>() : <span class="ret">void</span></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- MODULE 4 -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="module module-4">
+  <div class="module-label">🛡️ Module 4 — Audit de Site Web et Menaces (Mode 2)</div>
+  <div class="classes-row">
+
+    <!-- AuditSite -->
+    <div class="uml-class entity" style="min-width:220px;">
+      <div class="class-header">
+        <span class="stereotype">«Entity»</span>
+        <span class="class-name">AuditSite</span>
+      </div>
+      <div class="class-section">
+        <span class="section-title">Attributs</span>
+        <div class="attr"><span class="vis">+</span> <span class="name">id</span> : <span class="type">int</span></div>
+        <div class="attr"><span class="vis">+</span> <span class="name">url_site</span> : <span class="type">String</span></div>
+        <div class="attr"><span class="vis">+</span> <span class="name">statut_ssl</span> : <span class="type">String</span></div>
+        <div class="attr"><span class="vis">+</span> <span class="name">note_entetes</span> : <span class="type">String</span></div>
+        <div class="attr"><span class="vis">+</span> <span class="name">date_audit</span> : <span class="type">Date</span></div>
+      </div>
+      <div class="class-section">
+        <span class="section-title">Méthodes</span>
+        <div class="method"><span class="vis">+</span> <span class="mname">lancerAudit</span>() : <span class="ret">void</span></div>
+        <div class="method"><span class="vis">+</span> <span class="mname">verifierCertificatSSL</span>() : <span class="ret">void</span></div>
+      </div>
+    </div>
+
+    <!-- MenaceDetectee -->
+    <div class="uml-class entity" style="min-width:230px;">
+      <div class="class-header">
+        <span class="stereotype">«Entity»</span>
+        <span class="class-name">MenaceDetectee</span>
+      </div>
+      <div class="class-section">
+        <span class="section-title">Attributs</span>
+        <div class="attr"><span class="vis">+</span> <span class="name">type_attaque</span> : <span class="type">String</span></div>
+        <div class="attr"><span class="vis">+</span> <span class="name">adresse_ip_source</span> : <span class="type">String</span></div>
+        <div class="attr"><span class="vis">+</span> <span class="name">gravite</span> : <span class="type">String</span></div>
+        <div class="attr"><span class="vis">+</span> <span class="name">payload</span> : <span class="type">String</span></div>
+        <div class="attr"><span class="vis">+</span> <span class="name">horodatage</span> : <span class="type">DateTime</span></div>
+      </div>
+      <div class="class-section">
+        <span class="section-title">Méthodes</span>
+        <div class="method"><span class="vis">+</span> <span class="mname">tracerOrigine</span>() : <span class="ret">void</span></div>
+      </div>
+    </div>
+
+    <!-- Rapport -->
+    <div class="uml-class entity" style="min-width:220px;">
+      <div class="class-header">
+        <span class="stereotype">«Entity»</span>
+        <span class="class-name">Rapport</span>
+      </div>
+      <div class="class-section">
+        <span class="section-title">Attributs</span>
+        <div class="attr"><span class="vis">+</span> <span class="name">id</span> : <span class="type">int</span></div>
+        <div class="attr"><span class="vis">+</span> <span class="name">code_rapport</span> : <span class="type">String</span></div>
+        <div class="attr"><span class="vis">+</span> <span class="name">statut</span> : <span class="type">String</span></div>
+        <div class="attr"><span class="vis">+</span> <span class="name">hash_integrite</span> : <span class="type">String</span></div>
+        <div class="attr"><span class="vis">+</span> <span class="name">date_creation</span> : <span class="type">Date</span></div>
+      </div>
+      <div class="class-section">
+        <span class="section-title">Méthodes</span>
+        <div class="method"><span class="vis">+</span> <span class="mname">modifier</span>() : <span class="ret">void</span></div>
+        <div class="method"><span class="vis">+</span> <span class="mname">archiver</span>() : <span class="ret">void</span></div>
+        <div class="method"><span class="vis">+</span> <span class="mname">genererHash</span>() : <span class="ret">String</span></div>
+      </div>
+    </div>
+
+    <!-- JournalAudit -->
+    <div class="uml-class entity" style="min-width:200px;">
+      <div class="class-header">
+        <span class="stereotype">«Entity»</span>
+        <span class="class-name">JournalAudit</span>
+      </div>
+      <div class="class-section">
+        <span class="section-title">Attributs</span>
+        <div class="attr"><span class="vis">+</span> <span class="name">acteur</span> : <span class="type">String</span></div>
+        <div class="attr"><span class="vis">+</span> <span class="name">action</span> : <span class="type">String</span></div>
+        <div class="attr"><span class="vis">+</span> <span class="name">horodatage</span> : <span class="type">DateTime</span></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- MODULE 5 -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="module module-5">
+  <div class="module-label">🤖 Module 5 — Services Intelligence Artificielle et Machine Learning</div>
+  <div class="classes-row">
+
+    <!-- URLFeatureExtractor -->
+    <div class="uml-class service" style="min-width:270px;">
+      <div class="class-header">
+        <span class="stereotype">«Service»</span>
+        <span class="class-name">URLFeatureExtractor</span>
+      </div>
+      <div class="class-section">
+        <span class="section-title">Méthodes</span>
+        <div class="method"><span class="vis">+</span> <span class="mname">calculerEntropie</span>(<span class="param">text: String</span>) : <span class="ret">double</span></div>
+        <div class="method"><span class="vis">+</span> <span class="mname">extraireCaracteristiques</span>(<span class="param">url: String</span>) : <span class="ret">CaracteristiqueUrl</span></div>
+      </div>
+    </div>
+
+    <!-- TextNLPPipeline -->
+    <div class="uml-class service" style="min-width:270px;">
+      <div class="class-header">
+        <span class="stereotype">«Service»</span>
+        <span class="class-name">TextNLPPipeline</span>
+      </div>
+      <div class="class-section">
+        <span class="section-title">Attributs</span>
+        <div class="attr"><span class="vis">+</span> <span class="name">mots_urgence</span> : <span class="type">List&lt;String&gt;</span></div>
+        <div class="attr"><span class="vis">+</span> <span class="name">mots_finance</span> : <span class="type">List&lt;String&gt;</span></div>
+      </div>
+      <div class="class-section">
+        <span class="section-title">Méthodes</span>
+        <div class="method"><span class="vis">+</span> <span class="mname">extraireIndicateursTexte</span>(<span class="param">contenu: String</span>) : <span class="ret">Map&lt;String,Object&gt;</span></div>
+      </div>
+    </div>
+
+    <!-- MLModelEnsemble -->
+    <div class="uml-class service" style="min-width:290px;">
+      <div class="class-header">
+        <span class="stereotype">«Service»</span>
+        <span class="class-name">MLModelEnsemble</span>
+      </div>
+      <div class="class-section">
+        <span class="section-title">Attributs</span>
+        <div class="attr"><span class="vis">+</span> <span class="name">rf_model</span> : <span class="type">RandomForest</span></div>
+        <div class="attr"><span class="vis">+</span> <span class="name">gbm_model</span> : <span class="type">GradientBoosting</span></div>
+        <div class="attr"><span class="vis">+</span> <span class="name">mlp_model</span> : <span class="type">MLPClassifier</span></div>
+      </div>
+      <div class="class-section">
+        <span class="section-title">Méthodes</span>
+        <div class="method"><span class="vis">+</span> <span class="mname">predireProba</span>(<span class="param">features: List&lt;double&gt;</span>) : <span class="ret">Map&lt;String,double&gt;</span></div>
+        <div class="method"><span class="vis">+</span> <span class="mname">evaluerScoreEnsemble</span>() : <span class="ret">double</span></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- MODULE 6 -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="module module-6">
+  <div class="module-label">🔒 Module 6 — Services Réseau, Journalisation et Cryptographie</div>
+  <div class="classes-row">
+
+    <!-- NetworkInspector -->
+    <div class="uml-class service" style="min-width:270px;">
+      <div class="class-header">
+        <span class="stereotype">«Service»</span>
+        <span class="class-name">NetworkInspector</span>
+      </div>
+      <div class="class-section">
+        <span class="section-title">Méthodes</span>
+        <div class="method"><span class="vis">+</span> <span class="mname">auditerCertificatSSL</span>(<span class="param">domain: String</span>) : <span class="ret">Map</span></div>
+        <div class="method"><span class="vis">+</span> <span class="mname">verifierEntetesSecurite</span>(<span class="param">domain: String</span>) : <span class="ret">Map</span></div>
+        <div class="method"><span class="vis">+</span> <span class="mname">verifierUsurpationMarque</span>(<span class="param">domain: String</span>) : <span class="ret">Map</span></div>
+      </div>
+    </div>
+
+    <!-- GeoIPService -->
+    <div class="uml-class service" style="min-width:250px;">
+      <div class="class-header">
+        <span class="stereotype">«Service»</span>
+        <span class="class-name">GeoIPService</span>
+      </div>
+      <div class="class-section">
+        <span class="section-title">Méthodes</span>
+        <div class="method"><span class="vis">+</span> <span class="mname">resoudreDomaineVersIP</span>(<span class="param">domain: String</span>) : <span class="ret">String</span></div>
+        <div class="method"><span class="vis">+</span> <span class="mname">localiserIP</span>(<span class="param">ip: String</span>) : <span class="ret">Map</span></div>
+      </div>
+    </div>
+
+    <!-- LogAnalyzer -->
+    <div class="uml-class service" style="min-width:270px;">
+      <div class="class-header">
+        <span class="stereotype">«Service»</span>
+        <span class="class-name">LogAnalyzer</span>
+      </div>
+      <div class="class-section">
+        <span class="section-title">Attributs</span>
+        <div class="attr"><span class="vis">+</span> <span class="name">motifsSQLi</span> : <span class="type">List&lt;Pattern&gt;</span></div>
+        <div class="attr"><span class="vis">+</span> <span class="name">motifsXSS</span> : <span class="type">List&lt;Pattern&gt;</span></div>
+      </div>
+      <div class="class-section">
+        <span class="section-title">Méthodes</span>
+        <div class="method"><span class="vis">+</span> <span class="mname">analyserEntreeLog</span>(<span class="param">line: String</span>) : <span class="ret">MenaceDetectee</span></div>
+        <div class="method"><span class="vis">+</span> <span class="mname">detecterDDoS</span>(<span class="param">logs: List</span>) : <span class="ret">bool</span></div>
+      </div>
+    </div>
+
+    <!-- CryptographicEngine -->
+    <div class="uml-class service" style="min-width:270px;">
+      <div class="class-header">
+        <span class="stereotype">«Service»</span>
+        <span class="class-name">CryptographicEngine</span>
+      </div>
+      <div class="class-section">
+        <span class="section-title">Méthodes</span>
+        <div class="method"><span class="vis">+</span> <span class="mname">genererHashSHA256</span>(<span class="param">data: String</span>) : <span class="ret">String</span></div>
+        <div class="method"><span class="vis">+</span> <span class="mname">verifierIntegriteRapport</span>(<span class="param">r: Rapport</span>) : <span class="ret">bool</span></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- RELATIONS TABLE -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="relations-section">
+  <div class="relations-title">🔗 Tableau Complet des Relations UML</div>
+  <table class="rel-table">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Type</th>
+        <th>Source</th>
+        <th>Multiplicité</th>
+        <th>Cible</th>
+        <th>Label / Rôle</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>1</td>
+        <td><span class="tag tag-inheritance">Héritage</span></td>
+        <td class="rel-source">UtilisateurStandard</td>
+        <td class="rel-mult">—</td>
+        <td class="rel-target">User</td>
+        <td class="rel-label">généralise</td>
+      </tr>
+      <tr>
+        <td>2</td>
+        <td><span class="tag tag-inheritance">Héritage</span></td>
+        <td class="rel-source">Administrateur</td>
+        <td class="rel-mult">—</td>
+        <td class="rel-target">User</td>
+        <td class="rel-label">généralise</td>
+      </tr>
+      <tr>
+        <td>3</td>
+        <td><span class="tag tag-inheritance">Héritage</span></td>
+        <td class="rel-source">Enqueteur</td>
+        <td class="rel-mult">—</td>
+        <td class="rel-target">User</td>
+        <td class="rel-label">généralise</td>
+      </tr>
+      <tr>
+        <td>4</td>
+        <td><span class="tag tag-inheritance">Héritage</span></td>
+        <td class="rel-source">VirusTotal</td>
+        <td class="rel-mult">—</td>
+        <td class="rel-target">VerificationExterne</td>
+        <td class="rel-label">spécialise</td>
+      </tr>
+      <tr>
+        <td>5</td>
+        <td><span class="tag tag-inheritance">Héritage</span></td>
+        <td class="rel-source">GoogleSafeBrowsing</td>
+        <td class="rel-mult">—</td>
+        <td class="rel-target">VerificationExterne</td>
+        <td class="rel-label">spécialise</td>
+      </tr>
+      <tr>
+        <td>6</td>
+        <td><span class="tag tag-composition">Composition ◆</span></td>
+        <td class="rel-source">Analyse</td>
+        <td class="rel-mult">"1" *-- "1"</td>
+        <td class="rel-target">CaracteristiqueUrl</td>
+        <td class="rel-label">possède</td>
+      </tr>
+      <tr>
+        <td>7</td>
+        <td><span class="tag tag-composition">Composition ◆</span></td>
+        <td class="rel-source">Analyse</td>
+        <td class="rel-mult">"1" *-- "1..*"</td>
+        <td class="rel-target">PredictionML</td>
+        <td class="rel-label">génère</td>
+      </tr>
+      <tr>
+        <td>8</td>
+        <td><span class="tag tag-composition">Composition ◆</span></td>
+        <td class="rel-source">Analyse</td>
+        <td class="rel-mult">"1" *-- "1"</td>
+        <td class="rel-target">EvaluationRisque</td>
+        <td class="rel-label">produit</td>
+      </tr>
+      <tr>
+        <td>9</td>
+        <td><span class="tag tag-composition">Composition ◆</span></td>
+        <td class="rel-source">AuditSite</td>
+        <td class="rel-mult">"1" *-- "0..*"</td>
+        <td class="rel-target">MenaceDetectee</td>
+        <td class="rel-label">détecte</td>
+      </tr>
+      <tr>
+        <td>10</td>
+        <td><span class="tag tag-association">Association →</span></td>
+        <td class="rel-source">UtilisateurStandard</td>
+        <td class="rel-mult">"1" → "0..*"</td>
+        <td class="rel-target">Signalement</td>
+        <td class="rel-label">envoie</td>
+      </tr>
+      <tr>
+        <td>11</td>
+        <td><span class="tag tag-association">Association →</span></td>
+        <td class="rel-source">Enqueteur</td>
+        <td class="rel-mult">"1" → "0..*"</td>
+        <td class="rel-target">Signalement</td>
+        <td class="rel-label">reçoit / traite</td>
+      </tr>
+      <tr>
+        <td>12</td>
+        <td><span class="tag tag-association">Association →</span></td>
+        <td class="rel-source">UtilisateurStandard</td>
+        <td class="rel-mult">"1" → "0..*"</td>
+        <td class="rel-target">Analyse</td>
+        <td class="rel-label">effectue</td>
+      </tr>
+      <tr>
+        <td>13</td>
+        <td><span class="tag tag-association">Association →</span></td>
+        <td class="rel-source">UtilisateurStandard</td>
+        <td class="rel-mult">"1" → "0..*"</td>
+        <td class="rel-target">AuditSite</td>
+        <td class="rel-label">lance</td>
+      </tr>
+      <tr>
+        <td>14</td>
+        <td><span class="tag tag-association">Association →</span></td>
+        <td class="rel-source">Analyse</td>
+        <td class="rel-mult">"1" → "0..*"</td>
+        <td class="rel-target">VerificationExterne</td>
+        <td class="rel-label">déclenche</td>
+      </tr>
+      <tr>
+        <td>15</td>
+        <td><span class="tag tag-association">Association →</span></td>
+        <td class="rel-source">Analyse</td>
+        <td class="rel-mult">"1" → "0..*"</td>
+        <td class="rel-target">ExplicationIA</td>
+        <td class="rel-label">justifie</td>
+      </tr>
+      <tr>
+        <td>16</td>
+        <td><span class="tag tag-association">Association →</span></td>
+        <td class="rel-source">Analyse</td>
+        <td class="rel-mult">"0..*" → "1"</td>
+        <td class="rel-target">Statistique</td>
+        <td class="rel-label">alimente</td>
+      </tr>
+      <tr>
+        <td>17</td>
+        <td><span class="tag tag-association">Association →</span></td>
+        <td class="rel-source">Administrateur</td>
+        <td class="rel-mult">"1" → "1"</td>
+        <td class="rel-target">Statistique</td>
+        <td class="rel-label">consulte ✅ (correction E2)</td>
+      </tr>
+      <tr>
+        <td>18</td>
+        <td><span class="tag tag-association">Association →</span></td>
+        <td class="rel-source">Analyse</td>
+        <td class="rel-mult">"0..1" → "0..1"</td>
+        <td class="rel-target">Rapport</td>
+        <td class="rel-label">synthétise ✅ (correction E4)</td>
+      </tr>
+      <tr>
+        <td>19</td>
+        <td><span class="tag tag-association">Association →</span></td>
+        <td class="rel-source">AuditSite</td>
+        <td class="rel-mult">"0..1" → "0..1"</td>
+        <td class="rel-target">Rapport</td>
+        <td class="rel-label">synthétise ✅ (correction E4)</td>
+      </tr>
+      <tr>
+        <td>20</td>
+        <td><span class="tag tag-association">Association →</span></td>
+        <td class="rel-source">Enqueteur</td>
+        <td class="rel-mult">"1" → "0..*"</td>
+        <td class="rel-target">Rapport</td>
+        <td class="rel-label">gère</td>
+      </tr>
+      <tr>
+        <td>21</td>
+        <td><span class="tag tag-association">Association →</span></td>
+        <td class="rel-source">Administrateur</td>
+        <td class="rel-mult">"1" → "0..*"</td>
+        <td class="rel-target">JournalAudit</td>
+        <td class="rel-label">consulte</td>
+      </tr>
+      <tr>
+        <td>22</td>
+        <td><span class="tag tag-dependency">Dépendance - - →</span></td>
+        <td class="rel-source">URLFeatureExtractor</td>
+        <td class="rel-mult">—</td>
+        <td class="rel-target">CaracteristiqueUrl</td>
+        <td class="rel-label">«crée» ✅ (correction E5)</td>
+      </tr>
+      <tr>
+        <td>23</td>
+        <td><span class="tag tag-dependency">Dépendance - - →</span></td>
+        <td class="rel-source">TextNLPPipeline</td>
+        <td class="rel-mult">—</td>
+        <td class="rel-target">Analyse</td>
+        <td class="rel-label">«alimente» ✅ (correction E3)</td>
+      </tr>
+      <tr>
+        <td>24</td>
+        <td><span class="tag tag-dependency">Dépendance - - →</span></td>
+        <td class="rel-source">MLModelEnsemble</td>
+        <td class="rel-mult">—</td>
+        <td class="rel-target">PredictionML</td>
+        <td class="rel-label">«produit»</td>
+      </tr>
+      <tr>
+        <td>25</td>
+        <td><span class="tag tag-dependency">Dépendance - - →</span></td>
+        <td class="rel-source">NetworkInspector</td>
+        <td class="rel-mult">—</td>
+        <td class="rel-target">AuditSite</td>
+        <td class="rel-label">«sonde» ✅ (correction E6)</td>
+      </tr>
+      <tr>
+        <td>26</td>
+        <td><span class="tag tag-dependency">Dépendance - - →</span></td>
+        <td class="rel-source">GeoIPService</td>
+        <td class="rel-mult">—</td>
+        <td class="rel-target">MenaceDetectee</td>
+        <td class="rel-label">«géolocalise» ✅ (correction E6)</td>
+      </tr>
+      <tr>
+        <td>27</td>
+        <td><span class="tag tag-dependency">Dépendance - - →</span></td>
+        <td class="rel-source">LogAnalyzer</td>
+        <td class="rel-mult">—</td>
+        <td class="rel-target">MenaceDetectee</td>
+        <td class="rel-label">«identifie» ✅ (correction E6)</td>
+      </tr>
+      <tr>
+        <td>28</td>
+        <td><span class="tag tag-dependency">Dépendance - - →</span></td>
+        <td class="rel-source">CryptographicEngine</td>
+        <td class="rel-mult">—</td>
+        <td class="rel-target">Rapport</td>
+        <td class="rel-label">«scelle / vérifie»</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- Footer -->
+<div style="text-align:center; color:#475569; font-size:12px; padding:20px; border-top:1px solid #1e293b; margin-top:20px;">
+  CyberGuard / PhishGuard — Diagramme de Classes UML Corrigé &nbsp;|&nbsp; 17 Classes · 6 Modules · 28 Relations &nbsp;|&nbsp; Généré automatiquement
+</div>
+
+</body>
+</html>

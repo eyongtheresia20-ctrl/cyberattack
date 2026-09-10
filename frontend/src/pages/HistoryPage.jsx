@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useLanguage } from '../context/LanguageContext';
 import { 
   History, Search, Pin, Eye, Trash2, X, AlertTriangle, 
   CheckCircle2, Cpu, BarChart2, ShieldCheck, MapPin, 
@@ -8,6 +9,7 @@ import {
 
 export default function HistoryPage() {
   const { user } = useAuth();
+  const { lang, t } = useLanguage();
 
   // Hydrate history from cache immediately, then fetch fresh data from database
   const [scanHistory, setScanHistory] = useState(() => {
@@ -210,17 +212,17 @@ export default function HistoryPage() {
             </div>
             <div>
               <h2 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">
-                Historique des Analyses & Renseignement IA
+                {lang === 'fr' ? 'Historique des Analyses & Renseignement IA' : 'Analysis History & AI Intelligence'}
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                Registre permanent de l'ensemble de vos analyses enregistrées en base de données.
+                {lang === 'fr' ? "Registre permanent de l'ensemble de vos analyses enregistrées en base de données." : 'Permanent ledger of all security scans recorded in the database.'}
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
             <span className="px-3.5 py-1.5 bg-sky-50 dark:bg-sky-950/40 text-sky-600 dark:text-sky-400 border border-sky-200 dark:border-sky-800/40 rounded-xl text-xs font-mono font-bold">
-              {scanHistory.length} analyses au total
+              {scanHistory.length} {lang === 'fr' ? 'analyses au total' : 'total scans'}
             </span>
           </div>
         </div>
@@ -232,7 +234,7 @@ export default function HistoryPage() {
             <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
             <input
               type="text"
-              placeholder="Rechercher par URL, code ANL, canal, statut..."
+              placeholder={lang === 'fr' ? "Rechercher par URL, code ANL, canal, statut..." : "Search by URL, ANL code, channel, status..."}
               value={historySearchQuery}
               onChange={(e) => setHistorySearchQuery(e.target.value)}
               className="w-full pl-10 pr-4 py-2 bg-white dark:bg-[#161b27] border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-sky-500 font-sans"
@@ -248,7 +250,7 @@ export default function HistoryPage() {
                   : 'bg-white dark:bg-[#161b27] text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
               }`}
             >
-              Tous ({scanHistory.length})
+              {lang === 'fr' ? 'Tous' : 'All'} ({scanHistory.length})
             </button>
 
             <button
@@ -259,7 +261,7 @@ export default function HistoryPage() {
                   : 'bg-white dark:bg-[#161b27] text-rose-600 dark:text-rose-400 border-slate-200 dark:border-slate-700'
               }`}
             >
-              🚨 Menaces ({totalThreats})
+              🚨 {lang === 'fr' ? 'Menaces' : 'Threats'} ({totalThreats})
             </button>
 
             <button
@@ -270,7 +272,7 @@ export default function HistoryPage() {
                   : 'bg-white dark:bg-[#161b27] text-emerald-600 dark:text-emerald-400 border-slate-200 dark:border-slate-700'
               }`}
             >
-              ✅ Légitimes ({totalClean})
+              ✅ {lang === 'fr' ? 'Légitimes' : 'Legitimate'} ({totalClean})
             </button>
           </div>
 
@@ -279,8 +281,8 @@ export default function HistoryPage() {
         {/* History Records Table */}
         {sortedScanHistory.length === 0 ? (
           <div className="py-16 text-center text-slate-400 text-xs font-medium space-y-2">
-            <p className="text-sm font-bold text-slate-600 dark:text-slate-300">Aucun résultat trouvé dans l'historique.</p>
-            <p className="text-slate-500 text-[11px]">Essayez de modifier votre recherche ou effectuez un nouveau scan sur le tableau de bord.</p>
+            <p className="text-sm font-bold text-slate-600 dark:text-slate-300">{lang === 'fr' ? "Aucun résultat trouvé dans l'historique." : 'No results found in history.'}</p>
+            <p className="text-slate-500 text-[11px]">{lang === 'fr' ? 'Essayez de modifier votre recherche ou effectuez un nouveau scan sur le tableau de bord.' : 'Try modifying your search query or run a new scan on the dashboard.'}</p>
           </div>
         ) : (
           <div className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800">
@@ -288,12 +290,12 @@ export default function HistoryPage() {
               <thead className="bg-slate-50 dark:bg-[#111622] text-slate-400 uppercase font-mono text-[10px] tracking-wider border-b border-slate-200 dark:border-slate-800">
                 <tr>
                   <th className="py-3 px-3 w-10 text-center">📌</th>
-                  <th className="py-3 px-3">Date / Heure</th>
-                  <th className="py-3 px-3">Canal</th>
-                  <th className="py-3 px-3">Cible Analysée</th>
-                  <th className="py-3 px-3">Verdict IA</th>
-                  <th className="py-3 px-3">Score</th>
-                  <th className="py-3 px-3 text-right">Actions</th>
+                  <th className="py-3 px-3">{lang === 'fr' ? 'Date / Heure' : 'Date / Time'}</th>
+                  <th className="py-3 px-3">{lang === 'fr' ? 'Canal' : 'Channel'}</th>
+                  <th className="py-3 px-3">{lang === 'fr' ? 'Cible Analysée' : 'Analyzed Target'}</th>
+                  <th className="py-3 px-3">{lang === 'fr' ? 'Verdict IA' : 'AI Verdict'}</th>
+                  <th className="py-3 px-3">{lang === 'fr' ? 'Score' : 'Score'}</th>
+                  <th className="py-3 px-3 text-right">{lang === 'fr' ? 'Actions' : 'Actions'}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80 font-mono text-xs">
@@ -317,7 +319,7 @@ export default function HistoryPage() {
                               ? 'bg-amber-500/20 text-amber-500 border border-amber-500/40'
                               : 'text-slate-400 hover:text-slate-200'
                           }`}
-                          title={isPinned ? 'Désépingler' : 'Épingler en haut'}
+                          title={isPinned ? (lang === 'fr' ? 'Désépingler' : 'Unpin') : (lang === 'fr' ? 'Épingler en haut' : 'Pin to top')}
                         >
                           <Pin className="w-3.5 h-3.5" />
                         </button>
@@ -360,12 +362,12 @@ export default function HistoryPage() {
                             onClick={() => setSelectedHistoryItem(item)}
                             className="px-2.5 py-1 bg-sky-500/10 hover:bg-sky-500/20 text-sky-600 dark:text-sky-400 font-bold rounded-lg text-[11px] border border-sky-500/30 transition cursor-pointer"
                           >
-                            Voir
+                            {lang === 'fr' ? 'Voir' : 'View'}
                           </button>
                           <button
                             onClick={() => setItemToDelete(item)}
                             className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 rounded-lg border border-rose-500/30 transition cursor-pointer"
-                            title="Supprimer définitivement"
+                            title={lang === 'fr' ? 'Supprimer définitivement' : 'Delete permanently'}
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -391,10 +393,10 @@ export default function HistoryPage() {
 
             <div className="space-y-2">
               <h3 className="text-xl font-black text-slate-900 dark:text-white font-sans">
-                Confirmer la suppression ?
+                {lang === 'fr' ? 'Confirmer la suppression ?' : 'Confirm deletion?'}
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400 font-sans leading-relaxed">
-                Voulez-vous supprimer définitivement cette analyse de votre historique et de la base de données ?
+                {lang === 'fr' ? 'Voulez-vous supprimer définitivement cette analyse de votre historique et de la base de données ?' : 'Are you sure you want to permanently delete this scan from your history and database?'}
               </p>
               <div className="p-3 bg-slate-50 dark:bg-[#111622] rounded-xl font-mono text-xs font-bold text-slate-800 dark:text-slate-200 truncate border border-slate-200 dark:border-slate-800">
                 {itemToDelete.target}
@@ -406,14 +408,14 @@ export default function HistoryPage() {
                 onClick={() => setItemToDelete(null)}
                 className="flex-1 py-3 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs rounded-2xl transition cursor-pointer"
               >
-                Annuler
+                {lang === 'fr' ? 'Annuler' : 'Cancel'}
               </button>
 
               <button
                 onClick={handleDeleteItem}
                 className="flex-1 py-3 bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs rounded-2xl shadow-lg shadow-rose-600/30 transition cursor-pointer"
               >
-                Confirmer
+                {lang === 'fr' ? 'Confirmer' : 'Confirm'}
               </button>
             </div>
           </div>
@@ -442,8 +444,8 @@ export default function HistoryPage() {
                     {selectedHistoryItem.analysis_code}
                   </div>
                   <div>
-                    <h3 className="text-lg font-black text-slate-900 dark:text-white">Fiche Détaillée d'Analyse (Registre Base de Données)</h3>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 font-mono">Horodatage : {selectedHistoryItem.timestamp} {selectedHistoryItem.fullDate}</p>
+                    <h3 className="text-lg font-black text-slate-900 dark:text-white">{lang === 'fr' ? "Fiche Détaillée d'Analyse (Registre Base de Données)" : "Detailed Analysis File (Database Record)"}</h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 font-mono">{lang === 'fr' ? 'Horodatage :' : 'Timestamp:'} {selectedHistoryItem.timestamp} {selectedHistoryItem.fullDate}</p>
                   </div>
                 </div>
                 <button
