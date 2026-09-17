@@ -24,20 +24,56 @@ export default function Incidents() {
 
   // Modals state
   const [selectedIncident, setSelectedIncident] = useState(null); // For Detail Modal
-  const [incidentToEdit, setIncidentToEdit] = useState(null); // For Edit Modal
   const [incidentToDelete, setIncidentToDelete] = useState(null); // For Delete Confirmation
   const [verifyingIncidentId, setVerifyingIncidentId] = useState(null);
   const [verificationModalData, setVerificationModalData] = useState(null);
   const [showRawJson, setShowRawJson] = useState(false);
+  const [analyzingTargetId, setAnalyzingTargetId] = useState(null);
+  const [liveAnalysisResult, setLiveAnalysisResult] = useState(null);
 
-  // Form states for Editing
+  // Form states for SOC Notes in Examiner Modal
   const [editStatus, setEditStatus] = useState('NEW');
   const [editSeverity, setEditSeverity] = useState('HIGH');
-  const [editVerdict, setEditVerdict] = useState('PHISHING');
-  const [editTitle, setEditTitle] = useState('');
   const [editNotes, setEditNotes] = useState('');
   const [isSubmittingEdit, setIsSubmittingEdit] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // Handler: Live Target Analysis for Investigators
+  const handleAnalyseTarget = async (inc, e) => {
+    if (e) e.stopPropagation();
+    const rawTarget = inc.target || inc.summary || '';
+    if (!rawTarget) return;
+
+    setAnalyzingTargetId(inc.id);
+    try {
+      const isUrl = /^(http:\/\/|https:\/\/|www\.)/i.test(rawTarget) || rawTarget.includes('.');
+      const endpoint = isUrl ? '/api/v1/analyze/url' : '/api/v1/analyze/text';
+      const payload = isUrl 
+        ? { url: rawTarget.startsWith('http') ? rawTarget : `http://${rawTarget}` }
+        : { text: rawTarget, text_type: 'EMAIL' };
+
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.detail || `Erreur (${res.status})`);
+      }
+      const data = await res.json();
+      setLiveAnalysisResult({
+        target: rawTarget,
+        incidentCode: inc.incident_code,
+        data: data
+      });
+    } catch (err) {
+      alert((lang === 'fr' ? "Erreur lors de l'analyse : " : "Error during analysis: ") + err.message);
+    } finally {
+      setAnalyzingTargetId(null);
+    }
+  };
 
   // Fetch incidents list from backend
   const fetchIncidents = async () => {
@@ -75,39 +111,22 @@ export default function Incidents() {
     return matchesSearch && matchesStatus && matchesSeverity;
   });
 
-  // Handler: Open Edit Modal
-  const handleOpenEdit = (inc) => {
-    setIncidentToEdit(inc);
-    setEditStatus(inc.status || 'NEW');
-    setEditSeverity(inc.severity || 'HIGH');
-    setEditVerdict(inc.verdict || 'PHISHING');
-    setEditTitle(inc.title || '');
-    setEditNotes(inc.investigator_notes || '');
-  };
-
-  // Handler: Save Edit Form (PUT /api/v1/incidents/{id})
-  const handleSaveEdit = async (e, fromModal = false) => {
+  // Handler: Save SOC Updates (PUT /api/v1/incidents/{id})
+  const handleSaveEdit = async (e) => {
     if (e && e.preventDefault) e.preventDefault();
-    const targetInc = fromModal ? selectedIncident : incidentToEdit;
-    if (!targetInc) return;
+    if (!selectedIncident) return;
     setIsSubmittingEdit(true);
 
     try {
-      const payload = fromModal ? {
-        title: targetInc.title,
+      const payload = {
+        title: selectedIncident.title,
         status: editStatus,
         severity: editSeverity,
-        verdict: targetInc.verdict,
-        notes: editNotes
-      } : {
-        title: editTitle,
-        status: editStatus,
-        severity: editSeverity,
-        verdict: editVerdict,
+        verdict: selectedIncident.verdict,
         notes: editNotes
       };
 
-      const res = await fetch(`/api/v1/incidents/${targetInc.id}`, {
+      const res = await fetch(`/api/v1/incidents/${selectedIncident.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -116,16 +135,12 @@ export default function Incidents() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || "Erreur de mise à jour");
 
-      if (fromModal) {
-        setSelectedIncident(prev => ({
-          ...prev,
-          status: editStatus,
-          severity: editSeverity,
-          investigator_notes: editNotes
-        }));
-      } else {
-        setIncidentToEdit(null);
-      }
+      setSelectedIncident(prev => ({
+        ...prev,
+        status: editStatus,
+        severity: editSeverity,
+        investigator_notes: editNotes
+      }));
       await fetchIncidents();
     } catch (err) {
       alert((lang === 'fr' ? "Erreur de mise à jour : " : "Update error: ") + err.message);
@@ -506,33 +521,35 @@ export default function Incidents() {
                     <Eye size={13} /> {lang === 'fr' ? 'Examiner' : 'Examine'}
                   </button>
 
+                  <button
+                    onClick={(e) => handleAnalyseTarget(inc, e)}
+                    disabled={analyzingTargetId === inc.id}
+                    className="flex-1 py-1.5 px-2 bg-sky-500/10 hover:bg-sky-500 hover:text-white text-sky-600 dark:text-sky-400 rounded-xl text-[11px] font-bold flex items-center justify-center gap-1 transition cursor-pointer"
+                    title={lang === 'fr' ? "Tester et analyser l'URL cible en direct" : "Test and analyse target URL live"}
+                  >
+                    <Activity size={13} className={analyzingTargetId === inc.id ? "animate-spin" : ""} />
+                    {analyzingTargetId === inc.id 
+                      ? (lang === 'fr' ? 'Analyse...' : 'Analyzing...')
+                      : (lang === 'fr' ? 'Analyser' : 'Analyse')}
+                  </button>
+
+                  <button
+                    onClick={(e) => handleVerifySeal(inc, e)}
+                    disabled={verifyingIncidentId === inc.id}
+                    className="py-1.5 px-2 bg-slate-100 dark:bg-[#1e293b] hover:bg-emerald-500 hover:text-white text-emerald-600 dark:text-emerald-400 rounded-xl text-[11px] font-bold flex items-center justify-center transition cursor-pointer"
+                    title={lang === 'fr' ? "Vérifier l'intégrité SHA-256" : "Verify SHA-256 integrity"}
+                  >
+                    <Lock size={13} />
+                  </button>
+
                   {user?.role !== 'ADMINISTRATEUR' && (
-                    <>
-                      <button
-                        onClick={() => handleOpenEdit(inc)}
-                        className="flex-1 py-1.5 px-2 bg-sky-500/10 hover:bg-sky-500 hover:text-white text-sky-600 dark:text-sky-400 rounded-xl text-[11px] font-bold flex items-center justify-center gap-1 transition cursor-pointer"
-                        title={lang === 'fr' ? "Modifier statut et notes" : "Edit status & notes"}
-                      >
-                        <Edit3 size={13} /> {lang === 'fr' ? 'Modifier' : 'Edit'}
-                      </button>
-
-                      <button
-                        onClick={(e) => handleVerifySeal(inc, e)}
-                        disabled={verifyingIncidentId === inc.id}
-                        className="py-1.5 px-2 bg-slate-100 dark:bg-[#1e293b] hover:bg-emerald-500 hover:text-white text-emerald-600 dark:text-emerald-400 rounded-xl text-[11px] font-bold flex items-center justify-center transition cursor-pointer"
-                        title={lang === 'fr' ? "Vérifier l'intégrité SHA-256" : "Verify SHA-256 integrity"}
-                      >
-                        <Lock size={13} />
-                      </button>
-
-                      <button
-                        onClick={() => setIncidentToDelete(inc)}
-                        className="py-1.5 px-2 bg-rose-500/10 hover:bg-rose-500 hover:text-white text-rose-500 rounded-xl text-[11px] font-bold flex items-center justify-center transition cursor-pointer"
-                        title={lang === 'fr' ? "Supprimer ce rapport" : "Delete report"}
-                      >
-                        <Trash2 size={13} />
-                      </button>
-                    </>
+                    <button
+                      onClick={() => setIncidentToDelete(inc)}
+                      className="py-1.5 px-2 bg-rose-500/10 hover:bg-rose-500 hover:text-white text-rose-500 rounded-xl text-[11px] font-bold flex items-center justify-center transition cursor-pointer"
+                      title={lang === 'fr' ? "Supprimer ce rapport" : "Delete report"}
+                    >
+                      <Trash2 size={13} />
+                    </button>
                   )}
                 </div>
 
@@ -634,8 +651,20 @@ export default function Incidents() {
                   </div>
                 </div>
 
-                <div className="space-y-1 pt-1">
-                  <span className="font-mono font-bold uppercase text-[10px] text-slate-400 block">{lang === 'fr' ? 'CONTENU CIBLE ANALYSÉ' : 'ANALYZED TARGET CONTENT'}</span>
+                <div className="space-y-1.5 pt-1">
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono font-bold uppercase text-[10px] text-slate-400 block">{lang === 'fr' ? 'CONTENU CIBLE ANALYSÉ' : 'ANALYZED TARGET CONTENT'}</span>
+                    <button
+                      onClick={(e) => handleAnalyseTarget(selectedIncident, e)}
+                      disabled={analyzingTargetId === selectedIncident.id}
+                      className="px-3 py-1 bg-sky-500 hover:bg-sky-400 text-white text-[11px] font-mono font-bold rounded-lg flex items-center gap-1.5 transition cursor-pointer shadow-sm shadow-sky-500/30"
+                    >
+                      <Activity size={12} className={analyzingTargetId === selectedIncident.id ? "animate-spin" : ""} />
+                      {analyzingTargetId === selectedIncident.id 
+                        ? (lang === 'fr' ? "Test en cours..." : "Testing...") 
+                        : (lang === 'fr' ? "Tester la cible en direct" : "Test Target Live")}
+                    </button>
+                  </div>
                   <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 font-mono text-cyan-300 break-all text-xs">
                     {selectedIncident.target || selectedIncident.summary}
                   </div>
@@ -651,50 +680,50 @@ export default function Incidents() {
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs font-mono">
                   
                   <div className="p-3 bg-slate-50 dark:bg-[#161b27] rounded-xl border border-slate-200 dark:border-slate-800">
-                    <span className="text-[10px] text-slate-400 block">Hôte IP Direct</span>
+                    <span className="text-[10px] text-slate-400 block">{lang === 'fr' ? 'Hôte IP Direct' : 'Direct IP Host'}</span>
                     <strong className={features.has_ip ? "text-rose-500 font-bold" : "text-emerald-500 font-bold"}>
-                      {features.has_ip ? "❌ OUI" : "✓ NON"}
+                      {features.has_ip ? (lang === 'fr' ? "❌ OUI" : "❌ YES") : (lang === 'fr' ? "✓ NON" : "✓ NO")}
                     </strong>
                   </div>
 
                   <div className="p-3 bg-slate-50 dark:bg-[#161b27] rounded-xl border border-slate-200 dark:border-slate-800">
-                    <span className="text-[10px] text-slate-400 block">HTTPS Chiffré</span>
+                    <span className="text-[10px] text-slate-400 block">{lang === 'fr' ? 'HTTPS Chiffré' : 'HTTPS Encrypted'}</span>
                     <strong className={features.is_https ? "text-emerald-500 font-bold" : "text-rose-500 font-bold"}>
-                      {features.is_https ? "✓ OUI" : "❌ NON"}
+                      {features.is_https ? (lang === 'fr' ? "✓ OUI" : "✓ YES") : (lang === 'fr' ? "❌ NON" : "❌ NO")}
                     </strong>
                   </div>
 
                   <div className="p-3 bg-slate-50 dark:bg-[#161b27] rounded-xl border border-slate-200 dark:border-slate-800">
-                    <span className="text-[10px] text-slate-400 block">Entropie (Shannon)</span>
+                    <span className="text-[10px] text-slate-400 block">{lang === 'fr' ? 'Entropie (Shannon)' : 'Shannon Entropy'}</span>
                     <strong className="text-sky-500 font-bold">{features.entropy || 3.45}</strong>
                   </div>
 
                   <div className="p-3 bg-slate-50 dark:bg-[#161b27] rounded-xl border border-slate-200 dark:border-slate-800">
-                    <span className="text-[10px] text-slate-400 block">Sous-domaines</span>
+                    <span className="text-[10px] text-slate-400 block">{lang === 'fr' ? 'Sous-domaines' : 'Subdomains'}</span>
                     <strong className="text-slate-800 dark:text-slate-200 font-bold">{features.num_subdomains || 1}</strong>
                   </div>
 
                   <div className="p-3 bg-slate-50 dark:bg-[#161b27] rounded-xl border border-slate-200 dark:border-slate-800">
-                    <span className="text-[10px] text-slate-400 block">Longueur URL</span>
+                    <span className="text-[10px] text-slate-400 block">{lang === 'fr' ? 'Longueur URL' : 'URL Length'}</span>
                     <strong className="text-slate-800 dark:text-slate-200 font-bold">{features.url_length || 45} chars</strong>
                   </div>
 
                   <div className="p-3 bg-slate-50 dark:bg-[#161b27] rounded-xl border border-slate-200 dark:border-slate-800">
-                    <span className="text-[10px] text-slate-400 block">Mots-clés Suspects</span>
+                    <span className="text-[10px] text-slate-400 block">{lang === 'fr' ? 'Mots-clés Suspects' : 'Suspicious Keywords'}</span>
                     <strong className={features.keyword_count > 0 ? "text-rose-500 font-bold" : "text-emerald-500 font-bold"}>
                       {features.keyword_count || 0}
                     </strong>
                   </div>
 
                   <div className="p-3 bg-slate-50 dark:bg-[#161b27] rounded-xl border border-slate-200 dark:border-slate-800">
-                    <span className="text-[10px] text-slate-400 block">Tirets Prefix/Suffix</span>
-                    <strong className="text-slate-800 dark:text-slate-200 font-bold">{features.prefix_suffix ? "OUI" : "NON"}</strong>
+                    <span className="text-[10px] text-slate-400 block">{lang === 'fr' ? 'Tirets Prefix/Suffix' : 'Prefix/Suffix Hyphens'}</span>
+                    <strong className="text-slate-800 dark:text-slate-200 font-bold">{features.prefix_suffix ? (lang === 'fr' ? "OUI" : "YES") : (lang === 'fr' ? "NON" : "NO")}</strong>
                   </div>
 
                   <div className="p-3 bg-slate-50 dark:bg-[#161b27] rounded-xl border border-slate-200 dark:border-slate-800">
-                    <span className="text-[10px] text-slate-400 block">Symbole `@` Redirection</span>
+                    <span className="text-[10px] text-slate-400 block">{lang === 'fr' ? 'Symbole `@` Redirection' : '`@` Redirection Symbol'}</span>
                     <strong className={features.has_at_symbol ? "text-rose-500 font-bold" : "text-emerald-500 font-bold"}>
-                      {features.has_at_symbol ? "OUI" : "NON"}
+                      {features.has_at_symbol ? (lang === 'fr' ? "OUI" : "YES") : (lang === 'fr' ? "NON" : "NO")}
                     </strong>
                   </div>
 
@@ -892,7 +921,7 @@ export default function Incidents() {
                 >
                   <span className="flex items-center gap-2">
                     <Code className="w-4 h-4 text-sky-500" />
-                    {lang === 'fr' ? 'Inspecteur JSON Forensic Brute (Données Système Completes)' : 'Raw Forensic JSON Inspector (Complete System Payload)'}
+                    {lang === 'fr' ? 'Inspecteur JSON Forensic Brute (Données Système Complètes)' : 'Raw Forensic JSON Inspector (Complete System Payload)'}
                   </span>
                   {showRawJson ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                 </button>
@@ -919,106 +948,138 @@ export default function Incidents() {
         );
       })()}
 
-      {/* MODAL 2: MODIFIER LE RAPPORT */}
-      {incidentToEdit && (
-        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-sky-900/60 rounded-3xl p-6 max-w-lg w-full shadow-2xl space-y-5 animate-fade-in">
-            
-            <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-sky-500 text-white flex items-center justify-center font-bold text-sm shadow-lg shadow-sky-500/30">
-                  <Edit3 className="w-5 h-5" />
+      {/* ========================================================================= */}
+      {/* MODAL 2: LIVE TARGET ANALYSIS RESULT MODAL (INVESTIGATOR SELF-TEST) */}
+      {/* ========================================================================= */}
+      {liveAnalysisResult && (() => {
+        const liveData = liveAnalysisResult.data || {};
+        const risk = liveData.risk_score !== undefined ? liveData.risk_score : 0;
+        const verdict = liveData.verdict || (risk >= 50 ? 'PHISHING' : 'LEGITIMATE');
+        const isPhish = verdict === 'PHISHING' || risk >= 50;
+        const details = liveData.details || {};
+        const features = details.features || {};
+        const models = details.model_comparisons || [];
+        const vt = details.virustotal || {};
+        const gsb = details.google_safebrowsing || {};
+
+        return (
+          <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto">
+            <div className="bg-white dark:bg-[#0f172a] border-2 border-sky-400 dark:border-sky-500 rounded-3xl p-6 sm:p-8 max-w-3xl w-full shadow-2xl space-y-6 max-h-[90vh] overflow-y-auto animate-in zoom-in-95 my-auto">
+              
+              {/* Header */}
+              <div className="flex items-center justify-between pb-4 border-b border-slate-200 dark:border-slate-800">
+                <div className="flex items-center gap-3">
+                  <div className="w-11 h-11 rounded-2xl bg-sky-500 text-white flex items-center justify-center font-bold shadow-lg shadow-sky-500/30">
+                    <Activity className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h3 className="font-heading font-black text-slate-900 dark:text-white text-lg">
+                      {lang === 'fr' ? "Résultat d'Analyse en Direct (Test Enquêteur)" : "Live Analysis Result (Investigator Test)"}
+                    </h3>
+                    <p className="text-xs text-slate-400 font-mono font-semibold">
+                      {lang === 'fr' ? 'Cible :' : 'Target:'} <span className="text-sky-500">{liveAnalysisResult.target}</span>
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="font-heading font-extrabold text-slate-900 dark:text-white text-base">
-                    {lang === 'fr' ? 'Enrichir & Modifier le Rapport' : 'Enrich & Edit Security Report'}
-                  </h3>
-                  <p className="text-xs text-sky-500 font-mono font-bold">{incidentToEdit.incident_code}</p>
+                <button
+                  onClick={() => setLiveAnalysisResult(null)}
+                  className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-white rounded-xl bg-slate-100 dark:bg-slate-800 transition cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Verdict & Score Banner */}
+              <div className={`p-5 rounded-2xl border-2 flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${
+                isPhish 
+                  ? 'bg-rose-500/10 border-rose-500/40 text-rose-600 dark:text-rose-400' 
+                  : 'bg-emerald-500/10 border-emerald-500/40 text-emerald-600 dark:text-emerald-400'
+              }`}>
+                <div className="flex items-center gap-3">
+                  {isPhish ? (
+                    <div className="p-3 bg-rose-600 text-white rounded-xl shadow-md">
+                      <AlertTriangle className="w-6 h-6" />
+                    </div>
+                  ) : (
+                    <div className="p-3 bg-emerald-600 text-white rounded-xl shadow-md">
+                      <CheckCircle2 className="w-6 h-6" />
+                    </div>
+                  )}
+                  <div>
+                    <span className="text-[10px] font-mono font-bold uppercase tracking-wider block opacity-75">
+                      {lang === 'fr' ? 'VERDICT IA LIVE' : 'LIVE AI VERDICT'}
+                    </span>
+                    <h4 className="text-2xl font-black">{verdict}</h4>
+                  </div>
+                </div>
+
+                <div className="text-right font-mono">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase block">{lang === 'fr' ? 'SCORE DE RISQUE' : 'RISK SCORE'}</span>
+                  <span className="text-3xl font-black">{risk}%</span>
                 </div>
               </div>
-              <button
-                onClick={() => setIncidentToEdit(null)}
-                className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-white rounded-lg transition"
-              >
-                <X className="w-5 h-5" />
-              </button>
+
+              {/* Heuristics & Threat Intel */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs font-mono">
+                <div className="p-3 bg-slate-50 dark:bg-[#161b27] rounded-xl border border-slate-200 dark:border-slate-800">
+                  <span className="text-[10px] text-slate-400 block">{lang === 'fr' ? 'Moteurs VirusTotal' : 'VirusTotal Engines'}</span>
+                  <strong className={vt.positives > 0 ? "text-rose-500 font-bold" : "text-emerald-500 font-bold"}>
+                    {vt.positives || 0} / {vt.total_engines || 90}
+                  </strong>
+                </div>
+
+                <div className="p-3 bg-slate-50 dark:bg-[#161b27] rounded-xl border border-slate-200 dark:border-slate-800">
+                  <span className="text-[10px] text-slate-400 block">{lang === 'fr' ? 'Google SafeBrowsing' : 'Google SafeBrowsing'}</span>
+                  <strong className={gsb.is_flagged ? "text-rose-500 font-bold" : "text-emerald-500 font-bold"}>
+                    {gsb.is_flagged ? (lang === 'fr' ? "MALVEILLANT" : "FLAGGED") : (lang === 'fr' ? "SÉCURISÉ" : "CLEAN")}
+                  </strong>
+                </div>
+
+                <div className="p-3 bg-slate-50 dark:bg-[#161b27] rounded-xl border border-slate-200 dark:border-slate-800">
+                  <span className="text-[10px] text-slate-400 block">{lang === 'fr' ? 'HTTPS Chiffré' : 'HTTPS Encrypted'}</span>
+                  <strong className={features.is_https ? "text-emerald-500 font-bold" : "text-rose-500 font-bold"}>
+                    {features.is_https ? (lang === 'fr' ? "OUI" : "YES") : (lang === 'fr' ? "NON" : "NO")}
+                  </strong>
+                </div>
+
+                <div className="p-3 bg-slate-50 dark:bg-[#161b27] rounded-xl border border-slate-200 dark:border-slate-800">
+                  <span className="text-[10px] text-slate-400 block">{lang === 'fr' ? 'Longueur Target' : 'Target Length'}</span>
+                  <strong className="text-sky-500 font-bold">{features.url_length || liveAnalysisResult.target.length} chars</strong>
+                </div>
+              </div>
+
+              {/* AI Models Breakdown if present */}
+              {models && models.length > 0 && (
+                <div className="space-y-2">
+                  <span className="text-xs font-mono font-bold text-slate-400 uppercase block">{lang === 'fr' ? 'Détails des Classifieurs IA' : 'AI Classifier Ensemble'}</span>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs font-mono">
+                    {models.map((m, idx) => (
+                      <div key={idx} className="p-3 bg-slate-50 dark:bg-[#161b27] rounded-xl border border-slate-200 dark:border-slate-800">
+                        <span className="text-[10px] text-slate-400 block truncate">{m.name}</span>
+                        <div className="flex justify-between items-center mt-1">
+                          <span className="text-slate-500">{lang === 'fr' ? 'Phishing :' : 'Phishing:'}</span>
+                          <span className={`font-bold ${m.phishing_prob >= 50 ? 'text-rose-500' : 'text-emerald-500'}`}>{m.phishing_prob}%</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Close Button */}
+              <div className="flex justify-end pt-3 border-t border-slate-200 dark:border-slate-800">
+                <button
+                  onClick={() => setLiveAnalysisResult(null)}
+                  className="px-6 py-2.5 bg-sky-500 hover:bg-sky-600 text-white font-bold rounded-xl text-xs transition cursor-pointer shadow-md shadow-sky-500/20"
+                >
+                  {lang === 'fr' ? 'Terminer & Fermer' : 'Done & Close'}
+                </button>
+              </div>
+
             </div>
-
-            <form onSubmit={(e) => handleSaveEdit(e, false)} className="space-y-4 text-xs font-sans">
-              <div className="space-y-1">
-                <label className="font-mono font-bold text-[10px] uppercase text-slate-400">{lang === 'fr' ? 'Titre de l\'incident :' : 'Incident Title:'}</label>
-                <input
-                  type="text"
-                  required
-                  value={editTitle}
-                  onChange={(e) => setEditTitle(e.target.value)}
-                  className="w-full p-2.5 bg-slate-50 dark:bg-[#1e293b] border border-slate-200 dark:border-slate-800 rounded-xl text-slate-900 dark:text-white font-bold"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="font-mono font-bold text-[10px] uppercase text-slate-400">{lang === 'fr' ? 'Statut d\'enquête :' : 'Status:'}</label>
-                  <select
-                    value={editStatus}
-                    onChange={(e) => setEditStatus(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 dark:bg-[#1e293b] border border-slate-200 dark:border-slate-800 rounded-xl text-slate-900 dark:text-white font-semibold"
-                  >
-                    <option value="NEW">{lang === 'fr' ? 'Nouveau' : 'New'}</option>
-                    <option value="INVESTIGATING">{lang === 'fr' ? 'En cours' : 'Investigating'}</option>
-                    <option value="RESOLVED">{lang === 'fr' ? 'Résolu' : 'Resolved'}</option>
-                    <option value="CLOSED">{lang === 'fr' ? 'Clos' : 'Closed'}</option>
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="font-mono font-bold text-[10px] uppercase text-slate-400">{lang === 'fr' ? 'Sévérité :' : 'Severity:'}</label>
-                  <select
-                    value={editSeverity}
-                    onChange={(e) => setEditSeverity(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 dark:bg-[#1e293b] border border-slate-200 dark:border-slate-800 rounded-xl text-slate-900 dark:text-white font-semibold"
-                  >
-                    <option value="CRITICAL">{lang === 'fr' ? 'Critique' : 'Critical'}</option>
-                    <option value="HIGH">{lang === 'fr' ? 'Élevée' : 'High'}</option>
-                    <option value="MEDIUM">{lang === 'fr' ? 'Moyenne' : 'Medium'}</option>
-                    <option value="LOW">{lang === 'fr' ? 'Faible' : 'Low'}</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="space-y-1">
-                <label className="font-mono font-bold text-[10px] uppercase text-slate-400">{lang === 'fr' ? 'Notes de l\'enquêteur SOC :' : 'SOC Investigator Notes:'}</label>
-                <textarea
-                  rows={4}
-                  value={editNotes}
-                  onChange={(e) => setEditNotes(e.target.value)}
-                  placeholder={lang === 'fr' ? "Saisissez vos observations, analyse d'en-tête ou mesures prises..." : "Enter your SOC investigation notes or remediation measures..."}
-                  className="w-full p-3 bg-slate-50 dark:bg-[#1e293b] border border-slate-200 dark:border-slate-800 rounded-xl text-slate-900 dark:text-white font-sans text-xs focus:outline-none focus:border-sky-500"
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-200 dark:border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => setIncidentToEdit(null)}
-                  className="px-4 py-2 bg-slate-100 dark:bg-[#1e293b] hover:bg-slate-200 text-slate-700 dark:text-slate-300 font-bold rounded-xl text-xs transition cursor-pointer"
-                >
-                  {lang === 'fr' ? 'Annuler' : 'Cancel'}
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmittingEdit}
-                  className="px-5 py-2 bg-sky-500 hover:bg-sky-400 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 transition cursor-pointer shadow-md shadow-sky-500/20"
-                >
-                  <Save size={14} />
-                  <span>{isSubmittingEdit ? (lang === 'fr' ? "Enregistrement..." : "Saving...") : (lang === 'fr' ? "Enregistrer" : "Save Changes")}</span>
-                </button>
-              </div>
-            </form>
-
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* MODAL 3: SUPPRESSION CONFIRMATION */}
       {incidentToDelete && (

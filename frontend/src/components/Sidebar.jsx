@@ -14,15 +14,19 @@ export default function Sidebar() {
   ];
 
   const investigatorItems = [
-    { path: '/dashboard', label: lang === 'fr' ? 'Tableau de Bord' : 'Dashboard', icon: LayoutDashboard },
+    { path: '/dashboard', label: lang === 'fr' ? 'Tableau de Bord SOC' : 'SOC Dashboard', icon: LayoutDashboard },
+    { path: '/scanner', label: lang === 'fr' ? 'Scanner & Analyse' : 'Scanner & Analysis', icon: Activity },
     { path: '/incidents', label: lang === 'fr' ? 'Rapports & Signalements' : 'Reports & Evidence', icon: FileSearch },
+    { path: '/history', label: lang === 'fr' ? 'Historique des Analyses' : 'Analysis History', icon: History },
   ];
 
   const adminItems = [
     { path: '/dashboard', label: lang === 'fr' ? 'Tableau de Bord' : 'Dashboard', icon: LayoutDashboard },
+    { path: '/scanner', label: lang === 'fr' ? 'Scanner & Analyse' : 'Scanner & Analysis', icon: Activity },
     { path: '/admin/users', label: lang === 'fr' ? 'Gestion d\'utilisateurs' : 'User Management', icon: Users },
     { path: '/activity-logs', label: lang === 'fr' ? 'Journal des Activités' : 'Activity Logs', icon: Activity },
     { path: '/incidents', label: lang === 'fr' ? 'Signalements' : 'Incident Reports', icon: FileSearch },
+    { path: '/history', label: lang === 'fr' ? 'Historique des Analyses' : 'Analysis History', icon: History },
   ];
 
   let navItems = stdItems;

@@ -11,14 +11,18 @@ class Settings(BaseSettings):
     VERSION: str = "1.0.0"
     API_V1_STR: str = "/api/v1"
     
-    # Database Configuration (PostgreSQL by default, SQLite fallback)
+    # Database Configuration (MongoDB primary, PostgreSQL / SQLite compatible)
+    MONGODB_URL: str = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
+    MONGODB_DB_NAME: str = os.getenv("MONGODB_DB_NAME", "cyberguard_db")
+    DATABASE_TYPE: str = os.getenv("DATABASE_TYPE", "mongodb") # 'mongodb' or 'sql'
+
     POSTGRES_USER: str = os.getenv("POSTGRES_USER", "postgres")
     POSTGRES_PASSWORD: str = os.getenv("POSTGRES_PASSWORD", "postgres")
     POSTGRES_SERVER: str = os.getenv("POSTGRES_SERVER", "localhost")
     POSTGRES_PORT: str = os.getenv("POSTGRES_PORT", "5432")
     POSTGRES_DB: str = os.getenv("POSTGRES_DB", "phishguard")
     
-    # SQLAlchemy Database URL
+    # SQLAlchemy Database URL (fallback/legacy)
     @property
     def DATABASE_URL(self) -> str:
         explicit_url = os.getenv("DATABASE_URL")

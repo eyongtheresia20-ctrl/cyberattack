@@ -71,15 +71,33 @@ SECURITY_KNOWLEDGE_BASE = {
     }
 }
 
+import uuid
+from datetime import datetime, timezone
 import requests
 import urllib3
+from fastapi import Header
 from app.core.config import settings
+from app.core.security import decode_access_token
+from app.db.mongodb import mongo_collections
 
 # Disable insecure request warnings when ssl verification is bypassed locally
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+def get_user_email_from_header(authorization: Any = None) -> str:
+    if isinstance(authorization, str) and authorization.startswith("Bearer "):
+        token = authorization.split(" ")[1]
+        payload = decode_access_token(token)
+        if payload and "sub" in payload:
+            return payload["sub"]
+    return "alice.martin@example.com"
+
+
 @router.post("/chat")
-def security_assistant_chat(req: ChatRequest):
+def security_assistant_chat(req: ChatRequest, authorization: Optional[str] = Header(None)):
+    user_email = get_user_email_from_header(authorization)
+    ai_text = None
+    recommendations = []
+
     # 1. Try Live OpenAI API if key provided
     if settings.OPENAI_API_KEY:
         try:
@@ -103,19 +121,16 @@ def security_assistant_chat(req: ChatRequest):
             if res.status_code == 200:
                 data = res.json()
                 ai_text = data["choices"][0]["message"]["content"]
-                return {
-                    "reply": ai_text,
-                    "recommendations": [
-                        "Review PhishGuard threat scan logs",
-                        "Verify SHA-256 evidence digests",
-                        "Export incident investigation report"
-                    ]
-                }
+                recommendations = [
+                    "Review PhishGuard threat scan logs",
+                    "Verify SHA-256 evidence digests",
+                    "Export incident investigation report"
+                ]
         except Exception as e:
             print(f"[Warning] OpenAI API call failed: {e}. Using fallback knowledge base.")
 
     # 2. Try Live Gemini API if key provided
-    if settings.GEMINI_API_KEY:
+    if not ai_text and settings.GEMINI_API_KEY:
         try:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key={settings.GEMINI_API_KEY}"
             res = requests.post(
@@ -131,58 +146,116 @@ def security_assistant_chat(req: ChatRequest):
             if res.status_code == 200:
                 data = res.json()
                 ai_text = data["candidates"][0]["content"]["parts"][0]["text"]
-                return {
-                    "reply": ai_text,
-                    "recommendations": [
-                        "Check incident evidence ledger",
-                        "Verify SHA-256 report checksum",
-                        "Configure firewall & WAF rules"
-                    ]
-                }
+                recommendations = [
+                    "Check incident evidence ledger",
+                    "Verify SHA-256 report checksum",
+                    "Configure firewall & WAF rules"
+                ]
             else:
                 print(f"[Warning] Gemini API status code {res.status_code}: {res.text}")
         except Exception as e:
             print(f"[Warning] Gemini API call failed: {e}. Using fallback knowledge base.")
 
     # 3. Intelligent Security Knowledge Base (Offline Fallback)
-    query = req.message.lower()
-    
-    # Context-aware matching
-    if "sql" in query or "sqli" in query or req.context_type == "SQLi":
-        kb = SECURITY_KNOWLEDGE_BASE["sqli"]
-    elif "xss" in query or "script" in query or req.context_type == "XSS":
-        kb = SECURITY_KNOWLEDGE_BASE["xss"]
-    elif "brute" in query or "login" in query or "password" in query or req.context_type == "BruteForce":
-        kb = SECURITY_KNOWLEDGE_BASE["brute_force"]
-    elif "ransom" in query or "encrypt" in query or "locked" in query:
-        kb = SECURITY_KNOWLEDGE_BASE["ransomware"]
-    elif "report" in query or "evidence" in query or "sha" in query:
-        kb = SECURITY_KNOWLEDGE_BASE["report"]
-    elif "phish" in query or "email" in query or "url" in query or "sms" in query or "link" in query:
-        kb = SECURITY_KNOWLEDGE_BASE["phishing"]
-    else:
-        return {
-            "reply": f"Hello! I am your **PhishGuard AI Cybersecurity Assistant** 🛡️.\n\nI can help you:\n- Analyze whether a specific link or email is malicious\n- Explain how to defend against SQL Injection, XSS, and Brute Force attacks\n- Guide you on Ransomware protection and incident mitigation\n- Walk you through generating and verifying cryptographic forensic reports.",
-            "recommendations": [
+    if not ai_text:
+        query = req.message.lower()
+        
+        if "sql" in query or "sqli" in query or req.context_type == "SQLi":
+            kb = SECURITY_KNOWLEDGE_BASE["sqli"]
+        elif "xss" in query or "script" in query or req.context_type == "XSS":
+            kb = SECURITY_KNOWLEDGE_BASE["xss"]
+        elif "brute" in query or "login" in query or "password" in query or req.context_type == "BruteForce":
+            kb = SECURITY_KNOWLEDGE_BASE["brute_force"]
+        elif "ransom" in query or "encrypt" in query or "locked" in query:
+            kb = SECURITY_KNOWLEDGE_BASE["ransomware"]
+        elif "report" in query or "evidence" in query or "sha" in query:
+            kb = SECURITY_KNOWLEDGE_BASE["report"]
+        elif "phish" in query or "email" in query or "url" in query or "sms" in query or "link" in query:
+            kb = SECURITY_KNOWLEDGE_BASE["phishing"]
+        else:
+            ai_text = (
+                "Hello! I am your **CyberGuard AI Cybersecurity Assistant** 🛡️.\n\n"
+                "I can help you:\n"
+                "- Analyze whether a specific link or email is malicious\n"
+                "- Explain how to defend against SQL Injection, XSS, and Brute Force attacks\n"
+                "- Guide you on Ransomware protection and incident mitigation\n"
+                "- Walk you through generating and verifying cryptographic forensic reports."
+            )
+            recommendations = [
                 "How do I check if a link is a phishing attack?",
                 "What should I do if I received a suspicious SMS?",
                 "How do I prevent Ransomware and SQL Injection?",
                 "How does PhishGuard generate SHA-256 evidence reports?"
             ]
+
+        if not ai_text and kb:
+            recs_bullets = "\n".join([f"- {r}" for r in kb["recommendations"]])
+            ai_text = f"### {kb['title']}\n\n**Analysis Context:** {kb['explanation']}\n\n**Recommended Defensive Hardening Actions:**\n{recs_bullets}"
+            recommendations = kb.get("recommendations", [
+                "How do I verify a suspicious domain using PhishGuard?",
+                "What evidence is included in an Incident Report?",
+                "How does PhishGuard verify SHA-256 report integrity?"
+            ])
+
+    # 4. Save Conversation in MongoDB
+    try:
+        chat_doc = {
+            "id": str(uuid.uuid4()),
+            "user_email": user_email,
+            "user_message": req.message,
+            "ai_reply": ai_text,
+            "recommendations": recommendations,
+            "context_type": req.context_type or "General",
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }
+        mongo_collections.chat_messages.insert_one(chat_doc)
+    except Exception as e:
+        print(f"[MongoDB Chat Warning] Could not persist message: {e}")
+
+    return {
+        "reply": ai_text,
+        "recommendations": recommendations
+    }
+
+@router.get("/history")
+def get_chat_history(authorization: Optional[str] = Header(None)):
+    """Retrieve full AI conversation history for the authenticated user from MongoDB."""
+    user_email = get_user_email_from_header(authorization)
+    try:
+        docs = list(mongo_collections.chat_messages.find({"user_email": user_email}).sort("created_at", 1).limit(100))
+        formatted = []
+        for d in docs:
+            if "_id" in d:
+                d["_id"] = str(d["_id"])
+            formatted.append(d)
+        return {
+            "status": "success",
+            "user_email": user_email,
+            "total_messages": len(formatted),
+            "history": formatted
+        }
+    except Exception as e:
+        print(f"[MongoDB Chat History Error] {e}")
+        return {
+            "status": "error",
+            "user_email": user_email,
+            "total_messages": 0,
+            "history": []
         }
 
-    recs_bullets = "\n".join([f"- {r}" for r in kb["recommendations"]])
-    reply_text = f"### {kb['title']}\n\n**Analysis Context:** {kb['explanation']}\n\n**Recommended Defensive Hardening Actions:**\n{recs_bullets}"
-    
-    follow_ups = [
-        "How do I verify a suspicious domain using PhishGuard?",
-        "What evidence is included in an Incident Report?",
-        "How does PhishGuard verify SHA-256 report integrity?"
-    ]
-    
-    return {
-        "reply": reply_text,
-        "recommendations": follow_ups
-    }
+@router.delete("/history")
+def clear_chat_history(authorization: Optional[str] = Header(None)):
+    """Clear all chat history for the authenticated user from MongoDB."""
+    user_email = get_user_email_from_header(authorization)
+    try:
+        res = mongo_collections.chat_messages.delete_many({"user_email": user_email})
+        return {
+            "status": "success",
+            "message": f"Historique de chat effacé ({res.deleted_count} messages supprimés)",
+            "deleted_count": res.deleted_count
+        }
+    except Exception as e:
+        return {"status": "error", "detail": str(e)}
+
 
 

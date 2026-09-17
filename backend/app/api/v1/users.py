@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from app.db.database import get_db
-from app.db.models import UtilisateurStandard, Enqueteur, Administrateur, AuditLog
+from app.db.models import UtilisateurStandard, Enqueteur, Administrateur, AuditLog, AnalysisRecord, Incident
 from app.api.v1.auth import get_current_user, find_user_by_id
 
 router = APIRouter(prefix="/users", tags=["User Management"])
@@ -185,20 +185,46 @@ def get_user_activity_logs(
     if current_user.role != "ADMINISTRATEUR":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Accès réservé aux Administrateurs")
 
-    logs = db.query(AuditLog).order_by(AuditLog.timestamp.desc()).limit(100).all()
+    logs = db.query(AuditLog).order_by(AuditLog.timestamp.desc()).limit(150).all()
     records = db.query(AnalysisRecord).order_by(AnalysisRecord.created_at.desc()).limit(50).all()
+    incidents = db.query(Incident).order_by(Incident.created_at.desc()).limit(50).all()
+
+    stds = db.query(UtilisateurStandard).all()
+    enqs = db.query(Enqueteur).all()
+    adms = db.query(Administrateur).all()
+    all_users = stds + enqs + adms
 
     activations = []
+    seen_log_keys = set()
+
     for l in logs:
+        key = f"{l.action}_{l.target}_{l.timestamp}"
+        seen_log_keys.add(key)
+        log_type = "SERVICE_ERROR" if l.action == "SERVICE_PIPELINE_ERROR" else "AUDIT"
         activations.append({
             "id": l.id,
-            "actor": l.actor,
-            "type": "AUDIT",
-            "action": l.action,
-            "target": l.target,
-            "details": l.details,
+            "actor": l.actor or "Utilisateur",
+            "type": log_type,
+            "action": l.action or "ACTION",
+            "target": l.target or "-",
+            "details": l.details or "Action système enregistrée",
             "timestamp": l.timestamp.isoformat() if l.timestamp else None
         })
+
+    for u in all_users:
+        if getattr(u, "last_login", None):
+            key = f"LOGIN_{u.email}_{u.last_login}"
+            if key not in seen_log_keys:
+                role_label = "Administrateur" if u.role == "ADMINISTRATEUR" else ("Enquêteur SOC" if u.role == "ENQUETEUR" else "Utilisateur Standard")
+                activations.append({
+                    "id": f"login-{u.id}",
+                    "actor": f"{u.prenom} {u.nom}",
+                    "type": "AUDIT",
+                    "action": "LOGIN",
+                    "target": u.email,
+                    "details": f"Session active ({role_label}) - Connexion enregistrée",
+                    "timestamp": u.last_login.isoformat()
+                })
 
     for r in records:
         activations.append({
@@ -207,8 +233,19 @@ def get_user_activity_logs(
             "type": "SCAN_RESEARCH",
             "action": f"SCAN_{r.analysis_type}",
             "target": r.target_content,
-            "details": f"Verdict: {r.verdict} (Risk: {r.risk_score}/100) - SHA: {r.analysis_code}",
+            "details": f"Verdict: {r.verdict} (Risk: {r.risk_score}/100) - Ref: {r.analysis_code}",
             "timestamp": r.created_at.isoformat() if r.created_at else None
+        })
+
+    for inc in incidents:
+        activations.append({
+            "id": inc.id,
+            "actor": inc.source_type or "Enquêteur SOC",
+            "type": "INCIDENT_REPORT",
+            "action": "INCIDENT_DOSSIER",
+            "target": inc.title,
+            "details": f"Dossier {inc.incident_code} (Statut: {inc.status}, Sévérité: {inc.severity})",
+            "timestamp": inc.created_at.isoformat() if inc.created_at else None
         })
 
     activations.sort(key=lambda x: x["timestamp"] or "", reverse=True)

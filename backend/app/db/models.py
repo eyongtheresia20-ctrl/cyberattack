@@ -84,6 +84,7 @@ class AnalysisRecord(Base):
     ml_confidence = Column(Float, nullable=False) # 0.0 to 1.0
     details_json = Column(JSON, nullable=True) # Full ML features, rule triggers, Threat Intel
     integrity_hash = Column(String(64), nullable=False) # SHA-256 evidence hash
+    is_deleted_by_user = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 

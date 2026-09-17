@@ -53,24 +53,8 @@ export default function StandardDashboard({ isHistoryView = false }) {
   const [targetContent, setTargetContent] = useState('');
   const [scanType, setScanType] = useState('URL'); // 'URL', 'SMS', 'EMAIL'
   const [isScanning, setIsScanning] = useState(false);
-  const [currentResult, setCurrentResult] = useState(() => {
-    try {
-      const saved = localStorage.getItem('phishguard_latest_result');
-      return saved ? JSON.parse(saved) : null;
-    } catch(e) {
-      return null;
-    }
-  });
-  
-  // Persisted scan history state loaded directly from database with instant local cache
-  const [scanHistory, setScanHistory] = useState(() => {
-    try {
-      const saved = localStorage.getItem('phishguard_cached_history');
-      return saved ? JSON.parse(saved) : [];
-    } catch(e) {
-      return [];
-    }
-  });
+  const [currentResult, setCurrentResult] = useState(null);
+  const [scanHistory, setScanHistory] = useState([]);
   
   // Incident Reporting State
   const [isReporting, setIsReporting] = useState(false);
@@ -130,43 +114,35 @@ export default function StandardDashboard({ isHistoryView = false }) {
   };
 
   // Compute metrics strictly from database with instant local cache
-  const [dbStats, setDbStats] = useState(() => {
-    try {
-      const saved = localStorage.getItem('phishguard_cached_stats');
-      return saved ? JSON.parse(saved) : {
-        total_analyses: 0,
-        phishing_threats: 0,
-        clean_analyses: 0,
-        ml_accuracy: 98.4
-      };
-    } catch(e) {
-      return {
-        total_analyses: 0,
-        phishing_threats: 0,
-        clean_analyses: 0,
-        ml_accuracy: 98.4
-      };
-    }
+  const [dbStats, setDbStats] = useState({
+    total_analyses: 0,
+    phishing_threats: 0,
+    clean_analyses: 0,
+    ml_accuracy: 98.4
   });
 
   const fetchDbMetrics = async () => {
     try {
       const token = localStorage.getItem('phishguard_token');
       const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+      const userKey = user?.id ? `_${user.id}` : '';
+      
       const [resStats, resHist] = await Promise.all([
         fetch('/api/v1/analyze/stats', { headers }),
         fetch('/api/v1/analyze/history', { headers })
       ]);
+      
       if (resStats.ok) {
         const statsData = await resStats.json();
         setDbStats(statsData);
-        try { localStorage.setItem('phishguard_cached_stats', JSON.stringify(statsData)); } catch(e){}
+        try { localStorage.setItem(`phishguard_cached_stats${userKey}`, JSON.stringify(statsData)); } catch(e){}
       }
+      
       if (resHist.ok) {
         const histData = await resHist.json();
         const historyList = histData.history || [];
         setScanHistory(historyList);
-        try { localStorage.setItem('phishguard_cached_history', JSON.stringify(historyList)); } catch(e){}
+        try { localStorage.setItem(`phishguard_cached_history${userKey}`, JSON.stringify(historyList)); } catch(e){}
         
         // Auto-display last test result on dashboard if available
         if (historyList.length > 0) {
@@ -181,11 +157,11 @@ export default function StandardDashboard({ isHistoryView = false }) {
             details: latest.details || latest,
             timestamp: latest.timestamp
           };
-          setCurrentResult(prev => prev || formattedLatest);
-          localStorage.setItem('phishguard_latest_result', JSON.stringify(formattedLatest));
+          setCurrentResult(formattedLatest);
+          try { localStorage.setItem(`phishguard_latest_result${userKey}`, JSON.stringify(formattedLatest)); } catch(e){}
         } else {
           setCurrentResult(null);
-          localStorage.removeItem('phishguard_latest_result');
+          try { localStorage.removeItem(`phishguard_latest_result${userKey}`); } catch(e){}
         }
       }
     } catch (e) {
@@ -194,8 +170,18 @@ export default function StandardDashboard({ isHistoryView = false }) {
   };
 
   useEffect(() => {
+    const userKey = user?.id ? `_${user.id}` : '';
+    try {
+      const savedHist = localStorage.getItem(`phishguard_cached_history${userKey}`);
+      setScanHistory(savedHist ? JSON.parse(savedHist) : []);
+      const savedRes = localStorage.getItem(`phishguard_latest_result${userKey}`);
+      setCurrentResult(savedRes ? JSON.parse(savedRes) : null);
+      const savedStats = localStorage.getItem(`phishguard_cached_stats${userKey}`);
+      if (savedStats) setDbStats(JSON.parse(savedStats));
+    } catch(e) {}
+    
     fetchDbMetrics();
-  }, [user, isHistoryView]);
+  }, [user?.id, isHistoryView]);
 
   const totalScans = dbStats.total_analyses;
   const phishingBlocked = dbStats.phishing_threats;
@@ -310,7 +296,8 @@ export default function StandardDashboard({ isHistoryView = false }) {
       };
 
       setCurrentResult(resObj);
-      try { localStorage.setItem('phishguard_latest_result', JSON.stringify(resObj)); } catch(e){}
+      const userKey = user?.id ? `_${user.id}` : '';
+      try { localStorage.setItem(`phishguard_latest_result${userKey}`, JSON.stringify(resObj)); } catch(e){}
       setScanHistory(prev => [resObj, ...prev]);
       fetchDbMetrics();
     } catch (err) {
@@ -428,9 +415,13 @@ export default function StandardDashboard({ isHistoryView = false }) {
     setIsChatting(true);
 
     try {
+      const token = localStorage.getItem('phishguard_token');
+      const headers = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
       const res = await fetch('/api/v1/assistant/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ message: userText, prompt: userText })
       });
       const data = await res.json();
@@ -447,6 +438,7 @@ export default function StandardDashboard({ isHistoryView = false }) {
       setIsChatting(false);
     }
   };
+
 
   // Render deep technical inspection details (HTTP, SSL, Security Headers, DNS, Brand)
   const renderTechnicalDetails = (tech, blockNumber = 5) => {
@@ -1194,38 +1186,7 @@ export default function StandardDashboard({ isHistoryView = false }) {
   return (
     <div className="space-y-8 max-w-6xl mx-auto pb-24">
       
-      {/* Top Navigation Mode Tabs */}
-      <div className="flex bg-white/80 dark:bg-[#111622]/90 backdrop-blur-xl border border-sky-100 dark:border-sky-800/40 p-1.5 rounded-2xl shadow-lg max-w-md">
-        <button
-          onClick={() => setActiveMainTab('SCANNER')}
-          className={`flex-1 py-2.5 px-4 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition cursor-pointer ${
-            activeMainTab === 'SCANNER'
-              ? 'bg-sky-500 text-white shadow-md'
-              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-          }`}
-        >
-          <Search className="w-4 h-4" />
-          <span>{lang === 'fr' ? 'Scanner Phishing' : 'Phishing Scanner'}</span>
-        </button>
-
-        <button
-          onClick={() => setActiveMainTab('METRICS')}
-          className={`flex-1 py-2.5 px-4 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition cursor-pointer ${
-            activeMainTab === 'METRICS'
-              ? 'bg-sky-500 text-white shadow-md'
-              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-          }`}
-        >
-          <Award className="w-4 h-4" />
-          <span>{lang === 'fr' ? 'Performances IA (5-Fold CV)' : 'AI Metrics & CV'}</span>
-        </button>
-      </div>
-
-      {activeMainTab === 'METRICS' ? (
-        <MLMetricsPanel lang={lang} />
-      ) : (
-        <>
-          {/* 3 Executive Metrics Cards */}
+      {/* 3 Executive Metrics Cards */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
         
         {/* Card 1: Total Scans */}
@@ -1829,7 +1790,7 @@ export default function StandardDashboard({ isHistoryView = false }) {
                         {lang === 'fr' ? 'Moteur IA Tri-Modèle' : 'Tri-Model AI Engine'}
                       </span>
                       <span className="px-2.5 py-1 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border border-indigo-200/60 dark:border-indigo-800/60 rounded-lg text-[10px] font-bold font-mono">
-                        {testsCount} Blocs de Tests
+                        {lang === 'fr' ? `${testsCount} Blocs de Tests` : `${testsCount} Test Blocks`}
                       </span>
                       <span className="text-[11px] text-slate-400 font-mono">{currentResult.timestamp}</span>
                     </div>
@@ -1859,7 +1820,7 @@ export default function StandardDashboard({ isHistoryView = false }) {
                     <div className="h-10 w-[1px] bg-slate-200 dark:bg-slate-700/60" />
                     <div className="space-y-1.5">
                       <span className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wider block text-center ${isThreat ? 'bg-rose-600 text-white shadow-sm shadow-rose-600/30' : 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/30'}`}>
-                        Niveau : {riskTier}
+                        {lang === 'fr' ? 'Niveau :' : 'Level:'} {riskTier}
                       </span>
                       <div className="flex gap-1 w-24">
                         <div className={`h-1.5 flex-1 rounded-full ${score >= 10 ? (isThreat ? 'bg-rose-500' : 'bg-emerald-500') : 'bg-slate-200 dark:bg-slate-700'}`} />
@@ -1898,7 +1859,7 @@ export default function StandardDashboard({ isHistoryView = false }) {
                     <h4 className="text-xs font-extrabold uppercase font-mono tracking-wider text-slate-700 dark:text-slate-200">{lang === 'fr' ? 'Rapport de Sécurité Complet — Tests Exécutés' : 'Full Security Report — Executed Tests'}</h4>
                   </div>
                   <div className="flex-1 h-px bg-slate-200 dark:bg-slate-800" />
-                  <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-md bg-indigo-500/10 text-indigo-500 border border-indigo-500/20 shrink-0">{testsCount} Blocs</span>
+                  <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-md bg-indigo-500/10 text-indigo-500 border border-indigo-500/20 shrink-0">{testsCount} {lang === 'fr' ? 'Blocs' : 'Blocks'}</span>
                 </div>
 
                 {/* ══════════════════════════════════════════════
@@ -1923,11 +1884,11 @@ export default function StandardDashboard({ isHistoryView = false }) {
                           <div key={idx} className="bg-slate-50 dark:bg-[#111622] border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 space-y-3">
                             <div className="flex items-start justify-between gap-2">
                               <div>
-                                <span className="text-[10px] font-mono text-slate-400 block">Modèle #{idx + 1}</span>
+                                <span className="text-[10px] font-mono text-slate-400 block">{lang === 'fr' ? `Modèle #${idx + 1}` : `Model #${idx + 1}`}</span>
                                 <span className="text-xs font-extrabold text-slate-900 dark:text-white leading-tight">{m.name}</span>
                               </div>
                               <span className={`px-2 py-0.5 rounded-md text-[10px] font-mono font-bold shrink-0 ${isRisky ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20' : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'}`}>
-                                {isRisky ? '⚠️ MENACE' : '✓ SÛR'}
+                                {isRisky ? (lang === 'fr' ? '⚠️ MENACE' : '⚠️ THREAT') : (lang === 'fr' ? '✓ SÛR' : '✓ SAFE')}
                               </span>
                             </div>
                             <div className="space-y-1">
@@ -2057,13 +2018,13 @@ export default function StandardDashboard({ isHistoryView = false }) {
                           <span className="text-xl">🔬</span>
                           <div><p className="text-xs font-black text-slate-800 dark:text-white">VirusTotal</p><p className="text-[10px] text-slate-400">{lang === 'fr' ? '90 moteurs antivirus mondiaux' : '90 global antivirus engines'}</p></div>
                         </div>
-                        <span className={`px-2 py-0.5 rounded-md text-[10px] font-mono font-bold border ${(vt?.positives || 0) > 0 ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20' : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'}`}>{(vt?.positives || 0) > 0 ? '⚠️ DÉTECTÉ' : '✓ PROPRE'}</span>
+                        <span className={`px-2 py-0.5 rounded-md text-[10px] font-mono font-bold border ${(vt?.positives || 0) > 0 ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20' : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'}`}>{(vt?.positives || 0) > 0 ? (lang === 'fr' ? '⚠️ DÉTECTÉ' : '⚠️ DETECTED') : (lang === 'fr' ? '✓ PROPRE' : '✓ CLEAN')}</span>
                       </div>
                       <div className="space-y-2">
                         <div className="flex justify-between text-[11px] font-mono"><span className="text-slate-500">{lang === 'fr' ? 'Détections positives' : 'Positive Detections'}</span><span className={`font-black ${(vt?.positives || 0) > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>{vt?.positives || 0} / {vt?.total_engines || 90}</span></div>
                         <div className="h-2 w-full bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden"><div className={`h-full rounded-full ${(vt?.positives || 0) > 0 ? 'bg-rose-500' : 'bg-emerald-500'}`} style={{ width: `${Math.min(100, ((vt?.positives || 0) / (vt?.total_engines || 90)) * 100)}%` }} /></div>
                         <div className="flex justify-between text-[10px] font-mono text-slate-400"><span>{lang === 'fr' ? 'Score réputation' : 'Reputation Score'}</span><span className={`font-bold ${(vt?.reputation_score || 0) < 0 ? 'text-rose-500' : 'text-emerald-500'}`}>{vt?.reputation_score ?? 'N/A'}</span></div>
-                        <div className="flex justify-between text-[10px] font-mono text-slate-400"><span>{lang === 'fr' ? 'Catégories' : 'Categories'}</span><span className="font-bold text-slate-600 dark:text-slate-300 text-right max-w-[130px] truncate">{vt?.categories?.join(', ') || 'Aucune'}</span></div>
+                        <div className="flex justify-between text-[10px] font-mono text-slate-400"><span>{lang === 'fr' ? 'Catégories' : 'Categories'}</span><span className="font-bold text-slate-600 dark:text-slate-300 text-right max-w-[130px] truncate">{vt?.categories?.join(', ') || (lang === 'fr' ? 'Aucune' : 'None')}</span></div>
                         <p className="text-[9px] font-mono text-slate-400">Source : {vt?.source || 'VirusTotal Intelligence'}</p>
                       </div>
                     </div>
@@ -2074,11 +2035,11 @@ export default function StandardDashboard({ isHistoryView = false }) {
                           <span className="text-xl">🛡️</span>
                           <div><p className="text-xs font-black text-slate-800 dark:text-white">Google Safe Browsing</p><p className="text-[10px] text-slate-400">{lang === 'fr' ? 'Base mondiale malware & phishing' : 'Global malware & phishing database'}</p></div>
                         </div>
-                        <span className={`px-2 py-0.5 rounded-md text-[10px] font-mono font-bold border ${gsb?.is_flagged ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20' : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'}`}>{gsb?.is_flagged ? '⚠️ SIGNALÉ' : '✓ LISTE BLANCHE'}</span>
+                        <span className={`px-2 py-0.5 rounded-md text-[10px] font-mono font-bold border ${gsb?.is_flagged ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20' : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'}`}>{gsb?.is_flagged ? (lang === 'fr' ? '⚠️ SIGNALÉ' : '⚠️ FLAGGED') : (lang === 'fr' ? '✓ LISTE BLANCHE' : '✓ WHITELISTED')}</span>
                       </div>
                       <div className="space-y-2 text-[10px] font-mono">
-                        <div className="flex justify-between text-slate-400"><span>Statut</span><span className={`font-black ${gsb?.is_flagged ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>{gsb?.is_flagged ? (lang === 'fr' ? 'MALICIEUX / SIGNALÉ' : 'MALICIOUS / FLAGGED') : (lang === 'fr' ? 'SÉCURISÉ / APPROUVÉ' : 'SECURE / APPROVED')}</span></div>
-                        <div className="flex justify-between text-slate-400"><span>{lang === 'fr' ? 'Types de menace' : 'Threat Types'}</span><span className={`font-bold ${gsb?.threat_types?.length > 0 ? 'text-rose-500' : 'text-emerald-500'}`}>{gsb?.threat_types?.length > 0 ? gsb.threat_types.join(', ') : 'Aucun'}</span></div>
+                        <div className="flex justify-between text-slate-400"><span>{lang === 'fr' ? 'Statut' : 'Status'}</span><span className={`font-black ${gsb?.is_flagged ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>{gsb?.is_flagged ? (lang === 'fr' ? 'MALICIEUX / SIGNALÉ' : 'MALICIOUS / FLAGGED') : (lang === 'fr' ? 'SÉCURISÉ / APPROUVÉ' : 'SECURE / APPROVED')}</span></div>
+                        <div className="flex justify-between text-slate-400"><span>{lang === 'fr' ? 'Types de menace' : 'Threat Types'}</span><span className={`font-bold ${gsb?.threat_types?.length > 0 ? 'text-rose-500' : 'text-emerald-500'}`}>{gsb?.threat_types?.length > 0 ? gsb.threat_types.join(', ') : (lang === 'fr' ? 'Aucun' : 'None')}</span></div>
                         <div className="flex justify-between text-slate-400"><span>{lang === 'fr' ? 'Plateforme cible' : 'Target Platform'}</span><span className="font-bold text-slate-600 dark:text-slate-300">{gsb?.platform_type || 'ANY_PLATFORM'}</span></div>
                         <p className="text-[9px] text-slate-400 pt-1">Source : {gsb?.source || 'Google Safe Browsing'}</p>
                       </div>
@@ -2098,13 +2059,13 @@ export default function StandardDashboard({ isHistoryView = false }) {
                       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
                         {[
                           { label: (lang === 'fr' ? 'Adresse IP' : 'IP Address'), value: geoip.ip || 'N/A', icon: '🌐', risk: false, highlight: 'text-sky-500 font-bold' },
-                          { label: (lang === 'fr' ? 'Pays (Apparent)' : 'Country (Apparent)'), value: geoip.country || 'Inconnu', icon: '🏳️', risk: false },
-                          { label: (lang === 'fr' ? 'Ville (Estimée / POP)' : 'City (Estimated / POP)'), value: geoip.city || 'Inconnu', icon: '📍', risk: false },
-                          { label: 'ASN', value: geoip.asn || 'Inconnu', icon: '🔌', risk: false },
-                          { label: 'Organisation', value: geoip.org || 'Inconnu', icon: '🏢', risk: false },
+                          { label: (lang === 'fr' ? 'Pays (Apparent)' : 'Country (Apparent)'), value: geoip.country || (lang === 'fr' ? 'Inconnu' : 'Unknown'), icon: '🏳️', risk: false },
+                          { label: (lang === 'fr' ? 'Ville (Estimée / POP)' : 'City (Estimated / POP)'), value: geoip.city || (lang === 'fr' ? 'Inconnu' : 'Unknown'), icon: '📍', risk: false },
+                          { label: 'ASN', value: geoip.asn || 'N/A', icon: '🔌', risk: false },
+                          { label: lang === 'fr' ? 'Organisation' : 'Organization', value: geoip.org || (lang === 'fr' ? 'Inconnu' : 'Unknown'), icon: '🏢', risk: false },
                           { 
                             label: (lang === 'fr' ? 'Statut Proxy / CDN' : 'Proxy / CDN Status'), 
-                            value: geoip.proxy_status_display || (geoip.is_cdn ? 'CDN Anycast (Reverse Proxy)' : geoip.is_vpn_proxy ? 'OUI — Anonymisé' : 'NON (Connexion Directe)'), 
+                            value: geoip.proxy_status_display || (geoip.is_cdn ? 'CDN Anycast (Reverse Proxy)' : geoip.is_vpn_proxy ? (lang === 'fr' ? 'OUI — Anonymisé' : 'YES — Anonymized') : (lang === 'fr' ? 'NON (Connexion Directe)' : 'NO (Direct Connection)')), 
                             icon: geoip.is_vpn_proxy ? '🔴' : geoip.is_cdn ? '🔵' : '🟢', 
                             risk: !!geoip.is_vpn_proxy,
                             isCdn: !!geoip.is_cdn
@@ -2187,12 +2148,12 @@ export default function StandardDashboard({ isHistoryView = false }) {
                 </div>
                 <div>
                   <span className="text-[10px] font-mono uppercase font-black text-sky-500 tracking-wider">
-                    RAPPORT DIAGNOSTIQUE DE SÉCURITÉ
+                    {lang === 'fr' ? 'RAPPORT DIAGNOSTIQUE DE SÉCURITÉ' : 'SECURITY DIAGNOSTIC REPORT'}
                   </span>
                   <h2 className="text-xl font-black text-slate-900 dark:text-white">
-                    Fiche Officielle d'Analyse CyberGuard ({currentResult.details?.analysis_code || 'ANL-REPORT'})
+                    {lang === 'fr' ? "Fiche Officielle d'Analyse CyberGuard" : "CyberGuard Official Analysis Report"} ({currentResult.details?.analysis_code || 'ANL-REPORT'})
                   </h2>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 font-mono">Horodatage : {currentResult.timestamp}</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 font-mono">{lang === 'fr' ? 'Horodatage :' : 'Timestamp:'} {currentResult.timestamp}</p>
                 </div>
               </div>
               <button 
@@ -2210,22 +2171,26 @@ export default function StandardDashboard({ isHistoryView = false }) {
                 : 'bg-emerald-500/10 border-emerald-500/40 text-emerald-600 dark:text-emerald-400'
             }`}>
               <div className="space-y-1">
-                <span className="text-[10px] font-mono uppercase font-extrabold opacity-75">Statut de Classification IA</span>
+                <span className="text-[10px] font-mono uppercase font-extrabold opacity-75">
+                  {lang === 'fr' ? 'Statut de Classification IA' : 'AI Classification Status'}
+                </span>
                 <h3 className="text-xl font-black">
                   {currentResult.verdict === 'PHISHING' || currentResult.riskScore >= 50 
-                    ? '⚠️ MENACE DE PHISHING / MALWARE CONFIRMÉE' 
-                    : '✓ CONTENU SÉCURISÉ & CONFORME'}
+                    ? (lang === 'fr' ? '⚠️ MENACE DE PHISHING / MALWARE CONFIRMÉE' : '⚠️ CONFIRMED PHISHING / MALWARE THREAT') 
+                    : (lang === 'fr' ? '✓ CONTENU SÉCURISÉ & CONFORME' : '✓ SECURE & COMPLIANT CONTENT')}
                 </h3>
               </div>
               <div className="text-right font-mono">
-                <span className="text-[10px] uppercase text-slate-400 font-bold block">Score de Risque</span>
+                <span className="text-[10px] uppercase text-slate-400 font-bold block">{lang === 'fr' ? 'Score de Risque' : 'Risk Score'}</span>
                 <span className="text-3xl font-black">{currentResult.riskScore}%</span>
               </div>
             </div>
 
             {/* Target Content Breakdown */}
             <div className="space-y-1.5">
-              <label className="text-[10px] uppercase font-mono font-bold text-slate-400">Objet / {lang === 'fr' ? 'Cible Inspectée' : 'Inspected Target'} ({currentResult.type})</label>
+              <label className="text-[10px] uppercase font-mono font-bold text-slate-400">
+                {lang === 'fr' ? 'Objet / Cible Inspectée' : 'Inspected Object / Target'} ({currentResult.type})
+              </label>
               <div className="p-4 bg-slate-50 dark:bg-[#1a2333] rounded-2xl border border-sky-100 dark:border-sky-800/40 text-xs font-mono font-bold break-all text-slate-900 dark:text-slate-100 shadow-inner">
                 {currentResult.target}
               </div>
@@ -2235,17 +2200,17 @@ export default function StandardDashboard({ isHistoryView = false }) {
             {currentResult.details?.model_comparisons?.length > 0 && (
               <div className="space-y-2">
                 <p className="text-[11px] font-mono font-extrabold uppercase text-slate-400 flex items-center gap-2">
-                  <Cpu className="w-4 h-4 text-sky-500" /> Prédictions des Modèles IA Ensemble :
+                  <Cpu className="w-4 h-4 text-sky-500" /> {lang === 'fr' ? 'Prédictions des Modèles IA Ensemble :' : 'Ensemble AI Models Predictions:'}
                 </p>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   {currentResult.details.model_comparisons.map((m, idx) => (
                     <div key={idx} className="p-3.5 bg-slate-50 dark:bg-[#1a2333] rounded-2xl border border-sky-100 dark:border-sky-800/40 text-xs font-mono space-y-1">
                       <div className="flex justify-between items-center text-[10px] font-bold text-slate-400 border-b border-slate-200 dark:border-slate-800 pb-1">
                         <span>{m.name}</span>
-                        <span className="text-emerald-500 font-extrabold">{m.accuracy}% Précision</span>
+                        <span className="text-emerald-500 font-extrabold">{m.accuracy}% {lang === 'fr' ? 'Précision' : 'Accuracy'}</span>
                       </div>
                       <div className="flex justify-between items-center font-black pt-1">
-                        <span className="text-[11px] text-slate-500">Probabilité Risque:</span>
+                        <span className="text-[11px] text-slate-500">{lang === 'fr' ? 'Probabilité Risque:' : 'Risk Probability:'}</span>
                         <span className={m.phishing_prob >= 50 ? "text-rose-500" : "text-emerald-500"}>{m.phishing_prob}%</span>
                       </div>
                     </div>
@@ -2258,46 +2223,46 @@ export default function StandardDashboard({ isHistoryView = false }) {
             {currentResult.details?.features && (
               <div className="space-y-2">
                 <p className="text-[11px] font-mono font-extrabold uppercase text-slate-400 flex items-center gap-2">
-                  <BarChart2 className="w-4 h-4 text-sky-500" /> Caractéristiques Extraites (Dataset Vector) :
+                  <BarChart2 className="w-4 h-4 text-sky-500" /> {lang === 'fr' ? 'Caractéristiques Extraites (Dataset Vector) :' : 'Extracted Features (Dataset Vector):'}
                 </p>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs font-mono">
                   <div className="p-3 bg-slate-50 dark:bg-[#1a2333] rounded-xl border border-sky-100 dark:border-sky-800/40">
-                    <span className="text-[10px] text-slate-400 block">Hôte IP Direct</span>
+                    <span className="text-[10px] text-slate-400 block">{lang === 'fr' ? 'Hôte IP Direct' : 'Direct IP Host'}</span>
                     <strong className={currentResult.details.features.has_ip ? "text-rose-500 font-bold" : "text-emerald-500 font-bold"}>
-                      {currentResult.details.features.has_ip ? "❌ OUI" : "✓ NON"}
+                      {currentResult.details.features.has_ip ? (lang === 'fr' ? "❌ OUI" : "❌ YES") : (lang === 'fr' ? "✓ NON" : "✓ NO")}
                     </strong>
                   </div>
                   <div className="p-3 bg-slate-50 dark:bg-[#1a2333] rounded-xl border border-sky-100 dark:border-sky-800/40">
-                    <span className="text-[10px] text-slate-400 block">HTTPS Chiffré</span>
+                    <span className="text-[10px] text-slate-400 block">{lang === 'fr' ? 'HTTPS Chiffré' : 'Encrypted HTTPS'}</span>
                     <strong className={currentResult.details.features.is_https ? "text-emerald-500 font-bold" : "text-rose-500 font-bold"}>
-                      {currentResult.details.features.is_https ? "✓ OUI" : "❌ NON"}
+                      {currentResult.details.features.is_https ? (lang === 'fr' ? "✓ OUI" : "✓ YES") : (lang === 'fr' ? "❌ NON" : "❌ NO")}
                     </strong>
                   </div>
                   <div className="p-3 bg-slate-50 dark:bg-[#1a2333] rounded-xl border border-sky-100 dark:border-sky-800/40">
-                    <span className="text-[10px] text-slate-400 block">Entropy String</span>
+                    <span className="text-[10px] text-slate-400 block">{lang === 'fr' ? 'Entropie Chaîne' : 'String Entropy'}</span>
                     <strong className="text-sky-500 font-bold">{currentResult.details.features.entropy || 3.45}</strong>
                   </div>
                   <div className="p-3 bg-slate-50 dark:bg-[#1a2333] rounded-xl border border-sky-100 dark:border-sky-800/40">
-                    <span className="text-[10px] text-slate-400 block">Sous-domaines</span>
+                    <span className="text-[10px] text-slate-400 block">{lang === 'fr' ? 'Sous-domaines' : 'Subdomains'}</span>
                     <strong className="text-slate-800 dark:text-slate-200 font-bold">{currentResult.details.features.num_subdomains || 0}</strong>
                   </div>
                 </div>
               </div>
             )}
 
-
-
             {/* Live Deep Technical Probe Details */}
             {currentResult.details?.technical_inspection && (
               <div className="space-y-2">
-                {renderTechnicalDetails(currentResult.details.technical_inspection, "Sonde")}
+                {renderTechnicalDetails(currentResult.details.technical_inspection, lang === 'fr' ? "Sonde" : "Probe")}
               </div>
             )}
 
             {/* Cryptographic Proof */}
             {currentResult.details?.integrity_hash && (
               <div className="space-y-1">
-                <label className="text-[10px] uppercase font-mono font-bold text-slate-400">Empreinte Cryptographique SHA-256 (Audit Trail)</label>
+                <label className="text-[10px] uppercase font-mono font-bold text-slate-400">
+                  {lang === 'fr' ? "Empreinte Cryptographique SHA-256 (Piste d'Audit)" : "SHA-256 Cryptographic Fingerprint (Audit Trail)"}
+                </label>
                 <div className="p-3.5 bg-slate-100 dark:bg-slate-900 rounded-2xl font-mono text-[11px] text-slate-600 dark:text-slate-300 break-all font-bold">
                   {currentResult.details.integrity_hash}
                 </div>
@@ -2310,7 +2275,7 @@ export default function StandardDashboard({ isHistoryView = false }) {
                 onClick={() => window.print()}
                 className="w-full sm:w-auto px-5 py-3 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs rounded-2xl flex items-center justify-center gap-2 transition cursor-pointer"
               >
-                <Printer className="w-4 h-4" /> <span>Imprimer / Exporter (PDF)</span>
+                <Printer className="w-4 h-4" /> <span>{lang === 'fr' ? 'Imprimer / Exporter (PDF)' : 'Print / Export (PDF)'}</span>
               </button>
 
               <button
@@ -2318,14 +2283,12 @@ export default function StandardDashboard({ isHistoryView = false }) {
                 disabled={isReporting}
                 className="w-full sm:w-auto px-6 py-3 bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs rounded-2xl shadow-xl shadow-rose-600/30 flex items-center justify-center gap-2 transition cursor-pointer"
               >
-                <Send className="w-4 h-4" /> <span>Transmettre ce Rapport à l'Enquêteur</span>
+                <Send className="w-4 h-4" /> <span>{lang === 'fr' ? "Transmettre ce Rapport à l'Enquêteur" : "Forward Report to Investigator"}</span>
               </button>
             </div>
 
           </div>
         </div>
-      )}
-        </>
       )}
 
     </div>

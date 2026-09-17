@@ -4,40 +4,14 @@ import { useLanguage } from '../context/LanguageContext';
 import { 
   History, Search, Pin, Eye, Trash2, X, AlertTriangle, 
   CheckCircle2, Cpu, BarChart2, ShieldCheck, MapPin, 
-  Lock, Copy, Check, FileText, Send, Sparkles, Filter, RefreshCw, Terminal
+  Lock, Copy, Check, FileText, Send, Sparkles, Filter, RefreshCw, Terminal, ShieldAlert
 } from 'lucide-react';
 
 export default function HistoryPage() {
   const { user } = useAuth();
   const { lang, t } = useLanguage();
 
-  // Hydrate history from cache immediately, then fetch fresh data from database
-  const [scanHistory, setScanHistory] = useState(() => {
-    try {
-      const saved = localStorage.getItem('phishguard_cached_history');
-      if (!saved) return [];
-      const parsed = JSON.parse(saved);
-      return parsed.map(r => {
-        const det = typeof r.details === 'string' ? JSON.parse(r.details || '{}') : (r.details || {});
-        const rawScore = r.riskScore ?? r.risk_score ?? det.risk_score ?? det.riskScore ?? 0;
-        const score = typeof rawScore === 'number' ? rawScore : parseFloat(rawScore) || 0;
-        const rawVerdict = (r.verdict || det.verdict || '').toUpperCase();
-        const isThreat = score >= 50 || rawVerdict.includes('PHISH') || rawVerdict.includes('MALICIOUS') || rawVerdict.includes('MENACE') || rawVerdict.includes('SUSPICIOUS');
-        return {
-          ...r,
-          id: r.id,
-          analysis_code: r.analysis_code || det.analysis_code || `ANL-${r.id ? r.id.slice(0, 6).toUpperCase() : 'SCAN'}`,
-          type: (r.type || r.scan_type || det.analysis_type || 'URL').toUpperCase(),
-          target: r.target || r.target_content || det.target_url || det.text_content || '',
-          riskScore: score,
-          verdict: isThreat ? 'PHISHING / MALICIOUS' : 'LEGITIMATE / CLEAN'
-        };
-      });
-    } catch (e) {
-      return [];
-    }
-  });
-
+  const [scanHistory, setScanHistory] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [historySearchQuery, setHistorySearchQuery] = useState('');
   const [historyVerdictFilter, setHistoryVerdictFilter] = useState('ALL'); // 'ALL', 'THREATS', 'CLEAN'
@@ -46,6 +20,17 @@ export default function HistoryPage() {
 
   const [copiedUrl, setCopiedUrl] = useState(false);
   const [copiedHash, setCopiedHash] = useState(false);
+
+  // Transfer to Investigator State
+  const [transferringId, setTransferringId] = useState(null);
+  const [transferredIds, setTransferredIds] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('phishguard_transferred_ids')) || [];
+    } catch (e) {
+      return [];
+    }
+  });
+  const [transferMessage, setTransferMessage] = useState('');
 
   // Scroll to top immediately on component mount
   useEffect(() => {
@@ -98,11 +83,9 @@ export default function HistoryPage() {
         const formatted = records.map((r) => {
           const det = typeof r.details === 'string' ? JSON.parse(r.details || '{}') : (r.details || {});
           
-          // Accurately parse riskScore from camelCase or snake_case or details
           const rawScore = r.riskScore ?? r.risk_score ?? det.risk_score ?? det.riskScore ?? 0;
           const score = typeof rawScore === 'number' ? rawScore : parseFloat(rawScore) || 0;
           
-          // Accurately parse verdict from direct verdict or details or score threshold
           const rawVerdict = (r.verdict || det.verdict || '').toUpperCase();
           const isThreat = score >= 50 || rawVerdict.includes('PHISH') || rawVerdict.includes('MALICIOUS') || rawVerdict.includes('MENACE') || rawVerdict.includes('SUSPICIOUS');
           const verdict = isThreat ? 'PHISHING / MALICIOUS' : 'LEGITIMATE / CLEAN';
@@ -124,8 +107,9 @@ export default function HistoryPage() {
         });
 
         setScanHistory(formatted);
+        const userHistoryKey = user?.id ? `phishguard_cached_history_${user.id}` : 'phishguard_cached_history';
         try {
-          localStorage.setItem('phishguard_cached_history', JSON.stringify(formatted));
+          localStorage.setItem(userHistoryKey, JSON.stringify(formatted));
         } catch (e) {}
       }
     } catch (err) {
@@ -136,8 +120,38 @@ export default function HistoryPage() {
   };
 
   useEffect(() => {
+    const userHistoryKey = user?.id ? `phishguard_cached_history_${user.id}` : 'phishguard_cached_history';
+    try {
+      const saved = localStorage.getItem(userHistoryKey);
+      setScanHistory(saved ? JSON.parse(saved) : []);
+    } catch(e) {
+      setScanHistory([]);
+    }
     fetchHistory();
-  }, [user]);
+  }, [user?.id]);
+
+  const [isClearingAll, setIsClearingAll] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+
+  const handleClearAllHistory = async () => {
+    setIsClearingAll(true);
+    try {
+      const token = localStorage.getItem('phishguard_token');
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+      const res = await fetch('/api/v1/analyze/history', { method: 'DELETE', headers });
+      if (res.ok) {
+        setScanHistory([]);
+        localStorage.removeItem('phishguard_cached_history');
+        localStorage.removeItem('phishguard_latest_result');
+        localStorage.removeItem('phishguard_cached_stats');
+      }
+    } catch (e) {
+      console.error("Error clearing history:", e);
+    } finally {
+      setIsClearingAll(false);
+      setShowClearConfirm(false);
+    }
+  };
 
   const handleDeleteItem = async () => {
     if (!itemToDelete) return;
@@ -163,6 +177,57 @@ export default function HistoryPage() {
       }
     } catch (e) {
       console.log('Error deleting record:', e);
+    }
+  };
+
+  const handleTransferToInvestigator = async (item) => {
+    if (!item) return;
+    setTransferringId(item.id);
+    setTransferMessage('');
+
+    try {
+      const token = localStorage.getItem('phishguard_token');
+      const headers = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch('/api/v1/incidents/submit-user-report', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          title: `[Demand / Transfer] ${item.target}`,
+          target: item.target,
+          scan_type: item.type || 'URL',
+          verdict: item.verdict,
+          risk_score: item.riskScore,
+          details: {
+            ...(item.details || {}),
+            transferred_from_history: true,
+            analysis_code: item.analysis_code,
+            transfer_timestamp: new Date().toISOString()
+          },
+          reporter_name: `${user?.prenom || 'Alice'} ${user?.nom || 'Martin'}`,
+          reporter_email: user?.email || 'alice.martin@example.com'
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || (lang === 'fr' ? 'Erreur lors du transfert' : 'Error transferring report'));
+
+      const newTransferred = [...transferredIds, item.id];
+      setTransferredIds(newTransferred);
+      try {
+        localStorage.setItem('phishguard_transferred_ids', JSON.stringify(newTransferred));
+      } catch (e) {}
+
+      setTransferMessage(
+        lang === 'fr'
+          ? `✓ Dossier transféré avec succès à l'enquêteur (${data.report?.report_code || 'DEMANDE-OK'})`
+          : `✓ Successfully transferred to the investigator (${data.report?.report_code || 'DEMAND-OK'})`
+      );
+    } catch (err) {
+      alert((lang === 'fr' ? 'Erreur : ' : 'Error: ') + err.message);
+    } finally {
+      setTransferringId(null);
     }
   };
 
@@ -224,6 +289,26 @@ export default function HistoryPage() {
             <span className="px-3.5 py-1.5 bg-sky-50 dark:bg-sky-950/40 text-sky-600 dark:text-sky-400 border border-sky-200 dark:border-sky-800/40 rounded-xl text-xs font-mono font-bold">
               {scanHistory.length} {lang === 'fr' ? 'analyses au total' : 'total scans'}
             </span>
+
+            <button
+              onClick={fetchHistory}
+              disabled={isLoading}
+              className="p-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-sky-500/10 text-slate-600 dark:text-slate-300 rounded-xl transition cursor-pointer"
+              title={lang === 'fr' ? 'Actualiser' : 'Refresh'}
+            >
+              <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin text-sky-500' : ''}`} />
+            </button>
+
+            {scanHistory.length > 0 && (
+              <button
+                onClick={() => setShowClearConfirm(true)}
+                className="px-3 py-1.5 bg-rose-500/10 hover:bg-rose-500 text-rose-500 hover:text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 border border-rose-500/30 cursor-pointer"
+                title={lang === 'fr' ? "Vider tout l'historique" : 'Clear all history'}
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>{lang === 'fr' ? "Vider l'historique" : 'Clear History'}</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -302,11 +387,12 @@ export default function HistoryPage() {
                 {sortedScanHistory.map((item) => {
                   const isPinned = pinnedIds.includes(item.id);
                   const isThreat = item.riskScore >= 50 || item.verdict?.includes('PHISHING') || item.verdict?.includes('MALICIOUS');
+                  const isTransferred = transferredIds.includes(item.id);
 
                   return (
                     <tr
                       key={item.id}
-                      onClick={() => setSelectedHistoryItem(item)}
+                      onClick={() => { setSelectedHistoryItem(item); setTransferMessage(''); }}
                       className={`hover:bg-sky-500/5 dark:hover:bg-sky-500/10 cursor-pointer transition duration-150 ${
                         isPinned ? 'bg-amber-500/5 dark:bg-amber-500/10' : ''
                       }`}
@@ -335,8 +421,15 @@ export default function HistoryPage() {
                       </td>
 
                       <td className="py-3.5 px-3 max-w-xs sm:max-w-md truncate text-slate-900 dark:text-slate-100 font-sans font-medium">
-                        {isPinned && <span className="mr-1.5 text-amber-500 font-bold">📌</span>}
-                        {item.target}
+                        <div className="flex items-center gap-1.5">
+                          {isPinned && <span className="text-amber-500 font-bold">📌</span>}
+                          <span className="truncate">{item.target}</span>
+                          {user?.role === 'UTILISATEUR_STANDARD' && isTransferred && (
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 shrink-0">
+                              {lang === 'fr' ? '✓ Transféré' : '✓ Transferred'}
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       <td className="py-3.5 px-3">
@@ -348,7 +441,9 @@ export default function HistoryPage() {
                           }`}
                         >
                           <span className={`w-1.5 h-1.5 rounded-full ${isThreat ? 'bg-rose-500 animate-pulse' : 'bg-emerald-400'}`} />
-                          {item.verdict}
+                          {isThreat 
+                            ? (lang === 'fr' ? 'PHISHING / MALVEILLANT' : 'PHISHING / MALICIOUS') 
+                            : (lang === 'fr' ? 'LÉGITIME / SÛR' : 'LEGITIMATE / CLEAN')}
                         </span>
                       </td>
 
@@ -359,7 +454,7 @@ export default function HistoryPage() {
                       <td className="py-3.5 px-3 text-right" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-end gap-1.5">
                           <button
-                            onClick={() => setSelectedHistoryItem(item)}
+                            onClick={() => { setSelectedHistoryItem(item); setTransferMessage(''); }}
                             className="px-2.5 py-1 bg-sky-500/10 hover:bg-sky-500/20 text-sky-600 dark:text-sky-400 font-bold rounded-lg text-[11px] border border-sky-500/30 transition cursor-pointer"
                           >
                             {lang === 'fr' ? 'Voir' : 'View'}
@@ -425,13 +520,14 @@ export default function HistoryPage() {
       {/* Detailed Modal view for selected history record */}
       {selectedHistoryItem && (() => {
         const itemDetails = selectedHistoryItem.details || selectedHistoryItem;
-        const isThreat = selectedHistoryItem.riskScore >= 50 || selectedHistoryItem.verdict?.includes('PHISHING');
+        const isThreat = selectedHistoryItem.riskScore >= 50 || selectedHistoryItem.verdict?.includes('PHISHING') || selectedHistoryItem.verdict?.includes('MALICIOUS');
         const features = itemDetails?.features || {};
         const models = itemDetails?.model_comparisons || [];
         const geoip = itemDetails?.geoip_info;
         const vt = itemDetails?.virustotal;
         const gsb = itemDetails?.google_safebrowsing;
         const advice = itemDetails?.defensive_advice || [];
+        const isTransferred = transferredIds.includes(selectedHistoryItem.id);
 
         return (
           <div className="fixed inset-0 bg-slate-950/75 backdrop-blur-md z-50 flex items-center justify-center p-4">
@@ -449,7 +545,7 @@ export default function HistoryPage() {
                   </div>
                 </div>
                 <button
-                  onClick={() => setSelectedHistoryItem(null)}
+                  onClick={() => { setSelectedHistoryItem(null); setTransferMessage(''); }}
                   className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-white rounded-xl bg-slate-100 dark:bg-slate-800 cursor-pointer"
                 >
                   <X className="w-5 h-5" />
@@ -473,8 +569,14 @@ export default function HistoryPage() {
                     {isThreat ? <AlertTriangle className="w-6 h-6" /> : <CheckCircle2 className="w-6 h-6" />}
                   </div>
                   <div>
-                    <span className="text-[10px] font-mono uppercase font-bold tracking-wider opacity-75">Classification IA</span>
-                    <p className="text-xl font-black">{selectedHistoryItem.verdict}</p>
+                    <span className="text-[10px] font-mono uppercase font-bold tracking-wider opacity-75">
+                      {lang === 'fr' ? 'Classification IA' : 'AI Classification'}
+                    </span>
+                    <p className="text-xl font-black">
+                      {isThreat 
+                        ? (lang === 'fr' ? 'PHISHING / MALVEILLANT' : 'PHISHING / MALICIOUS') 
+                        : (lang === 'fr' ? 'LÉGITIME / SÛR' : 'LEGITIMATE / CLEAN')}
+                    </p>
                   </div>
                 </div>
 
@@ -489,13 +591,15 @@ export default function HistoryPage() {
 
               {/* Submitted Target Content */}
               <div className="space-y-1.5">
-                <label className="text-[10px] uppercase font-mono font-bold text-slate-400">Cible Analysée ({selectedHistoryItem.type})</label>
+                <label className="text-[10px] uppercase font-mono font-bold text-slate-400">
+                  {lang === 'fr' ? 'Cible Analysée' : 'Inspected Target'} ({selectedHistoryItem.type})
+                </label>
                 <div className="p-4 bg-slate-50 dark:bg-[#111622] rounded-2xl border border-slate-200 dark:border-slate-800 text-xs font-mono break-all text-slate-900 dark:text-slate-100 shadow-inner font-bold flex items-center justify-between gap-3">
                   <span>{selectedHistoryItem.target}</span>
                   <button
                     onClick={() => copyToClipboard(selectedHistoryItem.target, 'url')}
                     className="p-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:text-sky-500 text-xs shrink-0 cursor-pointer"
-                    title="Copier"
+                    title={lang === 'fr' ? 'Copier' : 'Copy'}
                   >
                     {copiedUrl ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
                   </button>
@@ -507,12 +611,12 @@ export default function HistoryPage() {
                 <div className="flex items-center gap-2">
                   <Terminal className="w-4 h-4 text-indigo-500" />
                   <h4 className="text-xs font-extrabold uppercase font-mono tracking-wider text-slate-700 dark:text-slate-200">
-                    Rapport de Sécurité Complet — Tests Exécutés
+                    {lang === 'fr' ? 'Rapport de Sécurité Complet — Tests Exécutés' : 'Full Security Report — Executed Tests'}
                   </h4>
                 </div>
                 <div className="flex-1 h-px bg-slate-200 dark:bg-slate-800" />
                 <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-md bg-indigo-500/10 text-indigo-500 border border-indigo-500/20 shrink-0">
-                  {(models.length > 0 ? 1 : 0) + (Object.keys(features).length > 0 ? 1 : 0) + 2 + (geoip ? 1 : 0)} Blocs
+                  {(models.length > 0 ? 1 : 0) + (Object.keys(features).length > 0 ? 1 : 0) + 2 + (geoip ? 1 : 0)} {lang === 'fr' ? 'Blocs' : 'Blocks'}
                 </span>
               </div>
 
@@ -523,9 +627,13 @@ export default function HistoryPage() {
                     <div className="flex items-center gap-2">
                       <div className="w-6 h-6 rounded-lg bg-indigo-500 flex items-center justify-center text-white text-[10px] font-black shrink-0">1</div>
                       <Cpu className="w-4 h-4 text-indigo-500" />
-                      <span className="text-xs font-extrabold text-slate-800 dark:text-white font-mono uppercase tracking-wide">Moteur IA — Ensemble Machine Learning (3 Modèles)</span>
+                      <span className="text-xs font-extrabold text-slate-800 dark:text-white font-mono uppercase tracking-wide">
+                        {lang === 'fr' ? 'Moteur IA — Ensemble Machine Learning (3 Modèles)' : 'AI Engine — Machine Learning Ensemble (3 Models)'}
+                      </span>
                     </div>
-                    <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">✓ 3/3 Actifs</span>
+                    <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                      {lang === 'fr' ? '✓ 3/3 Actifs' : '✓ 3/3 Active'}
+                    </span>
                   </div>
 
                   <div className="p-4 grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -536,16 +644,16 @@ export default function HistoryPage() {
                         <div key={idx} className="bg-slate-50 dark:bg-[#111622] border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 space-y-3">
                           <div className="flex items-start justify-between gap-2">
                             <div>
-                              <span className="text-[10px] font-mono text-slate-400 block">Modèle #{idx + 1}</span>
+                              <span className="text-[10px] font-mono text-slate-400 block">{lang === 'fr' ? `Modèle #${idx + 1}` : `Model #${idx + 1}`}</span>
                               <span className="text-xs font-extrabold text-slate-900 dark:text-white leading-tight">{m.name}</span>
                             </div>
                             <span className={`px-2 py-0.5 rounded-md text-[10px] font-mono font-bold shrink-0 ${isRisky ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20' : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'}`}>
-                              {isRisky ? '⚠ MENACE' : '✓ SÛR'}
+                              {isRisky ? (lang === 'fr' ? '⚠️ MENACE' : '⚠️ THREAT') : (lang === 'fr' ? '✓ SÛR' : '✓ SAFE')}
                             </span>
                           </div>
                           <div className="space-y-1">
                             <div className="flex justify-between text-[10px] font-mono">
-                              <span className="text-slate-400">Probabilité de phishing</span>
+                              <span className="text-slate-400">{lang === 'fr' ? 'Probabilité de phishing' : 'Phishing Probability'}</span>
                               <span className={`font-black ${isRisky ? 'text-rose-500' : 'text-emerald-500'}`}>{mProb}%</span>
                             </div>
                             <div className="h-2 w-full bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
@@ -553,7 +661,7 @@ export default function HistoryPage() {
                             </div>
                           </div>
                           <div className="flex justify-between text-[10px] font-mono text-slate-500">
-                            <span>Précision du modèle</span>
+                            <span>{lang === 'fr' ? 'Précision du modèle' : 'Model Accuracy'}</span>
                             <span className="text-emerald-500 font-bold">{m.accuracy}%</span>
                           </div>
                         </div>
@@ -570,23 +678,27 @@ export default function HistoryPage() {
                     <div className="flex items-center gap-2">
                       <div className="w-6 h-6 rounded-lg bg-amber-500 flex items-center justify-center text-white text-[10px] font-black shrink-0">2</div>
                       <BarChart2 className="w-4 h-4 text-amber-500" />
-                      <span className="text-xs font-extrabold text-slate-800 dark:text-white font-mono uppercase tracking-wide">Moteur Heuristique — 17 Caractéristiques URL</span>
+                      <span className="text-xs font-extrabold text-slate-800 dark:text-white font-mono uppercase tracking-wide">
+                        {lang === 'fr' ? 'Moteur Heuristique — 17 Caractéristiques URL' : 'Heuristic Engine — 17 URL Features'}
+                      </span>
                     </div>
                     <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded border ${(itemDetails?.rule_triggers?.length || 0) > 0 ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20' : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'}`}>
-                      {(itemDetails?.rule_triggers?.length || 0)} Règle(s) Déclenchée(s)
+                      {(itemDetails?.rule_triggers?.length || 0)} {lang === 'fr' ? 'Règle(s) Déclenchée(s)' : 'Rule(s) Triggered'}
                     </span>
                   </div>
                   <div className="p-4 space-y-4">
                     <div>
-                      <p className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-400 mb-2">Tests Binaires (Passe / Échec)</p>
+                      <p className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-400 mb-2">
+                        {lang === 'fr' ? 'Tests Binaires (Passe / Échec)' : 'Binary Checks (Pass / Fail)'}
+                      </p>
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                         {[
-                          { label: 'Chiffrement HTTPS / SSL', desc: 'Protocole de connexion sécurisé', pass: !!features.is_https, value: features.is_https ? 'HTTPS Actif' : 'HTTP Non Chiffré' },
-                          { label: 'Hôte IP Direct', desc: "IP brute au lieu d'un domaine", pass: !features.has_ip, value: features.has_ip ? 'IP Détectée — Risque' : 'Domaine Normal' },
-                          { label: 'TLD Suspect', desc: 'Extension risquée (.xyz, .top, .tk...)', pass: !features.has_suspicious_tld, value: features.has_suspicious_tld ? 'TLD Dangereux' : 'TLD Standard' },
-                          { label: 'Symbole @ Redirection', desc: "Trompe le navigateur sur l'hôte réel", pass: !(features.num_at > 0), value: features.num_at > 0 ? `${features.num_at} Symbole(s) @` : 'Aucun' },
-                          { label: 'Sous-domaines Excessifs', desc: 'login.secure.paypal.xyz (2+ niveaux)', pass: (features.num_subdomains || 0) < 2, value: `${features.num_subdomains || 0} Niveau(x)` },
-                          { label: 'Mots-clés Suspects', desc: 'login, verify, paypal, bank, claim...', pass: (features.keyword_count || 0) === 0, value: features.keyword_count > 0 ? `${features.keyword_count} Mot(s)` : 'Aucun' },
+                          { label: lang === 'fr' ? 'Chiffrement HTTPS / SSL' : 'HTTPS / SSL Encryption', desc: lang === 'fr' ? 'Protocole de connexion sécurisé' : 'Secure connection protocol', pass: !!features.is_https, value: features.is_https ? (lang === 'fr' ? 'HTTPS Actif' : 'HTTPS Active') : (lang === 'fr' ? 'HTTP Non Chiffré' : 'HTTP Unencrypted') },
+                          { label: lang === 'fr' ? 'Hôte IP Direct' : 'Direct IP Host', desc: lang === 'fr' ? "IP brute au lieu d'un domaine" : "Raw IP instead of domain", pass: !features.has_ip, value: features.has_ip ? (lang === 'fr' ? 'IP Détectée — Risque' : 'IP Detected — Risk') : (lang === 'fr' ? 'Domaine Normal' : 'Normal Domain') },
+                          { label: lang === 'fr' ? 'TLD Suspect' : 'Suspicious TLD', desc: lang === 'fr' ? 'Extension risquée (.xyz, .top, .tk...)' : 'Risky TLD (.xyz, .top, .tk...)', pass: !features.has_suspicious_tld, value: features.has_suspicious_tld ? (lang === 'fr' ? 'TLD Dangereux' : 'Dangerous TLD') : (lang === 'fr' ? 'TLD Standard' : 'Standard TLD') },
+                          { label: lang === 'fr' ? 'Symbole @ Redirection' : '@ Symbol Redirection', desc: lang === 'fr' ? "Trompe le navigateur sur l'hôte réel" : "Tricks browser on actual host", pass: !(features.num_at > 0), value: features.num_at > 0 ? `${features.num_at} Symbol(s) @` : (lang === 'fr' ? 'Aucun' : 'None') },
+                          { label: lang === 'fr' ? 'Sous-domaines Excessifs' : 'Excessive Subdomains', desc: 'login.secure.paypal.xyz (2+)', pass: (features.num_subdomains || 0) < 2, value: `${features.num_subdomains || 0} ${lang === 'fr' ? 'Niveau(x)' : 'Level(s)'}` },
+                          { label: lang === 'fr' ? 'Mots-clés Suspects' : 'Suspicious Keywords', desc: 'login, verify, paypal, bank...', pass: (features.keyword_count || 0) === 0, value: features.keyword_count > 0 ? `${features.keyword_count} ${lang === 'fr' ? 'Mot(s)' : 'Word(s)'}` : (lang === 'fr' ? 'Aucun' : 'None') },
                         ].map((test, i) => (
                           <div key={i} className={`p-3 rounded-xl border flex items-start gap-3 ${test.pass ? 'bg-emerald-50/60 dark:bg-emerald-950/10 border-emerald-200 dark:border-emerald-900/30' : 'bg-rose-50/60 dark:bg-rose-950/10 border-rose-200 dark:border-rose-900/30'}`}>
                             <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 mt-0.5 text-white text-[10px] font-black ${test.pass ? 'bg-emerald-500' : 'bg-rose-500'}`}>{test.pass ? '✓' : '✗'}</div>
@@ -600,26 +712,28 @@ export default function HistoryPage() {
                       </div>
                     </div>
                     <div>
-                      <p className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-400 mb-2">Métriques Numériques Extraites (17 Features ML)</p>
+                      <p className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-400 mb-2">
+                        {lang === 'fr' ? 'Métriques Numériques Extraites (17 Features ML)' : 'Extracted Numerical Metrics (17 ML Features)'}
+                      </p>
                       <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-2">
                         {[
-                          { label: 'Long. URL', val: features.url_length || 0, warn: (features.url_length || 0) > 75 },
-                          { label: 'Long. Dom.', val: features.domain_length || 0, warn: (features.domain_length || 0) > 30 },
-                          { label: 'Chemin', val: features.path_length || 0, warn: (features.path_length || 0) > 60 },
-                          { label: 'Points (.)', val: features.num_dots || 0, warn: (features.num_dots || 0) > 4 },
-                          { label: 'Tirets (-)', val: features.num_hyphens || 0, warn: (features.num_hyphens || 0) > 2 },
-                          { label: 'Entropie', val: typeof features.entropy === 'number' ? features.entropy.toFixed(2) : '0', warn: (features.entropy || 0) > 4.2 },
-                          { label: 'Params (?)', val: features.num_equals || 0, warn: (features.num_equals || 0) > 3 },
-                          { label: 'Barres (/)', val: features.num_slashes || 0, warn: (features.num_slashes || 0) > 7 },
-                          { label: 'Chiffres', val: features.num_digits || 0, warn: (features.num_digits || 0) > 12 },
-                          { label: 'Spéciaux', val: features.num_special_chars || 0, warn: (features.num_special_chars || 0) > 15 },
-                          { label: 'Sous-dom.', val: features.num_subdomains || 0, warn: (features.num_subdomains || 0) >= 2 },
-                          { label: 'Mots-clés', val: features.keyword_count || 0, warn: (features.keyword_count || 0) > 0 },
+                          { label: lang === 'fr' ? 'Long. URL' : 'URL Len.', val: features.url_length || 0, warn: (features.url_length || 0) > 75 },
+                          { label: lang === 'fr' ? 'Long. Dom.' : 'Dom. Len.', val: features.domain_length || 0, warn: (features.domain_length || 0) > 30 },
+                          { label: lang === 'fr' ? 'Chemin' : 'Path Len.', val: features.path_length || 0, warn: (features.path_length || 0) > 60 },
+                          { label: lang === 'fr' ? 'Points (.)' : 'Dots (.)', val: features.num_dots || 0, warn: (features.num_dots || 0) > 4 },
+                          { label: lang === 'fr' ? 'Tirets (-)' : 'Hyphens (-)', val: features.num_hyphens || 0, warn: (features.num_hyphens || 0) > 2 },
+                          { label: lang === 'fr' ? 'Entropie' : 'Entropy', val: typeof features.entropy === 'number' ? features.entropy.toFixed(2) : '0', warn: (features.entropy || 0) > 4.2 },
+                          { label: lang === 'fr' ? 'Params (?)' : 'Params (?)', val: features.num_equals || 0, warn: (features.num_equals || 0) > 3 },
+                          { label: lang === 'fr' ? 'Barres (/)' : 'Slashes (/)', val: features.num_slashes || 0, warn: (features.num_slashes || 0) > 7 },
+                          { label: lang === 'fr' ? 'Chiffres' : 'Digits', val: features.num_digits || 0, warn: (features.num_digits || 0) > 12 },
+                          { label: lang === 'fr' ? 'Spéciaux' : 'Special', val: features.num_special_chars || 0, warn: (features.num_special_chars || 0) > 15 },
+                          { label: lang === 'fr' ? 'Sous-dom.' : 'Subdomains', val: features.num_subdomains || 0, warn: (features.num_subdomains || 0) >= 2 },
+                          { label: lang === 'fr' ? 'Mots-clés' : 'Keywords', val: features.keyword_count || 0, warn: (features.keyword_count || 0) > 0 },
                         ].map((m, i) => (
                           <div key={i} className={`p-2.5 rounded-xl border text-center ${m.warn ? 'bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800/40' : 'bg-white dark:bg-slate-900/60 border-slate-100 dark:border-slate-800'}`}>
                             <span className={`text-base font-black font-mono block ${m.warn ? 'text-amber-600 dark:text-amber-400' : 'text-slate-800 dark:text-slate-200'}`}>{m.val}</span>
                             <span className="text-[9px] text-slate-400 font-mono uppercase block leading-tight mt-0.5">{m.label}</span>
-                            {m.warn && <span className="text-[8px] text-amber-500 font-bold">↑ Élevé</span>}
+                            {m.warn && <span className="text-[8px] text-amber-500 font-bold">↑ {lang === 'fr' ? 'Élevé' : 'High'}</span>}
                           </div>
                         ))}
                       </div>
@@ -633,32 +747,55 @@ export default function HistoryPage() {
                 <div className="flex items-center gap-2 px-4 py-3 bg-gradient-to-r from-purple-50 to-slate-50 dark:from-purple-950/20 dark:to-slate-900/40 border-b border-slate-200 dark:border-slate-800">
                   <div className="w-6 h-6 rounded-lg bg-purple-500 flex items-center justify-center text-white text-[10px] font-black shrink-0">3</div>
                   <ShieldCheck className="w-4 h-4 text-purple-500" />
-                  <span className="text-xs font-extrabold text-slate-800 dark:text-white font-mono uppercase tracking-wide">Threat Intelligence — Bases de Renseignement Mondiales</span>
+                  <span className="text-xs font-extrabold text-slate-800 dark:text-white font-mono uppercase tracking-wide">
+                    {lang === 'fr' ? 'Threat Intelligence — Bases de Renseignement Mondiales' : 'Threat Intelligence — Global Intelligence Databases'}
+                  </span>
                 </div>
                 <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className={`p-4 rounded-xl border space-y-3 ${(vt?.positives || 0) > 0 ? 'bg-rose-50 dark:bg-rose-950/10 border-rose-200 dark:border-rose-800/40' : 'bg-emerald-50 dark:bg-emerald-950/10 border-emerald-200 dark:border-emerald-800/40'}`}>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <span className="text-xl">🔬</span>
-                        <div><p className="text-xs font-black text-slate-800 dark:text-white">VirusTotal</p><p className="text-[10px] text-slate-400">90 moteurs antivirus mondiaux</p></div>
+                        <div>
+                          <p className="text-xs font-black text-slate-800 dark:text-white">VirusTotal</p>
+                          <p className="text-[10px] text-slate-400">{lang === 'fr' ? '90 moteurs antivirus mondiaux' : '90 global antivirus engines'}</p>
+                        </div>
                       </div>
-                      <span className={`px-2 py-0.5 rounded-md text-[10px] font-mono font-bold border ${(vt?.positives || 0) > 0 ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20' : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'}`}>{(vt?.positives || 0) > 0 ? '⚠ DÉTECTÉ' : '✓ PROPRE'}</span>
+                      <span className={`px-2 py-0.5 rounded-md text-[10px] font-mono font-bold border ${(vt?.positives || 0) > 0 ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20' : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'}`}>
+                        {(vt?.positives || 0) > 0 ? (lang === 'fr' ? '⚠️ DÉTECTÉ' : '⚠️ DETECTED') : (lang === 'fr' ? '✓ PROPRE' : '✓ CLEAN')}
+                      </span>
                     </div>
                     <div className="space-y-1 text-[10px] font-mono">
-                      <div className="flex justify-between text-slate-500"><span>Détections</span><span className={`font-black ${(vt?.positives || 0) > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>{vt?.positives || 0} / {vt?.total_engines || 90}</span></div>
-                      <div className="flex justify-between text-slate-400"><span>Réputation</span><span className="font-bold">{vt?.reputation_score ?? 'N/A'}</span></div>
+                      <div className="flex justify-between text-slate-500">
+                        <span>{lang === 'fr' ? 'Détections' : 'Detections'}</span>
+                        <span className={`font-black ${(vt?.positives || 0) > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>{vt?.positives || 0} / {vt?.total_engines || 90}</span>
+                      </div>
+                      <div className="flex justify-between text-slate-400">
+                        <span>{lang === 'fr' ? 'Réputation' : 'Reputation'}</span>
+                        <span className="font-bold">{vt?.reputation_score ?? 'N/A'}</span>
+                      </div>
                     </div>
                   </div>
                   <div className={`p-4 rounded-xl border space-y-3 ${gsb?.is_flagged ? 'bg-rose-50 dark:bg-rose-950/10 border-rose-200 dark:border-rose-800/40' : 'bg-emerald-50 dark:bg-emerald-950/10 border-emerald-200 dark:border-emerald-800/40'}`}>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <span className="text-xl">🛡️</span>
-                        <div><p className="text-xs font-black text-slate-800 dark:text-white">Google Safe Browsing</p><p className="text-[10px] text-slate-400">Base mondiale malware & phishing</p></div>
+                        <div>
+                          <p className="text-xs font-black text-slate-800 dark:text-white">Google Safe Browsing</p>
+                          <p className="text-[10px] text-slate-400">{lang === 'fr' ? 'Base mondiale malware & phishing' : 'Global malware & phishing database'}</p>
+                        </div>
                       </div>
-                      <span className={`px-2 py-0.5 rounded-md text-[10px] font-mono font-bold border ${gsb?.is_flagged ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20' : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'}`}>{gsb?.is_flagged ? '⚠ SIGNALÉ' : '✓ LISTE BLANCHE'}</span>
+                      <span className={`px-2 py-0.5 rounded-md text-[10px] font-mono font-bold border ${gsb?.is_flagged ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20' : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'}`}>
+                        {gsb?.is_flagged ? (lang === 'fr' ? '⚠️ SIGNALÉ' : '⚠️ FLAGGED') : (lang === 'fr' ? '✓ LISTE BLANCHE' : '✓ WHITELISTED')}
+                      </span>
                     </div>
                     <div className="space-y-1 text-[10px] font-mono">
-                      <div className="flex justify-between text-slate-500"><span>Statut</span><span className={`font-black ${gsb?.is_flagged ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>{gsb?.is_flagged ? 'SIGNALÉ' : 'APPROUVÉ'}</span></div>
+                      <div className="flex justify-between text-slate-500">
+                        <span>{lang === 'fr' ? 'Statut' : 'Status'}</span>
+                        <span className={`font-black ${gsb?.is_flagged ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                          {gsb?.is_flagged ? (lang === 'fr' ? 'SIGNALÉ' : 'FLAGGED') : (lang === 'fr' ? 'APPROUVÉ' : 'APPROVED')}
+                        </span>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -670,14 +807,30 @@ export default function HistoryPage() {
                   <div className="flex items-center gap-2 px-4 py-3 bg-gradient-to-r from-sky-50 to-slate-50 dark:from-sky-950/20 dark:to-slate-900/40 border-b border-slate-200 dark:border-slate-800">
                     <div className="w-6 h-6 rounded-lg bg-sky-500 flex items-center justify-center text-white text-[10px] font-black shrink-0">4</div>
                     <MapPin className="w-4 h-4 text-sky-500" />
-                    <span className="text-xs font-extrabold text-slate-800 dark:text-white font-mono uppercase tracking-wide">GeoIP & ASN — Localisation Réseau</span>
+                    <span className="text-xs font-extrabold text-slate-800 dark:text-white font-mono uppercase tracking-wide">
+                      {lang === 'fr' ? 'GeoIP & ASN — Localisation Réseau' : 'GeoIP & ASN — Network Location'}
+                    </span>
                   </div>
                   <div className="p-4">
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs font-mono text-center">
-                      <div className="p-2 bg-slate-50 dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800"><span className="text-[9px] text-slate-400 block uppercase">Adresse IP</span><strong className="text-sky-500">{geoip.ip || 'N/A'}</strong></div>
-                      <div className="p-2 bg-slate-50 dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800"><span className="text-[9px] text-slate-400 block uppercase">Pays / Ville</span><strong>{geoip.country}, {geoip.city}</strong></div>
-                      <div className="p-2 bg-slate-50 dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800"><span className="text-[9px] text-slate-400 block uppercase">ASN</span><strong>{geoip.asn || 'N/A'}</strong></div>
-                      <div className="p-2 bg-slate-50 dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800"><span className="text-[9px] text-slate-400 block uppercase">VPN / Proxy</span><strong className={geoip.is_vpn_proxy ? 'text-rose-500' : 'text-emerald-500'}>{geoip.is_vpn_proxy ? '🔴 OUI' : '🟢 NON'}</strong></div>
+                      <div className="p-2 bg-slate-50 dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800">
+                        <span className="text-[9px] text-slate-400 block uppercase">{lang === 'fr' ? 'Adresse IP' : 'IP Address'}</span>
+                        <strong className="text-sky-500">{geoip.ip || 'N/A'}</strong>
+                      </div>
+                      <div className="p-2 bg-slate-50 dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800">
+                        <span className="text-[9px] text-slate-400 block uppercase">{lang === 'fr' ? 'Pays / Ville' : 'Country / City'}</span>
+                        <strong>{geoip.country}, {geoip.city}</strong>
+                      </div>
+                      <div className="p-2 bg-slate-50 dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800">
+                        <span className="text-[9px] text-slate-400 block uppercase">ASN</span>
+                        <strong>{geoip.asn || 'N/A'}</strong>
+                      </div>
+                      <div className="p-2 bg-slate-50 dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800">
+                        <span className="text-[9px] text-slate-400 block uppercase">VPN / Proxy</span>
+                        <strong className={geoip.is_vpn_proxy ? 'text-rose-500' : 'text-emerald-500'}>
+                          {geoip.is_vpn_proxy ? (lang === 'fr' ? '🔴 OUI' : '🔴 YES') : (lang === 'fr' ? '🟢 NON' : '🟢 NO')}
+                        </strong>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -686,26 +839,72 @@ export default function HistoryPage() {
               {/* SHA-256 Checksum Signature */}
               {(selectedHistoryItem.integrity_hash || itemDetails?.integrity_hash) && (
                 <div className="space-y-1.5">
-                  <label className="text-[10px] uppercase font-mono font-bold text-slate-400">Empreinte Cryptographique d'Intégrité SHA-256</label>
+                  <label className="text-[10px] uppercase font-mono font-bold text-slate-400">
+                    {lang === 'fr' ? "Empreinte Cryptographique d'Intégrité SHA-256" : "SHA-256 Integrity Cryptographic Fingerprint"}
+                  </label>
                   <div className="p-3 bg-slate-50 dark:bg-[#111622] rounded-2xl font-mono text-[11px] text-slate-600 dark:text-slate-300 break-all font-bold border border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3">
                     <span>{selectedHistoryItem.integrity_hash || itemDetails?.integrity_hash}</span>
                     <button
                       onClick={() => copyToClipboard(selectedHistoryItem.integrity_hash || itemDetails?.integrity_hash, 'hash')}
                       className="text-xs text-sky-500 hover:text-sky-600 font-bold shrink-0 cursor-pointer"
                     >
-                      {copiedHash ? 'Copié !' : 'Copier'}
+                      {copiedHash ? (lang === 'fr' ? 'Copié !' : 'Copied!') : (lang === 'fr' ? 'Copier' : 'Copy')}
                     </button>
                   </div>
                 </div>
               )}
 
-              {/* Close Button */}
-              <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex justify-end">
+              {/* Transfer Feedback Notification */}
+              {transferMessage && (
+                <div className="p-3.5 bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-xs font-bold rounded-2xl flex items-center gap-2.5 animate-in fade-in">
+                  <CheckCircle2 className="w-5 h-5 shrink-0 text-emerald-500" />
+                  <span>{transferMessage}</span>
+                </div>
+              )}
+
+              {/* Footer Actions: Transfer to Investigator (only for standard users) or Delete & Close */}
+              <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3">
+                {user?.role === 'UTILISATEUR_STANDARD' ? (
+                  <button
+                    onClick={() => handleTransferToInvestigator(selectedHistoryItem)}
+                    disabled={transferringId === selectedHistoryItem.id || isTransferred}
+                    className={`w-full sm:w-auto px-6 py-2.5 font-bold text-xs rounded-xl shadow-md flex items-center justify-center gap-2 transition cursor-pointer ${
+                      isTransferred
+                        ? 'bg-emerald-600 text-white opacity-90 cursor-default'
+                        : 'bg-rose-600 hover:bg-rose-700 text-white'
+                    }`}
+                  >
+                    {transferringId === selectedHistoryItem.id ? (
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                    ) : isTransferred ? (
+                      <CheckCircle2 className="w-4 h-4" />
+                    ) : (
+                      <Send className="w-4 h-4" />
+                    )}
+                    <span>
+                      {isTransferred
+                        ? (lang === 'fr' ? "✓ Transféré à l'Enquêteur" : "✓ Transferred to Investigator")
+                        : (lang === 'fr' ? "Transférer à l'Enquêteur" : "Transfer to Investigator")}
+                    </span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => {
+                      setItemToDelete(selectedHistoryItem);
+                      setSelectedHistoryItem(null);
+                    }}
+                    className="w-full sm:w-auto px-5 py-2.5 bg-rose-500/10 hover:bg-rose-500 hover:text-white text-rose-500 font-bold text-xs rounded-xl border border-rose-500/30 flex items-center justify-center gap-2 transition cursor-pointer"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    <span>{lang === 'fr' ? "Supprimer cette analyse" : "Delete this scan"}</span>
+                  </button>
+                )}
+
                 <button
-                  onClick={() => setSelectedHistoryItem(null)}
-                  className="px-6 py-2.5 bg-sky-500 hover:bg-sky-600 text-white font-bold text-xs rounded-xl shadow-md transition cursor-pointer"
+                  onClick={() => { setSelectedHistoryItem(null); setTransferMessage(''); }}
+                  className="w-full sm:w-auto px-6 py-2.5 bg-sky-500 hover:bg-sky-600 text-white font-bold text-xs rounded-xl shadow-md transition cursor-pointer"
                 >
-                  Fermer la Fiche
+                  {lang === 'fr' ? 'Fermer la Fiche' : 'Close Report'}
                 </button>
               </div>
 
@@ -713,6 +912,46 @@ export default function HistoryPage() {
           </div>
         );
       })()}
+
+      {/* Clear All History Confirmation Modal */}
+      {showClearConfirm && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-[#161b27] border-2 border-rose-500/50 rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl space-y-5 animate-in zoom-in-95 duration-150 text-center">
+            <div className="w-14 h-14 bg-rose-500/10 text-rose-500 rounded-full flex items-center justify-center mx-auto border border-rose-500/30">
+              <Trash2 className="w-7 h-7" />
+            </div>
+
+            <div className="space-y-2">
+              <h3 className="text-xl font-black text-slate-900 dark:text-white font-sans">
+                {lang === 'fr' ? "Vider tout l'historique ?" : 'Clear all history?'}
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-sans leading-relaxed">
+                {lang === 'fr' 
+                  ? "Voulez-vous supprimer définitivement tous les enregistrements de votre historique d'analyse ?" 
+                  : "Are you sure you want to permanently delete all scan records from your analysis history?"}
+              </p>
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <button
+                onClick={() => setShowClearConfirm(false)}
+                className="flex-1 py-3 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs rounded-2xl transition cursor-pointer"
+              >
+                {lang === 'fr' ? 'Annuler' : 'Cancel'}
+              </button>
+
+              <button
+                onClick={handleClearAllHistory}
+                disabled={isClearingAll}
+                className="flex-1 py-3 bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs rounded-2xl shadow-lg shadow-rose-600/30 transition cursor-pointer flex items-center justify-center gap-2"
+              >
+                {isClearingAll && <RefreshCw className="w-4 h-4 animate-spin" />}
+                <span>{lang === 'fr' ? 'Tout Supprimer' : 'Delete All'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

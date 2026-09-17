@@ -8,7 +8,14 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.db.database import engine, Base
+from app.db.mongodb import init_mongo_indexes
 from app.api.v1 import analyze, monitor, incidents, verify, assistant, auth, users, ml_metrics
+
+# Initialize MongoDB connection & indexes
+try:
+    init_mongo_indexes()
+except Exception as _e:
+    print(f"[MongoDB Warning] Connection deferred: {_e}")
 
 # Create DB Tables automatically
 try:
@@ -61,10 +68,24 @@ app.include_router(ml_metrics.router, prefix=settings.API_V1_STR)
 
 @app.get("/")
 def root():
+    from app.db.mongodb import get_sync_db
+    try:
+        db = get_sync_db()
+        mongo_status = "connected"
+        collections = db.list_collection_names()
+    except Exception as e:
+        mongo_status = f"error: {e}"
+        collections = []
     return {
         "status": "online",
         "service": settings.PROJECT_NAME,
         "version": settings.VERSION,
+        "database": {
+            "type": "MongoDB",
+            "status": mongo_status,
+            "database_name": settings.MONGODB_DB_NAME,
+            "collections_count": len(collections)
+        },
         "docs": "/docs"
     }
 

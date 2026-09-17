@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Bot, X, RefreshCw, Send } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Bot, X, RefreshCw, Send, Trash2, History } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 
@@ -18,6 +18,66 @@ export default function FloatingAiAssistant() {
   ]);
   const [chatInput, setChatInput] = useState('');
   const [isChatting, setIsChatting] = useState(false);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
+
+  // Load chat history from MongoDB
+  const fetchChatHistory = async () => {
+    try {
+      const token = localStorage.getItem('phishguard_token');
+      const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+      const res = await fetch('/api/v1/assistant/history', { headers });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.history && data.history.length > 0) {
+          const formatted = [];
+          data.history.forEach(item => {
+            if (item.user_message) {
+              formatted.push({ sender: 'user', text: item.user_message });
+            }
+            if (item.ai_reply) {
+              let reply = item.ai_reply;
+              if (item.recommendations && item.recommendations.length > 0) {
+                reply += "\n\n**" + (lang === 'fr' ? "Recommandations de sécurité :" : "Security Recommendations:") + "**\n" + item.recommendations.map(r => `• ${r}`).join('\n');
+              }
+              formatted.push({ sender: 'assistant', text: reply });
+            }
+          });
+          if (formatted.length > 0) {
+            setChatMessages(formatted);
+          }
+        }
+      }
+    } catch (e) {
+      console.log('Error fetching chat history from MongoDB:', e);
+    } finally {
+      setHistoryLoaded(true);
+    }
+  };
+
+  useEffect(() => {
+    if (isChatOpen && !historyLoaded) {
+      fetchChatHistory();
+    }
+  }, [isChatOpen]);
+
+  const handleClearHistory = async () => {
+    if (!window.confirm(lang === 'fr' ? "Effacer l'historique des discussions ?" : "Clear chat history?")) return;
+    try {
+      const token = localStorage.getItem('phishguard_token');
+      const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+      await fetch('/api/v1/assistant/history', { method: 'DELETE', headers });
+      setChatMessages([
+        {
+          sender: 'assistant',
+          text: lang === 'fr'
+            ? `Historique effacé. Bonjour ${user?.prenom || 'Alice'} ! En quoi puis-je vous aider ?`
+            : `History cleared. Hello ${user?.prenom || 'Alice'}! How can I help you today?`
+        }
+      ]);
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   const handleSendMessage = async (e) => {
     e.preventDefault();
@@ -29,9 +89,13 @@ export default function FloatingAiAssistant() {
     setIsChatting(true);
 
     try {
+      const token = localStorage.getItem('phishguard_token');
+      const headers = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
       const res = await fetch('/api/v1/assistant/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ message: userText, prompt: userText, lang })
       });
       const data = await res.json();
@@ -67,7 +131,7 @@ export default function FloatingAiAssistant() {
           <span>CyberGuard AI</span>
         </button>
       ) : (
-        <div className="bg-white dark:bg-[#111622] border border-sky-100 dark:border-sky-800/60 rounded-3xl shadow-2xl w-80 sm:w-96 flex flex-col h-[480px] overflow-hidden animate-in zoom-in-95 duration-200">
+        <div className="bg-white dark:bg-[#111622] border border-sky-100 dark:border-sky-800/60 rounded-3xl shadow-2xl w-80 sm:w-96 flex flex-col h-[500px] overflow-hidden animate-in zoom-in-95 duration-200">
           <div className="p-4 bg-gradient-to-r from-sky-500 to-blue-600 text-white flex items-center justify-between">
             <div className="flex items-center gap-2.5">
               <div className="p-2 bg-white/20 rounded-xl backdrop-blur-sm">
@@ -75,14 +139,24 @@ export default function FloatingAiAssistant() {
               </div>
               <div>
                 <h4 className="font-extrabold text-sm">CyberGuard AI</h4>
-                <p className="text-[10px] text-sky-100 font-medium">
-                  {lang === 'fr' ? 'En ligne • Assistant Cybersécurité' : 'Online • Cybersecurity Advisor'}
+                <p className="text-[10px] text-sky-100 font-medium flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-300" />
+                  {lang === 'fr' ? 'En ligne • MongoDB Synchronisé' : 'Online • MongoDB Synced'}
                 </p>
               </div>
             </div>
-            <button onClick={() => setIsChatOpen(false)} className="p-1 text-white/80 hover:text-white rounded-lg cursor-pointer">
-              <X className="w-5 h-5" />
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={handleClearHistory}
+                title={lang === 'fr' ? "Effacer l'historique" : "Clear History"}
+                className="p-1.5 text-white/80 hover:text-white hover:bg-white/10 rounded-lg cursor-pointer transition"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+              <button onClick={() => setIsChatOpen(false)} className="p-1.5 text-white/80 hover:text-white hover:bg-white/10 rounded-lg cursor-pointer transition">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
           </div>
 
           <div className="flex-1 p-4 overflow-y-auto space-y-3 bg-slate-50/50 dark:bg-[#090d16]/50 text-xs">
@@ -128,3 +202,4 @@ export default function FloatingAiAssistant() {
     </div>
   );
 }
+

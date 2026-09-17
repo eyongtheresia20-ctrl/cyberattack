@@ -252,13 +252,22 @@ export default function InvestigatorDashboard() {
             </div>
           </div>
 
-          <Link
-            to="/incidents"
-            className="w-full py-3 bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-600 hover:to-indigo-700 text-white font-extrabold text-xs rounded-2xl flex items-center justify-center gap-2 shadow-lg shadow-sky-500/20 transition"
-          >
-            <FileSearch size={16} />
-            <span>{lang === 'fr' ? 'Consulter le Registre Complet' : 'Access Full Evidence Ledger'}</span>
-          </Link>
+          <div className="flex flex-col sm:flex-row gap-3 pt-2">
+            <Link
+              to="/scanner"
+              className="flex-1 py-3 bg-gradient-to-r from-cyan-500 to-sky-600 hover:from-cyan-600 hover:to-sky-700 text-white font-extrabold text-xs rounded-2xl flex items-center justify-center gap-2 shadow-lg shadow-cyan-500/20 transition"
+            >
+              <Activity size={16} />
+              <span>{lang === 'fr' ? 'Scanner & Analyser' : 'Scanner & Analysis'}</span>
+            </Link>
+            <Link
+              to="/incidents"
+              className="flex-1 py-3 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-extrabold text-xs rounded-2xl flex items-center justify-center gap-2 transition"
+            >
+              <FileSearch size={16} />
+              <span>{lang === 'fr' ? 'Registre des Incidents' : 'Incident Ledger'}</span>
+            </Link>
+          </div>
         </div>
 
       </div>

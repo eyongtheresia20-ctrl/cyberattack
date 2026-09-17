@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Activity, Clock, Search, Shield, RefreshCw, Filter, User } from 'lucide-react';
+import { useLanguage } from '../context/LanguageContext';
+import { Activity, Clock, Search, Shield, RefreshCw, Filter, User, AlertTriangle, FileSearch, ShieldCheck } from 'lucide-react';
 
 export default function ActivityLogsPage() {
   const { token } = useAuth();
+  const { lang } = useLanguage();
   const [activityLogs, setActivityLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -12,9 +14,9 @@ export default function ActivityLogsPage() {
   const fetchActivityLogs = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/v1/users/activity-logs', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
+      const activeToken = token || localStorage.getItem('phishguard_token');
+      const headers = activeToken ? { 'Authorization': `Bearer ${activeToken}` } : {};
+      const res = await fetch('/api/v1/users/activity-logs', { headers });
       const data = await res.json();
       if (data.activities) {
         setActivityLogs(data.activities);
@@ -28,18 +30,71 @@ export default function ActivityLogsPage() {
 
   useEffect(() => {
     fetchActivityLogs();
-  }, []);
+  }, [token]);
 
   const filteredLogs = activityLogs.filter(log => {
-    const matchesSearch = 
-      log.actor.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (log.target && log.target.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      (log.action && log.action.toLowerCase().includes(searchQuery.toLowerCase()));
+    const actorStr = log.actor ? log.actor.toLowerCase() : '';
+    const targetStr = log.target ? log.target.toLowerCase() : '';
+    const actionStr = log.action ? log.action.toLowerCase() : '';
+    const detailsStr = log.details ? log.details.toLowerCase() : '';
+    const query = searchQuery.toLowerCase().trim();
+
+    const matchesSearch = !query ||
+      actorStr.includes(query) ||
+      targetStr.includes(query) ||
+      actionStr.includes(query) ||
+      detailsStr.includes(query);
 
     if (actionFilter === 'SCAN') return matchesSearch && log.type === 'SCAN_RESEARCH';
     if (actionFilter === 'AUDIT') return matchesSearch && log.type === 'AUDIT';
+    if (actionFilter === 'INCIDENT') return matchesSearch && log.type === 'INCIDENT_REPORT';
+    if (actionFilter === 'ERROR') return matchesSearch && (log.type === 'SERVICE_ERROR' || log.action === 'SERVICE_PIPELINE_ERROR');
     return matchesSearch;
   });
+
+  const getActionBadge = (type, action) => {
+    if (type === 'SERVICE_ERROR' || action === 'SERVICE_PIPELINE_ERROR') {
+      return (
+        <span className="px-2.5 py-0.5 rounded-full font-mono font-bold text-[10px] bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30 flex items-center gap-1.5 animate-pulse">
+          <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
+          {lang === 'fr' ? 'ERREUR SERVICE' : 'SERVICE ERROR'}
+        </span>
+      );
+    }
+    if (type === 'SCAN_RESEARCH') {
+      return (
+        <span className="px-2.5 py-0.5 rounded-full font-mono font-bold text-[10px] bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20">
+          {action}
+        </span>
+      );
+    }
+    if (action === 'LOGIN') {
+      return (
+        <span className="px-2.5 py-0.5 rounded-full font-mono font-bold text-[10px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+          {lang === 'fr' ? 'CONNEXION' : 'LOGIN'}
+        </span>
+      );
+    }
+    if (action === 'REGISTER') {
+      return (
+        <span className="px-2.5 py-0.5 rounded-full font-mono font-bold text-[10px] bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border border-cyan-500/20">
+          {lang === 'fr' ? 'INSCRIPTION' : 'REGISTER'}
+        </span>
+      );
+    }
+    if (type === 'INCIDENT_REPORT') {
+      return (
+        <span className="px-2.5 py-0.5 rounded-full font-mono font-bold text-[10px] bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+          {lang === 'fr' ? 'DOSSIER INCIDENT' : 'INCIDENT DOSSIER'}
+        </span>
+      );
+    }
+    return (
+      <span className="px-2.5 py-0.5 rounded-full font-mono font-bold text-[10px] bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
+        {action}
+      </span>
+    );
+  };
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-16">
@@ -49,10 +104,12 @@ export default function ActivityLogsPage() {
         <div>
           <h1 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-2.5">
             <Activity className="w-7 h-7 text-sky-500" />
-            Journal des Sessions & Activités
+            {lang === 'fr' ? 'Journal des Sessions & Activités' : 'Sessions & Activity Audit Log'}
           </h1>
           <p className="text-slate-500 dark:text-slate-400 text-xs sm:text-sm mt-1">
-            Suivi en temps réel des connexions utilisateurs, des heures d'accès et des actions d'analyse effectuées.
+            {lang === 'fr' 
+              ? "Suivi en temps réel des connexions utilisateurs, des heures d'accès et des actions d'analyse effectuées." 
+              : "Real-time tracking of user logins, access sessions, security scans, and administrative actions."}
           </p>
         </div>
 
@@ -61,7 +118,7 @@ export default function ActivityLogsPage() {
           className="p-2.5 bg-white dark:bg-[#161b27] border border-slate-200 dark:border-sky-900/40 rounded-2xl text-slate-600 dark:text-slate-300 hover:border-sky-500 transition cursor-pointer shadow-sm flex items-center gap-2 text-xs font-bold shrink-0"
         >
           <RefreshCw size={14} className={loading ? "animate-spin text-sky-500" : ""} />
-          Actualiser le Journal
+          {lang === 'fr' ? 'Actualiser le Journal' : 'Refresh Audit Log'}
         </button>
       </div>
 
@@ -72,7 +129,7 @@ export default function ActivityLogsPage() {
             <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
             <input
               type="text"
-              placeholder="Rechercher par utilisateur, action, cible..."
+              placeholder={lang === 'fr' ? "Rechercher par utilisateur, action, cible..." : "Search by user, action, target..."}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-10 pr-4 py-2 bg-slate-50 dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-sky-500"
@@ -81,15 +138,17 @@ export default function ActivityLogsPage() {
 
           <div className="flex items-center gap-2 text-xs">
             <Filter size={14} className="text-sky-500" />
-            <span className="text-slate-500 font-medium">Filtrer par type :</span>
+            <span className="text-slate-500 font-medium">{lang === 'fr' ? 'Filtrer par type :' : 'Filter by type:'}</span>
             <select
               value={actionFilter}
               onChange={(e) => setActionFilter(e.target.value)}
-              className="bg-slate-50 dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white rounded-xl px-3 py-1.5 text-xs font-semibold focus:outline-none focus:border-sky-500"
+              className="bg-slate-50 dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white rounded-xl px-3 py-1.5 text-xs font-semibold focus:outline-none focus:border-sky-500 cursor-pointer"
             >
-              <option value="ALL">Toutes les activités</option>
-              <option value="SCAN">Analyses & Recherches IA</option>
-              <option value="AUDIT">Connexions & Audits Système</option>
+              <option value="ALL">{lang === 'fr' ? 'Toutes les activités' : 'All Activities'}</option>
+              <option value="ERROR">{lang === 'fr' ? '🚨 Erreurs Services & Diagnostics' : '🚨 Service Errors & Diagnostics'}</option>
+              <option value="AUDIT">{lang === 'fr' ? 'Connexions & Audits Système' : 'Logins & System Audits'}</option>
+              <option value="SCAN">{lang === 'fr' ? 'Analyses & Recherches IA' : 'AI Scans & Researches'}</option>
+              <option value="INCIDENT">{lang === 'fr' ? 'Dossiers & Signalements' : 'Incident Dossiers'}</option>
             </select>
           </div>
         </div>
@@ -97,50 +156,64 @@ export default function ActivityLogsPage() {
         {/* Activity Table */}
         {loading ? (
           <div className="py-12 text-center text-slate-500 text-xs flex items-center justify-center gap-2">
-            <RefreshCw className="animate-spin text-sky-500" size={16} /> Chargement du journal des activités...
+            <RefreshCw className="animate-spin text-sky-500" size={16} /> 
+            {lang === 'fr' ? 'Chargement du journal des activités...' : 'Loading activity audit logs...'}
+          </div>
+        ) : filteredLogs.length === 0 ? (
+          <div className="py-12 text-center text-slate-400 text-xs">
+            {lang === 'fr' ? 'Aucun journal d’activité enregistré pour le moment.' : 'No activity records found matching filters.'}
           </div>
         ) : (
           <div className="overflow-x-auto border border-slate-200 dark:border-slate-800/80 rounded-2xl">
             <table className="w-full text-left text-xs text-slate-700 dark:text-slate-300">
-              <thead className="bg-slate-50 dark:bg-[#0f172a] text-slate-500 dark:text-slate-400 uppercase font-bold border-b border-slate-200 dark:border-slate-800">
+              <thead className="bg-slate-50 dark:bg-[#0f172a] text-slate-500 dark:text-slate-400 uppercase font-bold border-b border-slate-200 dark:border-slate-800 text-[10px] tracking-wider">
                 <tr>
-                  <th className="p-3.5">Horodatage / Heure de Connexion</th>
-                  <th className="p-3.5">Utilisateur (Acteur)</th>
-                  <th className="p-3.5">Action Effectuée</th>
-                  <th className="p-3.5">Cible / Recherche</th>
-                  <th className="p-3.5">Détails SOC</th>
+                  <th className="p-3.5">{lang === 'fr' ? 'Horodatage / Heure de Connexion' : 'Timestamp / Session Time'}</th>
+                  <th className="p-3.5">{lang === 'fr' ? 'Utilisateur (Acteur)' : 'User (Actor)'}</th>
+                  <th className="p-3.5">{lang === 'fr' ? 'Action Effectuée' : 'Action Performed'}</th>
+                  <th className="p-3.5">{lang === 'fr' ? 'Cible / Recherche' : 'Target / Identifier'}</th>
+                  <th className="p-3.5">{lang === 'fr' ? 'Détails SOC / Diagnostic' : 'SOC Details / Diagnostic'}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
-                {filteredLogs.map((log) => (
-                  <tr key={log.id} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/30 transition">
-                    <td className="p-3.5 font-mono text-[11px] text-slate-500 dark:text-slate-400">
-                      <span className="flex items-center gap-1.5">
-                        <Clock size={12} className="text-sky-500 shrink-0" />
-                        {log.timestamp ? new Date(log.timestamp).toLocaleString('fr-FR') : 'Connexion récente'}
-                      </span>
-                    </td>
-                    <td className="p-3.5 font-bold text-slate-900 dark:text-white">
-                      <span className="flex items-center gap-1.5">
-                        <User size={13} className="text-sky-400 shrink-0" />
-                        {log.actor}
-                      </span>
-                    </td>
-                    <td className="p-3.5">
-                      <span className={`px-2.5 py-0.5 rounded-full font-mono font-bold text-[10px] ${
-                        log.type === 'SCAN_RESEARCH' ? 'bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20' : 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20'
-                      }`}>
-                        {log.action}
-                      </span>
-                    </td>
-                    <td className="p-3.5 font-mono text-xs max-w-xs truncate text-slate-800 dark:text-slate-200" title={log.target}>
-                      {log.target || 'N/A'}
-                    </td>
-                    <td className="p-3.5 text-xs text-slate-500 dark:text-slate-400">
-                      {log.details}
-                    </td>
-                  </tr>
-                ))}
+                {filteredLogs.map((log) => {
+                  const isError = log.type === 'SERVICE_ERROR' || log.action === 'SERVICE_PIPELINE_ERROR';
+                  return (
+                    <tr key={log.id} className={isError ? "bg-rose-500/5 hover:bg-rose-500/10 transition border-l-2 border-l-rose-500" : "hover:bg-slate-50/60 dark:hover:bg-slate-800/30 transition"}>
+                      <td className="p-3.5 font-mono text-[11px] text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                        <span className="flex items-center gap-1.5">
+                          <Clock size={12} className={isError ? "text-rose-500 shrink-0" : "text-sky-500 shrink-0"} />
+                          {log.timestamp 
+                            ? new Date(log.timestamp).toLocaleString(lang === 'fr' ? 'fr-FR' : 'en-US') 
+                            : (lang === 'fr' ? 'Connexion récente' : 'Recent session')}
+                        </span>
+                      </td>
+                      <td className="p-3.5 font-bold text-slate-900 dark:text-white">
+                        <span className="flex items-center gap-1.5">
+                          <User size={13} className={isError ? "text-rose-400 shrink-0" : "text-sky-400 shrink-0"} />
+                          {log.actor}
+                        </span>
+                      </td>
+                      <td className="p-3.5">
+                        {getActionBadge(log.type, log.action)}
+                      </td>
+                      <td className="p-3.5 font-mono text-xs max-w-xs truncate text-slate-800 dark:text-slate-200 font-semibold" title={log.target}>
+                        {log.target || '-'}
+                      </td>
+                      <td className="p-3.5 text-xs">
+                        {isError ? (
+                          <span className="text-rose-600 dark:text-rose-300 font-medium">
+                            {log.details}
+                          </span>
+                        ) : (
+                          <span className="text-slate-500 dark:text-slate-400">
+                            {log.details}
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
