@@ -95,6 +95,21 @@ export default function StandardDashboard({ isHistoryView = false }) {
   // Selected history item modal state
   const [selectedHistoryItem, setSelectedHistoryItem] = useState(null);
 
+  // History Card Search, Filter & Action States
+  const [historySearchQuery, setHistorySearchQuery] = useState('');
+  const [historyVerdictFilter, setHistoryVerdictFilter] = useState('ALL'); // 'ALL', 'THREATS', 'CLEAN'
+  const [transferringId, setTransferringId] = useState(null);
+  const [transferredIds, setTransferredIds] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('phishguard_transferred_ids')) || [];
+    } catch (e) {
+      return [];
+    }
+  });
+  const [transferFeedback, setTransferFeedback] = useState('');
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [isClearingAll, setIsClearingAll] = useState(false);
+
   // Copy Feedback States
   const [copiedUrl, setCopiedUrl] = useState(false);
   const [copiedHash, setCopiedHash] = useState(false);
@@ -374,11 +389,19 @@ export default function StandardDashboard({ isHistoryView = false }) {
       const headers = { 'Content-Type': 'application/json' };
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
+      const reporterName = user?.role === 'ADMINISTRATEUR'
+        ? `${user?.prenom || 'Admin'} ${user?.nom || ''}`.trim() + ' (Administrateur)'
+        : `${user?.prenom || 'Alice'} ${user?.nom || 'Martin'}`.trim();
+
+      const transferTitle = user?.role === 'ADMINISTRATEUR'
+        ? `[Transfert Admin] ${currentResult.target}`
+        : `[${reportCategory}] ${currentResult.target}`;
+
       const res = await fetch('/api/v1/incidents/submit-user-report', {
         method: 'POST',
         headers,
         body: JSON.stringify({
-          title: `[${reportCategory}] ${currentResult.target}`,
+          title: transferTitle,
           target: currentResult.target,
           scan_type: currentResult.type,
           verdict: currentResult.verdict,
@@ -386,10 +409,13 @@ export default function StandardDashboard({ isHistoryView = false }) {
           details: {
             ...(currentResult.details || {}),
             report_category: reportCategory,
-            user_observations: userNotes || "Rapport généré par l'utilisateur pour étude approfondie par l'enquêteur SOC."
+            transferred_by_admin: user?.role === 'ADMINISTRATEUR',
+            user_observations: userNotes || (user?.role === 'ADMINISTRATEUR'
+              ? "Dossier analysé et transmis par l'Administrateur pour enquête prioritaire."
+              : "Rapport généré par l'utilisateur pour étude approfondie par l'enquêteur SOC.")
           },
-          reporter_name: `${user?.prenom || 'Alice'} ${user?.nom || 'Martin'}`,
-          reporter_email: user?.email || 'alice.martin@example.com'
+          reporter_name: reporterName,
+          reporter_email: user?.email || (user?.role === 'ADMINISTRATEUR' ? 'admin@cyberdefense.local' : 'alice.martin@example.com')
         })
       });
 
@@ -694,6 +720,139 @@ export default function StandardDashboard({ isHistoryView = false }) {
       </div>
     );
   };
+
+  // Transfer to Investigator Handler
+  const handleTransferToInvestigator = async (item) => {
+    if (!item) return;
+    setTransferringId(item.id);
+    setTransferFeedback('');
+    try {
+      const token = localStorage.getItem('phishguard_token');
+      const headers = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const reporterName = user?.role === 'ADMINISTRATEUR'
+        ? `${user?.prenom || 'Admin'} ${user?.nom || ''}`.trim() + ' (Administrateur)'
+        : `${user?.prenom || 'Alice'} ${user?.nom || 'Martin'}`.trim();
+
+      const transferTitle = user?.role === 'ADMINISTRATEUR'
+        ? `[Transfert Admin] ${item.target}`
+        : `[Demand / Transfer] ${item.target}`;
+
+      const res = await fetch('/api/v1/incidents/submit-user-report', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          title: transferTitle,
+          target: item.target,
+          scan_type: item.type || 'URL',
+          verdict: item.verdict,
+          risk_score: item.riskScore,
+          details: {
+            ...(item.details || {}),
+            transferred_from_history: true,
+            analysis_code: item.analysis_code,
+            transfer_timestamp: new Date().toISOString(),
+            transferred_by_role: user?.role || 'UTILISATEUR_STANDARD'
+          },
+          reporter_name: reporterName,
+          reporter_email: user?.email || (user?.role === 'ADMINISTRATEUR' ? 'admin@cyberdefense.local' : 'alice.martin@example.com')
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || (lang === 'fr' ? 'Erreur lors du transfert' : 'Error transferring report'));
+
+      const newTransferred = [...transferredIds, item.id];
+      setTransferredIds(newTransferred);
+      try {
+        localStorage.setItem('phishguard_transferred_ids', JSON.stringify(newTransferred));
+      } catch (e) {}
+
+      setTransferFeedback(
+        lang === 'fr'
+          ? `✓ Dossier transféré avec succès à l'enquêteur (${data.report?.report_code || 'DEMANDE-OK'})`
+          : `✓ Successfully transferred to the investigator (${data.report?.report_code || 'DEMAND-OK'})`
+      );
+    } catch (err) {
+      alert((lang === 'fr' ? 'Erreur : ' : 'Error: ') + err.message);
+    } finally {
+      setTransferringId(null);
+    }
+  };
+
+  // Clear All History Handler
+  const handleClearAllHistory = async () => {
+    setIsClearingAll(true);
+    try {
+      const token = localStorage.getItem('phishguard_token');
+      const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+      const res = await fetch('/api/v1/analyze/history', { method: 'DELETE', headers });
+      if (res.ok) {
+        setScanHistory([]);
+        const userKey = user?.id ? `_${user.id}` : '';
+        localStorage.removeItem(`phishguard_cached_history${userKey}`);
+        localStorage.removeItem(`phishguard_latest_result${userKey}`);
+        setCurrentResult(null);
+        fetchDbMetrics();
+      }
+    } catch (e) {
+      console.error("Error clearing history:", e);
+    } finally {
+      setIsClearingAll(false);
+      setShowClearConfirm(false);
+    }
+  };
+
+  // Delete Individual History Item Handler
+  const handleDeleteItem = async () => {
+    if (!itemToDelete) return;
+    const id = itemToDelete.id;
+    setItemToDelete(null);
+    try {
+      const token = localStorage.getItem('phishguard_token');
+      const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+      const res = await fetch(`/api/v1/analyze/history/${id}`, { method: 'DELETE', headers });
+      if (res.ok) {
+        setScanHistory((prev) => prev.filter((item) => item.id !== id));
+        fetchDbMetrics();
+      }
+    } catch (e) {
+      console.log('Error deleting item:', e);
+    }
+  };
+
+  // Filtered & Sorted History Data for Ledger
+  const filteredHistory = scanHistory.filter((item) => {
+    const query = historySearchQuery.toLowerCase().trim();
+    const matchesText =
+      !query ||
+      (item.target && item.target.toLowerCase().includes(query)) ||
+      (item.type && item.type.toLowerCase().includes(query)) ||
+      (item.verdict && item.verdict.toLowerCase().includes(query)) ||
+      (item.analysis_code && item.analysis_code.toLowerCase().includes(query)) ||
+      (item.timestamp && item.timestamp.toLowerCase().includes(query));
+
+    const matchesVerdict =
+      historyVerdictFilter === 'ALL'
+        ? true
+        : historyVerdictFilter === 'THREATS'
+        ? item.riskScore >= 50 || item.verdict?.includes('PHISHING') || item.verdict?.includes('MALICIOUS')
+        : item.riskScore < 50 && !item.verdict?.includes('PHISHING') && !item.verdict?.includes('MALICIOUS');
+
+    return matchesText && matchesVerdict;
+  });
+
+  const sortedScanHistory = [...filteredHistory].sort((a, b) => {
+    const aPinned = pinnedIds.includes(a.id);
+    const bPinned = pinnedIds.includes(b.id);
+    if (aPinned && !bPinned) return -1;
+    if (!aPinned && bPinned) return 1;
+    return 0;
+  });
+
+  const totalThreats = scanHistory.filter((item) => item.riskScore >= 50 || item.verdict?.includes('PHISHING') || item.verdict?.includes('MALICIOUS')).length;
+  const totalClean = scanHistory.length - totalThreats;
 
   // Dedicated full history view renderer
   if (isHistoryView) {
@@ -2134,6 +2293,442 @@ export default function StandardDashboard({ isHistoryView = false }) {
         })()}
 
       </div>
+
+      {/* ══ HISTORIQUE DES ANALYSES & RENSEIGNEMENT IA (MATCHING SCREENSHOT) ══ */}
+      <div className="bg-white dark:bg-[#161b27] border border-slate-200 dark:border-sky-900/40 rounded-3xl p-6 sm:p-8 shadow-sm space-y-6">
+        
+        {/* Top Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800/80 pb-5">
+          <div className="flex items-center gap-3.5">
+            <div className="p-3 bg-sky-50 dark:bg-sky-950/40 text-sky-500 rounded-2xl border border-sky-100 dark:border-sky-800/40 shrink-0">
+              <History className="w-6 h-6" />
+            </div>
+            <div>
+              <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white tracking-tight">
+                {lang === 'fr' ? 'Historique des Analyses & Renseignement IA' : 'Analysis History & AI Intelligence'}
+              </h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                {lang === 'fr'
+                  ? "Registre permanent de l'ensemble de vos analyses enregistrées en base de données."
+                  : "Permanent ledger of all security scans recorded in the database."}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2.5">
+            <div className="flex items-center gap-2">
+              <span className="px-4 py-1.5 bg-sky-50 dark:bg-sky-950/40 text-sky-600 dark:text-sky-400 font-mono font-bold text-xs rounded-full border border-sky-200/60 dark:border-sky-800/50">
+                {scanHistory.length} {lang === 'fr' ? 'analyses au total' : 'total scans'}
+              </span>
+              <button
+                onClick={fetchDbMetrics}
+                className="p-2 bg-slate-100 dark:bg-slate-800 hover:bg-sky-500/10 text-slate-600 dark:text-slate-300 rounded-full transition cursor-pointer"
+                title={lang === 'fr' ? 'Actualiser' : 'Refresh'}
+              >
+                <RefreshCw className="w-4 h-4" />
+              </button>
+            </div>
+
+            {scanHistory.length > 0 && (
+              <button
+                onClick={() => setShowClearConfirm(true)}
+                className="px-3.5 py-1.5 bg-rose-50/80 dark:bg-rose-950/20 hover:bg-rose-100 text-rose-500 hover:text-rose-600 border border-rose-200 dark:border-rose-800/40 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>{lang === 'fr' ? "Vider l'historique" : "Clear History"}</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Live Search & Segmented Filter Bar */}
+        <div className="flex flex-col md:flex-row gap-3 items-center justify-between bg-slate-50 dark:bg-[#111622] p-2.5 rounded-2xl border border-slate-200 dark:border-slate-800">
+          <div className="relative flex-1 w-full">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              placeholder={lang === 'fr' ? "Rechercher par URL, code ANL, canal, statut..." : "Search by URL, ANL code, channel, status..."}
+              value={historySearchQuery}
+              onChange={(e) => setHistorySearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 bg-white dark:bg-[#161b27] border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-sky-500 font-sans"
+            />
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0 text-xs font-sans font-bold w-full md:w-auto">
+            <button
+              onClick={() => setHistoryVerdictFilter('ALL')}
+              className={`px-4 py-1.5 rounded-full font-bold transition cursor-pointer text-xs ${
+                historyVerdictFilter === 'ALL'
+                  ? 'bg-[#0284c7] text-white shadow-sm'
+                  : 'bg-white dark:bg-[#161b27] text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
+              }`}
+            >
+              {lang === 'fr' ? 'Tous' : 'All'} ({scanHistory.length})
+            </button>
+
+            <button
+              onClick={() => setHistoryVerdictFilter('THREATS')}
+              className={`px-4 py-1.5 rounded-full font-bold transition cursor-pointer text-xs flex items-center gap-1.5 ${
+                historyVerdictFilter === 'THREATS'
+                  ? 'bg-rose-600 text-white shadow-sm'
+                  : 'bg-white dark:bg-[#161b27] text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
+              }`}
+            >
+              <span>🚨</span>
+              <span>{lang === 'fr' ? 'Menaces' : 'Threats'} ({totalThreats})</span>
+            </button>
+
+            <button
+              onClick={() => setHistoryVerdictFilter('CLEAN')}
+              className={`px-4 py-1.5 rounded-full font-bold transition cursor-pointer text-xs flex items-center gap-1.5 ${
+                historyVerdictFilter === 'CLEAN'
+                  ? 'bg-emerald-600 text-white shadow-sm'
+                  : 'bg-white dark:bg-[#161b27] text-emerald-600 dark:text-emerald-400 border border-slate-200 dark:border-slate-700'
+              }`}
+            >
+              <span>✓</span>
+              <span>{lang === 'fr' ? 'Légitimes' : 'Legitimate'} ({totalClean})</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Transfer Feedback Notification */}
+        {transferFeedback && (
+          <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-xs font-bold rounded-2xl flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-500" />
+            <span>{transferFeedback}</span>
+          </div>
+        )}
+
+        {/* History Records Table */}
+        {sortedScanHistory.length === 0 ? (
+          <div className="py-14 text-center text-slate-400 text-xs font-medium space-y-1">
+            <p className="text-sm font-bold text-slate-600 dark:text-slate-300">
+              {lang === 'fr' ? "Aucun résultat dans l'historique." : "No results in history."}
+            </p>
+            <p className="text-slate-500 text-[11px]">
+              {lang === 'fr' ? "Analysez une URL ci-dessus pour la consigner automatiquement." : "Scan a URL above to log it automatically."}
+            </p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto rounded-2xl border border-slate-100 dark:border-slate-800">
+            <table className="w-full text-left text-xs text-slate-700 dark:text-slate-200 font-sans">
+              <thead className="bg-slate-50/70 dark:bg-[#111622] text-slate-400 uppercase font-mono text-[10px] tracking-wider border-b border-slate-100 dark:border-slate-800">
+                <tr>
+                  <th className="py-3.5 px-4 w-10 text-center">📌</th>
+                  <th className="py-3.5 px-4">{lang === 'fr' ? 'DATE / HEURE' : 'DATE / TIME'}</th>
+                  <th className="py-3.5 px-4">{lang === 'fr' ? 'CANAL' : 'CHANNEL'}</th>
+                  <th className="py-3.5 px-4">{lang === 'fr' ? 'CIBLE ANALYSÉE' : 'ANALYZED TARGET'}</th>
+                  <th className="py-3.5 px-4 text-center">{lang === 'fr' ? 'VERDICT IA' : 'AI VERDICT'}</th>
+                  <th className="py-3.5 px-4">{lang === 'fr' ? 'SCORE' : 'SCORE'}</th>
+                  <th className="py-3.5 px-4 text-right">{lang === 'fr' ? 'ACTION' : 'ACTION'}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80 font-mono text-xs">
+                {sortedScanHistory.map((item) => {
+                  const isPinned = pinnedIds.includes(item.id);
+                  const isThreat = item.riskScore >= 50 || item.verdict?.includes('PHISHING') || item.verdict?.includes('MALICIOUS');
+                  const isTransferred = transferredIds.includes(item.id);
+
+                  return (
+                    <tr
+                      key={item.id}
+                      onClick={() => setSelectedHistoryItem(item)}
+                      className={`hover:bg-sky-500/5 dark:hover:bg-sky-500/10 cursor-pointer transition duration-150 ${
+                        isPinned ? 'bg-amber-500/5 dark:bg-amber-500/10' : ''
+                      }`}
+                    >
+                      <td className="py-3.5 px-4 text-center" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          onClick={(e) => togglePin(item.id, e)}
+                          className={`p-1.5 rounded-lg transition cursor-pointer ${
+                            isPinned
+                              ? 'bg-amber-500/20 text-amber-500 border border-amber-500/40'
+                              : 'text-slate-400 hover:text-slate-200'
+                          }`}
+                          title={isPinned ? "Désépingler" : "Épingler en haut"}
+                        >
+                          <Pin className="w-3.5 h-3.5" />
+                        </button>
+                      </td>
+
+                      <td className="py-3.5 px-4 text-slate-600 dark:text-slate-300 font-bold">
+                        {item.timestamp}
+                      </td>
+
+                      <td className="py-3.5 px-4 font-black text-sky-500">
+                        {item.type || 'URL'}
+                      </td>
+
+                      <td className="py-3.5 px-4 max-w-xs sm:max-w-md truncate text-slate-900 dark:text-slate-100 font-sans font-medium">
+                        <div className="flex items-center gap-1.5">
+                          {isPinned && <span className="text-amber-500 font-bold">📌</span>}
+                          <span className="truncate">{item.target}</span>
+                          {isTransferred && (
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 shrink-0">
+                              {lang === 'fr' ? '✓ Transféré' : '✓ Transferred'}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+
+                      <td className="py-3.5 px-4 text-center">
+                        {isThreat ? (
+                          <span className="px-3.5 py-1 rounded-full text-[11px] font-black inline-flex items-center gap-1.5 bg-rose-100 dark:bg-rose-950/40 text-rose-800 dark:text-rose-300 border border-rose-300 dark:border-rose-800/50">
+                            <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
+                            <span className="leading-tight">PHISHING / MALVEILLANT</span>
+                          </span>
+                        ) : (
+                          <span className="px-3.5 py-1 rounded-full text-[11px] font-black inline-flex items-center gap-1.5 bg-[#d1fae5] dark:bg-emerald-950/40 text-[#065f46] dark:text-emerald-300 border border-[#a7f3d0] dark:border-emerald-800/50">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                            <span className="leading-tight">LÉGITIME / SÛR</span>
+                          </span>
+                        )}
+                      </td>
+
+                      <td className="py-3.5 px-4 font-black text-slate-900 dark:text-white">
+                        {item.riskScore}%
+                      </td>
+
+                      <td className="py-3.5 px-4 text-right" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-end gap-2">
+                          {isTransferred ? (
+                            <span className="px-3 py-1 bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 rounded-full text-xs font-bold flex items-center gap-1">
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              <span>{lang === 'fr' ? 'Transféré' : 'Transferred'}</span>
+                            </span>
+                          ) : (
+                            <button
+                              onClick={() => handleTransferToInvestigator(item)}
+                              disabled={transferringId === item.id}
+                              className="px-3.5 py-1 bg-rose-50/80 hover:bg-rose-100 text-rose-500 dark:text-rose-400 dark:bg-rose-950/20 dark:hover:bg-rose-900/40 border border-rose-200 dark:border-rose-800/40 rounded-full text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-sm"
+                            >
+                              {transferringId === item.id ? (
+                                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                <Send className="w-3.5 h-3.5 text-rose-500" />
+                              )}
+                              <span>{lang === 'fr' ? 'Transférer' : 'Transfer'}</span>
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+      </div>
+
+      {/* Clear All History Confirmation Modal */}
+      {showClearConfirm && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-[#161b27] border-2 border-rose-500/50 rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl space-y-5 animate-in zoom-in-95 duration-150 text-center">
+            <div className="w-14 h-14 bg-rose-500/10 text-rose-500 rounded-full flex items-center justify-center mx-auto border border-rose-500/30">
+              <Trash2 className="w-7 h-7" />
+            </div>
+
+            <div className="space-y-2">
+              <h3 className="text-xl font-black text-slate-900 dark:text-white font-sans">
+                {lang === 'fr' ? "Vider tout l'historique ?" : 'Clear all history?'}
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-sans leading-relaxed">
+                {lang === 'fr'
+                  ? "Voulez-vous supprimer définitivement tous les enregistrements de votre historique d'analyse ?"
+                  : "Are you sure you want to permanently delete all scan records from your analysis history?"}
+              </p>
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <button
+                onClick={() => setShowClearConfirm(false)}
+                className="flex-1 py-3 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs rounded-2xl transition cursor-pointer"
+              >
+                {lang === 'fr' ? 'Annuler' : 'Cancel'}
+              </button>
+
+              <button
+                onClick={handleClearAllHistory}
+                disabled={isClearingAll}
+                className="flex-1 py-3 bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs rounded-2xl shadow-lg shadow-rose-600/30 transition cursor-pointer flex items-center justify-center gap-2"
+              >
+                {isClearingAll && <RefreshCw className="w-4 h-4 animate-spin" />}
+                <span>{lang === 'fr' ? 'Tout Supprimer' : 'Delete All'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Detailed Modal view for selected history test result */}
+      {selectedHistoryItem && (() => {
+        const itemDetails = selectedHistoryItem.details || selectedHistoryItem;
+        const isThreat = selectedHistoryItem.riskScore >= 50 || selectedHistoryItem.verdict?.includes('PHISHING') || selectedHistoryItem.verdict?.includes('MALICIOUS');
+        const isTransferred = transferredIds.includes(selectedHistoryItem.id);
+
+        return (
+          <div className="fixed inset-0 bg-slate-950/75 backdrop-blur-md z-50 flex items-center justify-center p-4">
+            <div className="bg-white dark:bg-[#161b27] border-2 border-sky-200 dark:border-sky-800/80 rounded-3xl p-6 sm:p-8 max-w-4xl w-full shadow-2xl space-y-6 relative max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-150">
+              
+              {/* Modal Header */}
+              <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-3 bg-sky-500/10 text-sky-500 rounded-2xl font-mono text-xs font-bold">
+                    {selectedHistoryItem.analysis_code || 'ANL-RECORD'}
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-black text-slate-900 dark:text-white">
+                      {lang === 'fr' ? "Fiche Détaillée d'Analyse (Registre Base de Données)" : "Detailed Analysis File (Database Record)"}
+                    </h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 font-mono">
+                      {lang === 'fr' ? 'Horodatage :' : 'Timestamp:'} {selectedHistoryItem.timestamp}
+                    </p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setSelectedHistoryItem(null)}
+                  className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-white rounded-xl bg-slate-100 dark:bg-slate-800 cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Main Verdict & Risk Score Pill Banner */}
+              <div className={`p-5 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${
+                isThreat
+                  ? 'bg-rose-50/50 dark:bg-rose-950/20 border-rose-200 dark:border-rose-900/40 text-rose-950 dark:text-rose-100'
+                  : 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-900/40 text-emerald-950 dark:text-emerald-100'
+              }`}>
+                <div className="flex items-center gap-3.5">
+                  <div className={`p-3 rounded-2xl shadow-md shrink-0 text-white ${isThreat ? 'bg-rose-600' : 'bg-emerald-600'}`}>
+                    {isThreat ? <AlertTriangle className="w-6 h-6" /> : <CheckCircle2 className="w-6 h-6" />}
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-mono uppercase font-bold tracking-wider opacity-75">
+                      {lang === 'fr' ? 'Classification IA' : 'AI Classification'}
+                    </span>
+                    <p className="text-xl font-black">
+                      {isThreat 
+                        ? (lang === 'fr' ? 'PHISHING / MALVEILLANT' : 'PHISHING / MALICIOUS')
+                        : (lang === 'fr' ? 'LÉGITIME / SÛR' : 'LEGITIMATE / CLEAN')}
+                    </p>
+                  </div>
+                </div>
+                
+                <div className={`px-5 py-2.5 rounded-xl font-mono font-black text-lg shadow-md shrink-0 text-white ${
+                  isThreat ? 'bg-rose-600' : 'bg-emerald-600'
+                }`}>
+                  Score: {selectedHistoryItem.riskScore}%
+                </div>
+              </div>
+
+              {/* Submitted Target Content */}
+              <div className="space-y-1.5">
+                <label className="text-[10px] uppercase font-mono font-bold text-slate-400">
+                  {lang === 'fr' ? 'Cible Analysée' : 'Inspected Target'} ({selectedHistoryItem.type})
+                </label>
+                <div className="p-4 bg-slate-50 dark:bg-[#111622] rounded-2xl border border-slate-200 dark:border-slate-800 text-xs font-mono break-all text-slate-900 dark:text-slate-100 shadow-inner font-bold flex items-center justify-between gap-3">
+                  <span>{selectedHistoryItem.target}</span>
+                  <button
+                    onClick={() => copyToClipboard(selectedHistoryItem.target, 'url')}
+                    className="text-xs text-sky-500 hover:text-sky-600 font-bold shrink-0 cursor-pointer"
+                  >
+                    {copiedUrl ? (lang === 'fr' ? 'Copié !' : 'Copied!') : (lang === 'fr' ? 'Copier' : 'Copy')}
+                  </button>
+                </div>
+              </div>
+
+              {/* Modal Footer Actions */}
+              <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                  <button
+                    onClick={() => handleTransferToInvestigator(selectedHistoryItem)}
+                    disabled={transferringId === selectedHistoryItem.id || isTransferred}
+                    className={`w-full sm:w-auto px-5 py-2.5 font-bold text-xs rounded-xl shadow-md flex items-center justify-center gap-2 transition cursor-pointer ${
+                      isTransferred
+                        ? 'bg-emerald-600 text-white opacity-90 cursor-default'
+                        : 'bg-rose-600 hover:bg-rose-700 text-white'
+                    }`}
+                  >
+                    {transferringId === selectedHistoryItem.id ? (
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                    ) : isTransferred ? (
+                      <CheckCircle2 className="w-4 h-4" />
+                    ) : (
+                      <Send className="w-4 h-4" />
+                    )}
+                    <span>
+                      {isTransferred
+                        ? (lang === 'fr' ? "✓ Transféré à l'Enquêteur" : "✓ Transferred to Investigator")
+                        : (lang === 'fr' ? "Transférer à l'Enquêteur" : "Transfer to Investigator")}
+                    </span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setItemToDelete(selectedHistoryItem);
+                      setSelectedHistoryItem(null);
+                    }}
+                    className="w-full sm:w-auto px-4 py-2.5 bg-rose-500/10 hover:bg-rose-500 hover:text-white text-rose-500 font-bold text-xs rounded-xl border border-rose-500/30 flex items-center justify-center gap-2 transition cursor-pointer"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    <span>{lang === 'fr' ? "Supprimer cette analyse" : "Delete this scan"}</span>
+                  </button>
+                </div>
+
+                <button
+                  onClick={() => setSelectedHistoryItem(null)}
+                  className="w-full sm:w-auto px-6 py-2.5 bg-sky-500 hover:bg-sky-600 text-white font-bold text-xs rounded-xl shadow-md transition cursor-pointer"
+                >
+                  {lang === 'fr' ? 'Fermer la Fiche' : 'Close Report'}
+                </button>
+              </div>
+
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Delete Confirmation Modal */}
+      {itemToDelete && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-[#161b27] border-2 border-rose-500/50 rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl space-y-5 animate-in zoom-in-95 duration-150 text-center">
+            <div className="w-14 h-14 bg-rose-500/10 text-rose-500 rounded-full flex items-center justify-center mx-auto border border-rose-500/30">
+              <Trash2 className="w-7 h-7" />
+            </div>
+
+            <div className="space-y-2">
+              <h3 className="text-xl font-black text-slate-900 dark:text-white font-sans">
+                {lang === 'fr' ? 'Confirmer la suppression ?' : 'Confirm deletion?'}
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-sans leading-relaxed">
+                {lang === 'fr' ? 'Voulez-vous supprimer définitivement cette analyse de votre historique et de la base de données ?' : 'Are you sure you want to permanently delete this scan from your history and database?'}
+              </p>
+              <div className="p-3 bg-slate-50 dark:bg-[#111622] rounded-xl font-mono text-xs font-bold text-slate-800 dark:text-slate-200 truncate border border-slate-200 dark:border-slate-800">
+                {itemToDelete.target}
+              </div>
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <button
+                onClick={() => setItemToDelete(null)}
+                className="flex-1 py-3 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs rounded-2xl transition cursor-pointer"
+              >
+                {lang === 'fr' ? 'Annuler' : 'Cancel'}
+              </button>
+
+              <button
+                onClick={handleDeleteItem}
+                className="flex-1 py-3 bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs rounded-2xl shadow-lg shadow-rose-600/30 transition cursor-pointer"
+              >
+                {lang === 'fr' ? 'Confirmer' : 'Confirm'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Official Diagnostic Report Viewer Modal */}
       {isReportModalOpen && currentResult && (

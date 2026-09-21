@@ -185,25 +185,45 @@ def get_user_activity_logs(
     if current_user.role != "ADMINISTRATEUR":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Accès réservé aux Administrateurs")
 
-    logs = db.query(AuditLog).order_by(AuditLog.timestamp.desc()).limit(150).all()
-    records = db.query(AnalysisRecord).order_by(AnalysisRecord.created_at.desc()).limit(50).all()
-    incidents = db.query(Incident).order_by(Incident.created_at.desc()).limit(50).all()
+    # ── Build sets for all Administrateur accounts — their activity is fully hidden
+    admin_emails = {a.email for a in db.query(Administrateur).all()}
+    admin_names  = {f"{a.prenom} {a.nom}" for a in db.query(Administrateur).all()}
 
-    stds = db.query(UtilisateurStandard).all()
-    enqs = db.query(Enqueteur).all()
-    adms = db.query(Administrateur).all()
-    all_users = stds + enqs + adms
+    # ── Build a quick lookup: user_id -> (prenom, nom, role) for standard users & investigators
+    std_users  = db.query(UtilisateurStandard).all()
+    enq_users  = db.query(Enqueteur).all()
+    all_non_admin_users = std_users + enq_users
+
+    user_id_map = {}
+    for u in all_non_admin_users:
+        user_id_map[u.id] = {
+            "name": f"{u.prenom} {u.nom}",
+            "role": u.role
+        }
+
+    logs     = db.query(AuditLog).order_by(AuditLog.timestamp.desc()).limit(150).all()
+    records  = db.query(AnalysisRecord).order_by(AnalysisRecord.created_at.desc()).limit(50).all()
+    incidents = db.query(Incident).order_by(Incident.created_at.desc()).limit(50).all()
 
     activations = []
     seen_log_keys = set()
 
+    # ── 1. AuditLog entries — exclude any entry linked to an admin actor or target
     for l in logs:
+        actor_str = l.actor or ""
+        # Skip entries originating from admin accounts
+        if actor_str in admin_names:
+            continue
+        # Skip entries whose target is an admin email
+        if l.target and l.target in admin_emails:
+            continue
+
         key = f"{l.action}_{l.target}_{l.timestamp}"
         seen_log_keys.add(key)
         log_type = "SERVICE_ERROR" if l.action == "SERVICE_PIPELINE_ERROR" else "AUDIT"
         activations.append({
             "id": l.id,
-            "actor": l.actor or "Utilisateur",
+            "actor": actor_str or "Utilisateur",
             "type": log_type,
             "action": l.action or "ACTION",
             "target": l.target or "-",
@@ -211,36 +231,49 @@ def get_user_activity_logs(
             "timestamp": l.timestamp.isoformat() if l.timestamp else None
         })
 
-    for u in all_users:
+    # ── 2. Login sessions — only standard users and investigators
+    for u in all_non_admin_users:
         if getattr(u, "last_login", None):
             key = f"LOGIN_{u.email}_{u.last_login}"
             if key not in seen_log_keys:
-                role_label = "Administrateur" if u.role == "ADMINISTRATEUR" else ("Enquêteur SOC" if u.role == "ENQUETEUR" else "Utilisateur Standard")
+                role_label = "Enquêteur SOC" if u.role == "ENQUETEUR" else "Utilisateur Standard"
                 activations.append({
                     "id": f"login-{u.id}",
                     "actor": f"{u.prenom} {u.nom}",
                     "type": "AUDIT",
                     "action": "LOGIN",
                     "target": u.email,
-                    "details": f"Session active ({role_label}) - Connexion enregistrée",
+                    "details": f"Session active ({role_label}) — Connexion enregistrée",
                     "timestamp": u.last_login.isoformat()
                 })
 
+    # ── 3. Analysis scan records — look up actual user name from user_id mapping
     for r in records:
+        uid = getattr(r, "user_id", None)
+        user_info = user_id_map.get(uid) if uid else None
+        actor_name = user_info["name"] if user_info else "Utilisateur Standard"
         activations.append({
             "id": r.id,
-            "actor": "Utilisateur Standard",
+            "actor": actor_name,
             "type": "SCAN_RESEARCH",
             "action": f"SCAN_{r.analysis_type}",
             "target": r.target_content,
-            "details": f"Verdict: {r.verdict} (Risk: {r.risk_score}/100) - Ref: {r.analysis_code}",
+            "details": f"Verdict: {r.verdict} (Risk: {r.risk_score}/100) — Réf: {r.analysis_code}",
             "timestamp": r.created_at.isoformat() if r.created_at else None
         })
 
+    # ── 4. Incident dossiers — show readable source label
     for inc in incidents:
+        # Map source_type to a human-readable actor label
+        source_map = {
+            "USER_REPORT": "Utilisateur Standard",
+            "WAF_TELEMETRY": "Système WAF",
+            "THREAT_INTEL": "Renseignement Menaces"
+        }
+        actor_label = source_map.get(inc.source_type, inc.source_type or "Enquêteur SOC")
         activations.append({
             "id": inc.id,
-            "actor": inc.source_type or "Enquêteur SOC",
+            "actor": actor_label,
             "type": "INCIDENT_REPORT",
             "action": "INCIDENT_DOSSIER",
             "target": inc.title,

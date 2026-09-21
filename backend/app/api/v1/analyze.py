@@ -132,43 +132,54 @@ def analyze_url(req: URLAnalysisRequest, db: Session = Depends(get_db), current_
             rule_score += 25.0
 
         # 5. External Threat Intelligence & GeoIP Lookup
-        vt_data = query_virustotal_url_reputation(url)
-        gsb_data = query_google_safebrowsing(url)
+        # Pass the enriched features dict so ML fallback can use them if APIs are unavailable
+        vt_data  = query_virustotal_url_reputation(url, features=features)
+        gsb_data = query_google_safebrowsing(url, features=features)
 
         from app.services.geoip_service import lookup_ip_geolocation, resolve_domain_to_ip
         dns_a = technical_inspection.get("dns", {}).get("a_records", [])
-        resolved_ip = (dns_a[0] if dns_a else None) or resolve_domain_to_ip(url)
-        target_host_ip = resolved_ip or features.get("host_ip") or ("185.220.101.5" if features["has_ip"] or features["keyword_count"] > 0 else "104.28.19.44")
+        resolved_ip    = (dns_a[0] if dns_a else None) or resolve_domain_to_ip(url)
+        target_host_ip = (resolved_ip or features.get("host_ip")
+                          or ("185.220.101.5" if features["has_ip"] or features["keyword_count"] > 0
+                              else "104.28.19.44"))
         features["host_ip"] = target_host_ip
-        geoip_info = lookup_ip_geolocation(target_host_ip, domain_context=url)
+        # Pass features for ML-powered GeoIP fallback
+        geoip_info = lookup_ip_geolocation(target_host_ip, domain_context=url, features=features)
 
-        # 6. Hybrid Correlation
+        # 6. Hybrid Correlation — adaptive weighting based on API availability
         correlation = calculate_correlated_risk(
             ml_probability=phishing_prob,
             rule_score=min(100.0, rule_score),
             vt_data=vt_data,
-            gsb_data=gsb_data
+            gsb_data=gsb_data,
+            geoip_data=geoip_info,
+            ml_features=features,
         )
 
         analysis_code = f"ANL-{random.randint(100000, 999999)}"
         
         response_payload = {
-            "analysis_code": analysis_code,
-            "target_url": url,
-            "verdict": correlation["verdict"],
-            "risk_score": correlation["final_risk_score"],
-            "risk_level": correlation["risk_level"],
-            "ml_confidence": round(phishing_prob * 100.0, 2),
-            "selected_model": "Moteur IA Ensemble (Random Forest + Gradient Boosting + MLP)",
-            "ml_model_accuracy": 98.4,
-            "model_comparisons": all_models_comp,
-            "features": features,
-            "rule_triggers": rule_triggers,
-            "virustotal": vt_data,
+            "analysis_code":       analysis_code,
+            "target_url":          url,
+            "verdict":             correlation["verdict"],
+            "risk_score":          correlation["final_risk_score"],
+            "risk_level":          correlation["risk_level"],
+            "ml_confidence":       round(phishing_prob * 100.0, 2),
+            "selected_model":      "Moteur IA Ensemble (Random Forest + Gradient Boosting + MLP — 27 Indicateurs)",
+            "ml_model_accuracy":   98.4,
+            "model_comparisons":   all_models_comp,
+            "features":            features,
+            "rule_triggers":       rule_triggers,
+            "virustotal":          vt_data,
             "google_safebrowsing": gsb_data,
-            "geoip_info": geoip_info,
+            "geoip_info":          geoip_info,
             "technical_inspection": technical_inspection,
-            "defensive_advice": correlation["defensive_advice"]
+            "defensive_advice":    correlation["defensive_advice"],
+            # Transparency: which intel sources were live vs ML-simulated
+            "intel_sources_used":  correlation.get("intel_sources_used", []),
+            "api_failures":        correlation.get("api_failures", []),
+            "correlation_mode":    correlation.get("correlation_mode", "AUTONOMOUS_ML"),
+            "autonomous_mode":     correlation.get("autonomous_mode", True),
         }
 
         # Generate SHA-256 integrity hash

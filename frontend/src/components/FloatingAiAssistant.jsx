@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Bot, X, RefreshCw, Send, Trash2, History } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Bot, X, RefreshCw, Send, Trash2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 
@@ -8,20 +8,36 @@ export default function FloatingAiAssistant() {
   const { lang } = useLanguage();
 
   const [isChatOpen, setIsChatOpen] = useState(false);
-  const [chatMessages, setChatMessages] = useState([
-    {
-      sender: 'assistant',
-      text: lang === 'fr'
-        ? `Bonjour ${user?.prenom || 'Alice'} ! Je suis votre assistant de sécurité CyberGuard AI. Posez-moi une question sur une menace cybernétique, un lien ou une règle de sécurité.`
-        : `Hello ${user?.prenom || 'Alice'}! I am your CyberGuard AI security assistant. Ask me anything about cyber threats, malicious links, or security best practices.`
-    }
-  ]);
+  const [chatMessages, setChatMessages] = useState([]);
   const [chatInput, setChatInput] = useState('');
   const [isChatting, setIsChatting] = useState(false);
   const [historyLoaded, setHistoryLoaded] = useState(false);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+
+  const messagesEndRef = useRef(null);
+
+  // Scroll to bottom whenever messages change or chat opens
+  const scrollToBottom = () => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [chatMessages, isChatting]);
+
+  // Welcome message — reactive to lang changes
+  const getWelcomeMessage = () => ({
+    sender: 'assistant',
+    text: lang === 'fr'
+      ? `Bonjour ${user?.prenom || ''}! Je suis votre assistant de sécurité CyberGuard AI. Posez-moi une question sur une menace cybernétique, un lien ou une règle de sécurité.`
+      : `Hello ${user?.prenom || ''}! I am your CyberGuard AI security assistant. Ask me anything about cyber threats, malicious links, or security best practices.`
+  });
 
   // Load chat history from MongoDB
   const fetchChatHistory = async () => {
+    setIsLoadingHistory(true);
     try {
       const token = localStorage.getItem('phishguard_token');
       const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
@@ -37,26 +53,42 @@ export default function FloatingAiAssistant() {
             if (item.ai_reply) {
               let reply = item.ai_reply;
               if (item.recommendations && item.recommendations.length > 0) {
-                reply += "\n\n**" + (lang === 'fr' ? "Recommandations de sécurité :" : "Security Recommendations:") + "**\n" + item.recommendations.map(r => `• ${r}`).join('\n');
+                const recLabel = lang === 'fr' ? 'Recommandations de sécurité :' : 'Security Recommendations:';
+                reply += '\n\n**' + recLabel + '**\n' + item.recommendations.map(r => `• ${r}`).join('\n');
               }
               formatted.push({ sender: 'assistant', text: reply });
             }
           });
           if (formatted.length > 0) {
             setChatMessages(formatted);
+            setHistoryLoaded(true);
+            return;
           }
         }
       }
     } catch (e) {
       console.log('Error fetching chat history from MongoDB:', e);
     } finally {
-      setHistoryLoaded(true);
+      setIsLoadingHistory(false);
     }
+    // No history found — show welcome
+    setChatMessages([getWelcomeMessage()]);
+    setHistoryLoaded(true);
   };
 
+  // Reset history state when logged-in user changes
+  useEffect(() => {
+    setHistoryLoaded(false);
+  }, [user?.id, user?.email]);
+
+  // Load history when chat is first opened
   useEffect(() => {
     if (isChatOpen && !historyLoaded) {
       fetchChatHistory();
+    }
+    // If chat opens and already loaded, just scroll to bottom
+    if (isChatOpen && historyLoaded) {
+      setTimeout(scrollToBottom, 100);
     }
   }, [isChatOpen]);
 
@@ -66,14 +98,9 @@ export default function FloatingAiAssistant() {
       const token = localStorage.getItem('phishguard_token');
       const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
       await fetch('/api/v1/assistant/history', { method: 'DELETE', headers });
-      setChatMessages([
-        {
-          sender: 'assistant',
-          text: lang === 'fr'
-            ? `Historique effacé. Bonjour ${user?.prenom || 'Alice'} ! En quoi puis-je vous aider ?`
-            : `History cleared. Hello ${user?.prenom || 'Alice'}! How can I help you today?`
-        }
-      ]);
+      setHistoryLoaded(false);
+      setChatMessages([getWelcomeMessage()]);
+      setHistoryLoaded(true);
     } catch (e) {
       console.error(e);
     }
@@ -83,7 +110,7 @@ export default function FloatingAiAssistant() {
     e.preventDefault();
     if (!chatInput.trim()) return;
 
-    const userText = chatInput;
+    const userText = chatInput.trim();
     setChatInput('');
     setChatMessages(prev => [...prev, { sender: 'user', text: userText }]);
     setIsChatting(true);
@@ -96,24 +123,47 @@ export default function FloatingAiAssistant() {
       const res = await fetch('/api/v1/assistant/chat', {
         method: 'POST',
         headers,
-        body: JSON.stringify({ message: userText, prompt: userText, lang })
+        body: JSON.stringify({ message: userText, lang })
       });
       const data = await res.json();
-      
-      let botReply = data.reply || data.response || (lang === 'fr' ? "Conseil de sécurité appliqué." : "Security advice applied.");
+
+      let botReply = data.reply || data.response || (lang === 'fr' ? 'Conseil de sécurité appliqué.' : 'Security advice applied.');
       if (data.recommendations && data.recommendations.length > 0) {
-        botReply += "\n\n**" + (lang === 'fr' ? "Recommandations de sécurité :" : "Security Recommendations:") + "**\n" + data.recommendations.map(r => `• ${r}`).join('\n');
+        const recLabel = lang === 'fr' ? 'Recommandations de sécurité :' : 'Security Recommendations:';
+        botReply += '\n\n**' + recLabel + '**\n' + data.recommendations.map(r => `• ${r}`).join('\n');
       }
 
       setChatMessages(prev => [...prev, { sender: 'assistant', text: botReply }]);
     } catch (err) {
       setChatMessages(prev => [...prev, {
         sender: 'assistant',
-        text: lang === 'fr' ? "L'assistant IA est temporairement indisponible." : "AI Assistant is temporarily unavailable."
+        text: lang === 'fr' ? "L'assistant IA est temporairement indisponible." : 'AI Assistant is temporarily unavailable.'
       }]);
     } finally {
       setIsChatting(false);
     }
+  };
+
+  // Render formatted text with basic markdown support (bold, bullets)
+  const renderMessage = (text) => {
+    if (!text) return null;
+    const lines = text.split('\n');
+    return lines.map((line, i) => {
+      // Heading (###)
+      if (line.startsWith('### ')) {
+        return <p key={i} className="font-bold text-sky-600 dark:text-sky-400 mb-1">{line.replace('### ', '')}</p>;
+      }
+      // Bold (**text**)
+      const boldParts = line.split(/\*\*(.*?)\*\*/g);
+      const rendered = boldParts.map((part, j) =>
+        j % 2 === 1 ? <strong key={j} className="font-semibold">{part}</strong> : part
+      );
+      return (
+        <p key={i} className={`${line.startsWith('- ') || line.startsWith('• ') ? 'pl-3' : ''} leading-relaxed`}>
+          {rendered}
+        </p>
+      );
+    });
   };
 
   return (
@@ -131,8 +181,9 @@ export default function FloatingAiAssistant() {
           <span>CyberGuard AI</span>
         </button>
       ) : (
-        <div className="bg-white dark:bg-[#111622] border border-sky-100 dark:border-sky-800/60 rounded-3xl shadow-2xl w-80 sm:w-96 flex flex-col h-[500px] overflow-hidden animate-in zoom-in-95 duration-200">
-          <div className="p-4 bg-gradient-to-r from-sky-500 to-blue-600 text-white flex items-center justify-between">
+        <div className="bg-white dark:bg-[#111622] border border-sky-100 dark:border-sky-800/60 rounded-3xl shadow-2xl w-80 sm:w-96 flex flex-col h-[520px] overflow-hidden" style={{ animation: 'fadeInUp 0.2s ease-out' }}>
+          {/* Header */}
+          <div className="p-4 bg-gradient-to-r from-sky-500 to-blue-600 text-white flex items-center justify-between shrink-0">
             <div className="flex items-center gap-2.5">
               <div className="p-2 bg-white/20 rounded-xl backdrop-blur-sm">
                 <Bot className="w-5 h-5" />
@@ -141,36 +192,51 @@ export default function FloatingAiAssistant() {
                 <h4 className="font-extrabold text-sm">CyberGuard AI</h4>
                 <p className="text-[10px] text-sky-100 font-medium flex items-center gap-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-300" />
-                  {lang === 'fr' ? 'En ligne • MongoDB Synchronisé' : 'Online • MongoDB Synced'}
+                  {lang === 'fr' ? 'En ligne • Historique synchronisé' : 'Online • History synced'}
                 </p>
               </div>
             </div>
             <div className="flex items-center gap-1">
               <button
                 onClick={handleClearHistory}
-                title={lang === 'fr' ? "Effacer l'historique" : "Clear History"}
+                title={lang === 'fr' ? "Effacer l'historique" : 'Clear History'}
                 className="p-1.5 text-white/80 hover:text-white hover:bg-white/10 rounded-lg cursor-pointer transition"
               >
                 <Trash2 className="w-4 h-4" />
               </button>
-              <button onClick={() => setIsChatOpen(false)} className="p-1.5 text-white/80 hover:text-white hover:bg-white/10 rounded-lg cursor-pointer transition">
+              <button
+                onClick={() => setIsChatOpen(false)}
+                className="p-1.5 text-white/80 hover:text-white hover:bg-white/10 rounded-lg cursor-pointer transition"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
           </div>
 
-          <div className="flex-1 p-4 overflow-y-auto space-y-3 bg-slate-50/50 dark:bg-[#090d16]/50 text-xs">
+          {/* Messages */}
+          <div className="flex-1 p-4 overflow-y-auto space-y-3 bg-slate-50/50 dark:bg-[#090d16]/50 text-xs scroll-smooth">
+            {/* Loading history indicator */}
+            {isLoadingHistory && (
+              <div className="flex justify-center">
+                <div className="bg-white dark:bg-[#1a2333] text-slate-400 p-2.5 rounded-2xl text-[11px] flex items-center gap-2 border border-sky-100 dark:border-sky-800/40">
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-sky-500" />
+                  {lang === 'fr' ? 'Chargement de l\'historique...' : 'Loading chat history...'}
+                </div>
+              </div>
+            )}
+
             {chatMessages.map((msg, idx) => (
               <div key={idx} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[85%] rounded-2xl p-3 leading-relaxed ${
+                <div className={`max-w-[85%] rounded-2xl p-3 leading-relaxed space-y-0.5 ${
                   msg.sender === 'user'
                     ? 'bg-sky-500 text-white rounded-br-none shadow-md'
                     : 'bg-white dark:bg-[#1a2333] text-slate-800 dark:text-slate-200 border border-sky-100 dark:border-sky-800/40 rounded-bl-none shadow-sm'
                 }`}>
-                  {msg.text}
+                  {msg.sender === 'assistant' ? renderMessage(msg.text) : msg.text}
                 </div>
               </div>
             ))}
+
             {isChatting && (
               <div className="flex justify-start">
                 <div className="bg-white dark:bg-[#1a2333] text-slate-400 p-2.5 rounded-2xl text-[11px] flex items-center gap-2 border border-sky-100 dark:border-sky-800/40">
@@ -179,9 +245,12 @@ export default function FloatingAiAssistant() {
                 </div>
               </div>
             )}
+            {/* Scroll anchor */}
+            <div ref={messagesEndRef} />
           </div>
 
-          <form onSubmit={handleSendMessage} className="p-3 bg-white dark:bg-[#111622] border-t border-sky-100 dark:border-sky-800/40 flex gap-2">
+          {/* Input */}
+          <form onSubmit={handleSendMessage} className="p-3 bg-white dark:bg-[#111622] border-t border-sky-100 dark:border-sky-800/40 flex gap-2 shrink-0">
             <input
               type="text"
               placeholder={lang === 'fr' ? 'Posez une question à CyberGuard AI...' : 'Ask CyberGuard AI a question...'}
@@ -191,7 +260,7 @@ export default function FloatingAiAssistant() {
             />
             <button
               type="submit"
-              disabled={isChatting}
+              disabled={isChatting || !chatInput.trim()}
               className="p-2.5 bg-sky-500 hover:bg-sky-600 text-white rounded-xl shadow-md transition cursor-pointer disabled:opacity-50"
             >
               <Send className="w-4 h-4" />
@@ -199,7 +268,13 @@ export default function FloatingAiAssistant() {
           </form>
         </div>
       )}
+
+      <style>{`
+        @keyframes fadeInUp {
+          from { opacity: 0; transform: translateY(16px) scale(0.97); }
+          to   { opacity: 1; transform: translateY(0)     scale(1);    }
+        }
+      `}</style>
     </div>
   );
 }
-

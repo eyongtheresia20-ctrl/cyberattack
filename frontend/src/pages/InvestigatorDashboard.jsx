@@ -48,6 +48,7 @@ export default function InvestigatorDashboard() {
   const totalCount = dbStats ? dbStats.total_incidents : incidents.length;
   const newCount = dbStats ? dbStats.new_incidents : incidents.filter(i => i.status === 'NEW').length;
   const investigatingCount = dbStats ? dbStats.investigating_incidents : incidents.filter(i => i.status === 'INVESTIGATING').length;
+  const resolvedCount = dbStats ? dbStats.resolved_incidents : incidents.filter(i => i.status === 'RESOLVED' || i.status === 'CLOSED').length;
 
   // Categories Breakdown directly from DB query
   const rawCategories = dbStats?.categories_breakdown || [];
@@ -89,8 +90,8 @@ export default function InvestigatorDashboard() {
   return (
     <div className="space-y-8 max-w-7xl mx-auto pb-16">
       
-      {/* Exactly 3 Metric Cards connected directly to DB */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      {/* 4 Metric Cards connected directly to DB */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         
         {/* Card 1: TOTAL SIGNALEMENTS */}
         <div className="bg-white dark:bg-[#161b27] border border-slate-200 dark:border-sky-900/40 rounded-3xl p-6 shadow-sm hover:shadow-xl transition-all duration-300 relative overflow-hidden group">
@@ -135,7 +136,7 @@ export default function InvestigatorDashboard() {
           <div className="flex items-start justify-between">
             <div>
               <span className="text-xs font-mono font-bold uppercase tracking-wider text-amber-500 block mb-1">
-                {lang === 'fr' ? 'EN COURS DE TRAITEMENT' : 'INVESTIGATIONS IN PROGRESS'}
+                {lang === 'fr' ? 'EN COURS' : 'IN PROGRESS'}
               </span>
               <p className="text-4xl font-black text-amber-600 dark:text-amber-400">{investigatingCount}</p>
             </div>
@@ -144,8 +145,27 @@ export default function InvestigatorDashboard() {
             </div>
           </div>
           <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs">
-            <span className="text-slate-500 font-medium">{lang === 'fr' ? 'Enquêtes SOC actives' : 'Active SOC Cases'}</span>
+            <span className="text-slate-500 font-medium">{lang === 'fr' ? 'Enquêtes actives' : 'Active Investigations'}</span>
             <span className="text-amber-600 dark:text-amber-400 font-mono font-bold">{lang === 'fr' ? 'En cours' : 'Active'}</span>
+          </div>
+        </div>
+
+        {/* Card 4: DOSSIERS RÉSOLUS */}
+        <div className="bg-white dark:bg-[#161b27] border border-slate-200 dark:border-sky-900/40 rounded-3xl p-6 shadow-sm hover:shadow-xl transition-all duration-300 relative overflow-hidden group">
+          <div className="flex items-start justify-between">
+            <div>
+              <span className="text-xs font-mono font-bold uppercase tracking-wider text-emerald-500 block mb-1">
+                {lang === 'fr' ? 'DOSSIERS RÉSOLUS' : 'RESOLVED / CLOSED'}
+              </span>
+              <p className="text-4xl font-black text-emerald-600 dark:text-emerald-400">{resolvedCount}</p>
+            </div>
+            <div className="w-14 h-14 rounded-2xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center font-bold shadow-inner">
+              <CheckCircle2 size={28} />
+            </div>
+          </div>
+          <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs">
+            <span className="text-slate-500 font-medium">{lang === 'fr' ? 'Menaces traitées' : 'Mitigated & Sealed'}</span>
+            <span className="text-emerald-600 dark:text-emerald-400 font-mono font-bold">{lang === 'fr' ? 'Résolu' : 'Resolved'}</span>
           </div>
         </div>
 

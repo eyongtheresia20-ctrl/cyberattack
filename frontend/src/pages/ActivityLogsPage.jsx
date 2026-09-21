@@ -108,8 +108,8 @@ export default function ActivityLogsPage() {
           </h1>
           <p className="text-slate-500 dark:text-slate-400 text-xs sm:text-sm mt-1">
             {lang === 'fr' 
-              ? "Suivi en temps réel des connexions utilisateurs, des heures d'accès et des actions d'analyse effectuées." 
-              : "Real-time tracking of user logins, access sessions, security scans, and administrative actions."}
+              ? "Suivi en temps réel des connexions des utilisateurs et enquêteurs, des accès et des actions d'analyse de sécurité." 
+              : "Real-time tracking of standard user and investigator logins, access sessions, and security scans."}
           </p>
         </div>
 

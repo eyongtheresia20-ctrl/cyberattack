@@ -279,9 +279,10 @@ def submit_user_report(req: UserScanReportRequest, db: Session = Depends(get_db)
         "reporter": req.reporter_email
     })
     
+    clean_title = req.title if req.title.startswith("[") else f"[Signalement] {req.title}"
     incident = Incident(
         incident_code=inc_code,
-        title=f"[User Report] {req.title}",
+        title=clean_title,
         category="Phishing Campaign" if req.scan_type in ["URL", "EMAIL"] else "Social Engineering",
         severity="HIGH" if req.risk_score >= 65 else ("MEDIUM" if req.risk_score >= 35 else "LOW"),
         status="NEW",

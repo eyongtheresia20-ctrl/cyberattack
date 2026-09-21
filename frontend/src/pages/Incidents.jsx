@@ -521,17 +521,19 @@ export default function Incidents() {
                     <Eye size={13} /> {lang === 'fr' ? 'Examiner' : 'Examine'}
                   </button>
 
-                  <button
-                    onClick={(e) => handleAnalyseTarget(inc, e)}
-                    disabled={analyzingTargetId === inc.id}
-                    className="flex-1 py-1.5 px-2 bg-sky-500/10 hover:bg-sky-500 hover:text-white text-sky-600 dark:text-sky-400 rounded-xl text-[11px] font-bold flex items-center justify-center gap-1 transition cursor-pointer"
-                    title={lang === 'fr' ? "Tester et analyser l'URL cible en direct" : "Test and analyse target URL live"}
-                  >
-                    <Activity size={13} className={analyzingTargetId === inc.id ? "animate-spin" : ""} />
-                    {analyzingTargetId === inc.id 
-                      ? (lang === 'fr' ? 'Analyse...' : 'Analyzing...')
-                      : (lang === 'fr' ? 'Analyser' : 'Analyse')}
-                  </button>
+                  {user?.role === 'ENQUETEUR' && (
+                    <button
+                      onClick={(e) => handleAnalyseTarget(inc, e)}
+                      disabled={analyzingTargetId === inc.id}
+                      className="flex-1 py-1.5 px-2 bg-sky-500/10 hover:bg-sky-500 hover:text-white text-sky-600 dark:text-sky-400 rounded-xl text-[11px] font-bold flex items-center justify-center gap-1 transition cursor-pointer"
+                      title={lang === 'fr' ? "Tester et analyser l'URL cible en direct" : "Test and analyse target URL live"}
+                    >
+                      <Activity size={13} className={analyzingTargetId === inc.id ? "animate-spin" : ""} />
+                      {analyzingTargetId === inc.id 
+                        ? (lang === 'fr' ? 'Analyse...' : 'Analyzing...')
+                        : (lang === 'fr' ? 'Analyser' : 'Analyse')}
+                    </button>
+                  )}
 
                   <button
                     onClick={(e) => handleVerifySeal(inc, e)}

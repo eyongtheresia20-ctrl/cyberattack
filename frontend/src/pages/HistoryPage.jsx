@@ -190,11 +190,19 @@ export default function HistoryPage() {
       const headers = { 'Content-Type': 'application/json' };
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
+      const reporterName = user?.role === 'ADMINISTRATEUR'
+        ? `${user?.prenom || 'Admin'} ${user?.nom || ''}`.trim() + ' (Administrateur)'
+        : `${user?.prenom || 'Alice'} ${user?.nom || 'Martin'}`.trim();
+
+      const transferTitle = user?.role === 'ADMINISTRATEUR'
+        ? `[Transfert Admin] ${item.target}`
+        : `[Demand / Transfer] ${item.target}`;
+
       const res = await fetch('/api/v1/incidents/submit-user-report', {
         method: 'POST',
         headers,
         body: JSON.stringify({
-          title: `[Demand / Transfer] ${item.target}`,
+          title: transferTitle,
           target: item.target,
           scan_type: item.type || 'URL',
           verdict: item.verdict,
@@ -203,10 +211,11 @@ export default function HistoryPage() {
             ...(item.details || {}),
             transferred_from_history: true,
             analysis_code: item.analysis_code,
-            transfer_timestamp: new Date().toISOString()
+            transfer_timestamp: new Date().toISOString(),
+            transferred_by_role: user?.role || 'UTILISATEUR_STANDARD'
           },
-          reporter_name: `${user?.prenom || 'Alice'} ${user?.nom || 'Martin'}`,
-          reporter_email: user?.email || 'alice.martin@example.com'
+          reporter_name: reporterName,
+          reporter_email: user?.email || (user?.role === 'ADMINISTRATEUR' ? 'admin@cyberdefense.local' : 'alice.martin@example.com')
         })
       });
 
@@ -424,7 +433,7 @@ export default function HistoryPage() {
                         <div className="flex items-center gap-1.5">
                           {isPinned && <span className="text-amber-500 font-bold">📌</span>}
                           <span className="truncate">{item.target}</span>
-                          {user?.role === 'UTILISATEUR_STANDARD' && isTransferred && (
+                          {(user?.role === 'UTILISATEUR_STANDARD' || user?.role === 'ADMINISTRATEUR') && isTransferred && (
                             <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 shrink-0">
                               {lang === 'fr' ? '✓ Transféré' : '✓ Transferred'}
                             </span>
@@ -453,6 +462,29 @@ export default function HistoryPage() {
 
                       <td className="py-3.5 px-3 text-right" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-end gap-1.5">
+                          {(user?.role === 'UTILISATEUR_STANDARD' || user?.role === 'ADMINISTRATEUR') && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleTransferToInvestigator(item); }}
+                              disabled={transferringId === item.id || isTransferred}
+                              className={`px-2 py-1 font-bold rounded-lg text-[10px] border transition cursor-pointer flex items-center gap-1 ${
+                                isTransferred
+                                  ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 cursor-default'
+                                  : 'bg-rose-500/10 hover:bg-rose-500 hover:text-white text-rose-600 dark:text-rose-400 border-rose-500/30'
+                              }`}
+                              title={isTransferred ? (lang === 'fr' ? "Déjà transféré à l'enquêteur" : "Already transferred") : (lang === 'fr' ? "Transférer à l'enquêteur" : "Transfer to investigator")}
+                            >
+                              {transferringId === item.id ? (
+                                <RefreshCw className="w-3 h-3 animate-spin" />
+                              ) : isTransferred ? (
+                                <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                              ) : (
+                                <Send className="w-3 h-3" />
+                              )}
+                              <span className="hidden sm:inline">
+                                {isTransferred ? (lang === 'fr' ? 'Transféré' : 'Transférer') : (lang === 'fr' ? 'Transférer' : 'Transfer')}
+                              </span>
+                            </button>
+                          )}
                           <button
                             onClick={() => { setSelectedHistoryItem(item); setTransferMessage(''); }}
                             className="px-2.5 py-1 bg-sky-500/10 hover:bg-sky-500/20 text-sky-600 dark:text-sky-400 font-bold rounded-lg text-[11px] border border-sky-500/30 transition cursor-pointer"
@@ -862,43 +894,45 @@ export default function HistoryPage() {
                 </div>
               )}
 
-              {/* Footer Actions: Transfer to Investigator (only for standard users) or Delete & Close */}
+              {/* Footer Actions: Transfer to Investigator (for standard users & admin) and Delete & Close */}
               <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3">
-                {user?.role === 'UTILISATEUR_STANDARD' ? (
-                  <button
-                    onClick={() => handleTransferToInvestigator(selectedHistoryItem)}
-                    disabled={transferringId === selectedHistoryItem.id || isTransferred}
-                    className={`w-full sm:w-auto px-6 py-2.5 font-bold text-xs rounded-xl shadow-md flex items-center justify-center gap-2 transition cursor-pointer ${
-                      isTransferred
-                        ? 'bg-emerald-600 text-white opacity-90 cursor-default'
-                        : 'bg-rose-600 hover:bg-rose-700 text-white'
-                    }`}
-                  >
-                    {transferringId === selectedHistoryItem.id ? (
-                      <RefreshCw className="w-4 h-4 animate-spin" />
-                    ) : isTransferred ? (
-                      <CheckCircle2 className="w-4 h-4" />
-                    ) : (
-                      <Send className="w-4 h-4" />
-                    )}
-                    <span>
-                      {isTransferred
-                        ? (lang === 'fr' ? "✓ Transféré à l'Enquêteur" : "✓ Transferred to Investigator")
-                        : (lang === 'fr' ? "Transférer à l'Enquêteur" : "Transfer to Investigator")}
-                    </span>
-                  </button>
-                ) : (
+                <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                  {(user?.role === 'UTILISATEUR_STANDARD' || user?.role === 'ADMINISTRATEUR') && (
+                    <button
+                      onClick={() => handleTransferToInvestigator(selectedHistoryItem)}
+                      disabled={transferringId === selectedHistoryItem.id || isTransferred}
+                      className={`w-full sm:w-auto px-5 py-2.5 font-bold text-xs rounded-xl shadow-md flex items-center justify-center gap-2 transition cursor-pointer ${
+                        isTransferred
+                          ? 'bg-emerald-600 text-white opacity-90 cursor-default'
+                          : 'bg-rose-600 hover:bg-rose-700 text-white'
+                      }`}
+                    >
+                      {transferringId === selectedHistoryItem.id ? (
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                      ) : isTransferred ? (
+                        <CheckCircle2 className="w-4 h-4" />
+                      ) : (
+                        <Send className="w-4 h-4" />
+                      )}
+                      <span>
+                        {isTransferred
+                          ? (lang === 'fr' ? "✓ Transféré à l'Enquêteur" : "✓ Transferred to Investigator")
+                          : (lang === 'fr' ? "Transférer à l'Enquêteur" : "Transfer to Investigator")}
+                      </span>
+                    </button>
+                  )}
+
                   <button
                     onClick={() => {
                       setItemToDelete(selectedHistoryItem);
                       setSelectedHistoryItem(null);
                     }}
-                    className="w-full sm:w-auto px-5 py-2.5 bg-rose-500/10 hover:bg-rose-500 hover:text-white text-rose-500 font-bold text-xs rounded-xl border border-rose-500/30 flex items-center justify-center gap-2 transition cursor-pointer"
+                    className="w-full sm:w-auto px-4 py-2.5 bg-rose-500/10 hover:bg-rose-500 hover:text-white text-rose-500 font-bold text-xs rounded-xl border border-rose-500/30 flex items-center justify-center gap-2 transition cursor-pointer"
                   >
                     <Trash2 className="w-4 h-4" />
                     <span>{lang === 'fr' ? "Supprimer cette analyse" : "Delete this scan"}</span>
                   </button>
-                )}
+                </div>
 
                 <button
                   onClick={() => { setSelectedHistoryItem(null); setTransferMessage(''); }}
