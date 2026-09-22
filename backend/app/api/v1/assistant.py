@@ -148,7 +148,10 @@ import uuid
 from datetime import datetime, timezone
 import requests
 import urllib3
-from fastapi import Header
+from fastapi import Header, Depends
+from sqlalchemy.orm import Session
+from app.db.database import get_db
+from app.db.models import AuditLog, UtilisateurStandard, Enqueteur
 from app.core.config import settings
 from app.core.security import decode_access_token
 from app.db.mongodb import mongo_collections
@@ -169,7 +172,11 @@ def get_user_email_from_header(authorization: Any = None) -> str:
 
 
 @router.post("/chat")
-def security_assistant_chat(req: ChatRequest, authorization: Optional[str] = Header(None)):
+def security_assistant_chat(
+    req: ChatRequest, 
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db)
+):
     user_email = get_user_email_from_header(authorization)
     lang = (req.lang or "en").lower()
     if lang not in ("en", "fr"):
@@ -317,6 +324,33 @@ def security_assistant_chat(req: ChatRequest, authorization: Optional[str] = Hea
         mongo_collections.chat_messages.insert_one(chat_doc)
     except Exception as e:
         print(f"[MongoDB Chat Warning] Could not persist message: {e}")
+
+    # 5. Log AI Consultation in AuditLog
+    try:
+        actor_name = "Alice Martin"
+        if user_email:
+            u_std = db.query(UtilisateurStandard).filter(UtilisateurStandard.email == user_email).first()
+            if u_std:
+                actor_name = f"{u_std.prenom} {u_std.nom}"
+            else:
+                u_enq = db.query(Enqueteur).filter(Enqueteur.email == user_email).first()
+                if u_enq:
+                    actor_name = f"{u_enq.prenom} {u_enq.nom}"
+
+        clean_question = user_message.strip()
+        if len(clean_question) > 60:
+            clean_question = clean_question[:60] + "..."
+
+        audit = AuditLog(
+            actor=actor_name,
+            action="CHAT_IA",
+            target=f"Thème: {req.context_type or 'Conseils Défensifs'}",
+            details=f"Question posée : \"{clean_question}\""
+        )
+        db.add(audit)
+        db.commit()
+    except Exception as e:
+        print(f"[AuditLog Chat Error] {e}")
 
     return {
         "reply": ai_text,

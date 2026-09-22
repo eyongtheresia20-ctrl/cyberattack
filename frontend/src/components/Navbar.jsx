@@ -66,8 +66,12 @@ export default function Navbar({ onOpenAuth, onOpenHistory }) {
   const getLoginTimeString = () => {
     if (activeUser.last_login) {
       try {
-        const d = new Date(activeUser.last_login);
-        return d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        let t = activeUser.last_login;
+        if (typeof t === 'string' && !t.includes('Z') && !t.includes('+')) {
+          t += 'Z';
+        }
+        const d = new Date(t);
+        return isNaN(d.getTime()) ? '13:00:00' : d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
       } catch (e) {
         return '13:00:00';
       }

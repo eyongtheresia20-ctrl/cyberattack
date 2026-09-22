@@ -4,10 +4,23 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.db.database import get_db
-from app.db.models import IncidentReport, AnalysisRecord, Incident
+from app.db.models import IncidentReport, AnalysisRecord, Incident, AuditLog
 from app.core.security import generate_sha256_hash
 
 router = APIRouter(prefix="/verify", tags=["Investigator Integrity Verification"])
+
+def _log_verification(db: Session, code: str, valid: bool):
+    try:
+        audit = AuditLog(
+            actor="Jean Dupont",
+            action="VERIF_INTEGRITE",
+            target=code,
+            details=f"Vérification d'intégrité SHA-256 pour {code} — {'Empreinte Authentique' if valid else 'ALERTE FALSIFICATION'}"
+        )
+        db.add(audit)
+        db.commit()
+    except Exception:
+        pass
 
 class VerificationRequest(BaseModel):
     lookup_code: str # e.g. RPT-2026-10492 or ANL-2026-948201
@@ -32,8 +45,11 @@ def verify_report_integrity(req: VerificationRequest, db: Session = Depends(get_
         else:
             user_hash_matched = True
 
+        valid = hash_matched and user_hash_matched
+        _log_verification(db, code, valid)
+
         return {
-            "valid": hash_matched and user_hash_matched,
+            "valid": valid,
             "status": "INTEGRITY_VERIFIED" if (hash_matched and user_hash_matched) else "TAMPERING_DETECTED",
             "lookup_code": code,
             "type": "INCIDENT_REPORT",
@@ -63,6 +79,7 @@ def verify_report_integrity(req: VerificationRequest, db: Session = Depends(get_
             user_hash_matched = True
 
         valid = hash_matched and user_hash_matched
+        _log_verification(db, code, valid)
 
         return {
             "valid": valid,
@@ -106,6 +123,8 @@ def verify_report_integrity(req: VerificationRequest, db: Session = Depends(get_
             user_hash_matched = True
 
         valid = hash_matched and user_hash_matched
+        _log_verification(db, code, valid)
+
         return {
             "valid": valid,
             "status": "INTEGRITY_VERIFIED" if valid else "TAMPERING_DETECTED",

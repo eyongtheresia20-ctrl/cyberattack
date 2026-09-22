@@ -45,12 +45,24 @@ export default function ActivityLogsPage() {
       actionStr.includes(query) ||
       detailsStr.includes(query);
 
-    if (actionFilter === 'SCAN') return matchesSearch && log.type === 'SCAN_RESEARCH';
-    if (actionFilter === 'AUDIT') return matchesSearch && log.type === 'AUDIT';
-    if (actionFilter === 'INCIDENT') return matchesSearch && log.type === 'INCIDENT_REPORT';
+    if (actionFilter === 'SCAN') return matchesSearch && (log.type === 'SCAN_RESEARCH' || log.action?.startsWith('SCAN'));
+    if (actionFilter === 'AUDIT') return matchesSearch && (log.action === 'LOGIN' || log.action === 'REGISTER');
+    if (actionFilter === 'INCIDENT') return matchesSearch && (log.type === 'INCIDENT_REPORT' || log.action === 'TRANSFERT_RAPPORT');
+    if (actionFilter === 'AI') return matchesSearch && log.action === 'CHAT_IA';
+    if (actionFilter === 'VERIFY') return matchesSearch && log.action === 'VERIF_INTEGRITE';
     if (actionFilter === 'ERROR') return matchesSearch && (log.type === 'SERVICE_ERROR' || log.action === 'SERVICE_PIPELINE_ERROR');
     return matchesSearch;
   });
+
+  const formatLogDate = (timestamp) => {
+    if (!timestamp) return lang === 'fr' ? 'Récemment' : 'Recently';
+    let t = timestamp;
+    if (typeof t === 'string' && !t.includes('Z') && !t.includes('+')) {
+      t += 'Z';
+    }
+    const d = new Date(t);
+    return isNaN(d.getTime()) ? timestamp : d.toLocaleString(lang === 'fr' ? 'fr-FR' : 'en-US');
+  };
 
   const getActionBadge = (type, action) => {
     if (type === 'SERVICE_ERROR' || action === 'SERVICE_PIPELINE_ERROR') {
@@ -61,7 +73,31 @@ export default function ActivityLogsPage() {
         </span>
       );
     }
-    if (type === 'SCAN_RESEARCH') {
+    if (action === 'CHAT_IA') {
+      return (
+        <span className="px-2.5 py-0.5 rounded-full font-mono font-bold text-[10px] bg-purple-500/15 text-purple-600 dark:text-purple-400 border border-purple-500/30 flex items-center gap-1">
+          <Shield size={11} className="text-purple-500" />
+          {lang === 'fr' ? 'ASSISTANT IA' : 'AI CHAT'}
+        </span>
+      );
+    }
+    if (action === 'VERIF_INTEGRITE') {
+      return (
+        <span className="px-2.5 py-0.5 rounded-full font-mono font-bold text-[10px] bg-teal-500/15 text-teal-600 dark:text-teal-400 border border-teal-500/30 flex items-center gap-1">
+          <ShieldCheck size={11} className="text-teal-500" />
+          {lang === 'fr' ? 'INTÉGRITÉ SHA-256' : 'SHA-256 PROOF'}
+        </span>
+      );
+    }
+    if (type === 'INCIDENT_REPORT' || action === 'TRANSFERT_RAPPORT') {
+      return (
+        <span className="px-2.5 py-0.5 rounded-full font-mono font-bold text-[10px] bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 flex items-center gap-1">
+          <FileSearch size={11} className="text-amber-500" />
+          {lang === 'fr' ? 'TRANSFERT RAPPORT' : 'REPORT TRANSFER'}
+        </span>
+      );
+    }
+    if (type === 'SCAN_RESEARCH' || action?.startsWith('SCAN')) {
       return (
         <span className="px-2.5 py-0.5 rounded-full font-mono font-bold text-[10px] bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20">
           {action}
@@ -79,13 +115,6 @@ export default function ActivityLogsPage() {
       return (
         <span className="px-2.5 py-0.5 rounded-full font-mono font-bold text-[10px] bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border border-cyan-500/20">
           {lang === 'fr' ? 'INSCRIPTION' : 'REGISTER'}
-        </span>
-      );
-    }
-    if (type === 'INCIDENT_REPORT') {
-      return (
-        <span className="px-2.5 py-0.5 rounded-full font-mono font-bold text-[10px] bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
-          {lang === 'fr' ? 'DOSSIER INCIDENT' : 'INCIDENT DOSSIER'}
         </span>
       );
     }
@@ -108,8 +137,8 @@ export default function ActivityLogsPage() {
           </h1>
           <p className="text-slate-500 dark:text-slate-400 text-xs sm:text-sm mt-1">
             {lang === 'fr' 
-              ? "Suivi en temps réel des connexions des utilisateurs et enquêteurs, des accès et des actions d'analyse de sécurité." 
-              : "Real-time tracking of standard user and investigator logins, access sessions, and security scans."}
+              ? "Suivi en temps réel des actions des utilisateurs et enquêteurs (analyses, consultations IA, transferts de rapports, intégrité SHA-256)." 
+              : "Real-time audit of user and investigator actions (threat scans, AI assistance, report transfers, SHA-256 integrity)."}
           </p>
         </div>
 
@@ -145,10 +174,12 @@ export default function ActivityLogsPage() {
               className="bg-slate-50 dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white rounded-xl px-3 py-1.5 text-xs font-semibold focus:outline-none focus:border-sky-500 cursor-pointer"
             >
               <option value="ALL">{lang === 'fr' ? 'Toutes les activités' : 'All Activities'}</option>
+              <option value="AUDIT">{lang === 'fr' ? 'Connexions & Accès' : 'Logins & Access'}</option>
+              <option value="SCAN">{lang === 'fr' ? 'Analyses Menaces (URL / SMS)' : 'Threat Scans (URL / SMS)'}</option>
+              <option value="INCIDENT">{lang === 'fr' ? 'Transferts de Rapports' : 'Report Transfers'}</option>
+              <option value="AI">{lang === 'fr' ? 'Consultations IA' : 'AI Consultations'}</option>
+              <option value="VERIFY">{lang === 'fr' ? 'Vérifications Intégrité (SHA-256)' : 'Integrity Checks (SHA-256)'}</option>
               <option value="ERROR">{lang === 'fr' ? '🚨 Erreurs Services & Diagnostics' : '🚨 Service Errors & Diagnostics'}</option>
-              <option value="AUDIT">{lang === 'fr' ? 'Connexions & Audits Système' : 'Logins & System Audits'}</option>
-              <option value="SCAN">{lang === 'fr' ? 'Analyses & Recherches IA' : 'AI Scans & Researches'}</option>
-              <option value="INCIDENT">{lang === 'fr' ? 'Dossiers & Signalements' : 'Incident Dossiers'}</option>
             </select>
           </div>
         </div>
@@ -183,9 +214,7 @@ export default function ActivityLogsPage() {
                       <td className="p-3.5 font-mono text-[11px] text-slate-500 dark:text-slate-400 whitespace-nowrap">
                         <span className="flex items-center gap-1.5">
                           <Clock size={12} className={isError ? "text-rose-500 shrink-0" : "text-sky-500 shrink-0"} />
-                          {log.timestamp 
-                            ? new Date(log.timestamp).toLocaleString(lang === 'fr' ? 'fr-FR' : 'en-US') 
-                            : (lang === 'fr' ? 'Connexion récente' : 'Recent session')}
+                          {formatLogDate(log.timestamp)}
                         </span>
                       </td>
                       <td className="p-3.5 font-bold text-slate-900 dark:text-white">

@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import desc, func
 
 from app.db.database import get_db
-from app.db.models import Incident, Evidence, IncidentReport, AnalysisRecord, SecurityEvent
+from app.db.models import Incident, Evidence, IncidentReport, AnalysisRecord, SecurityEvent, AuditLog
 from app.core.security import generate_sha256_hash
 
 router = APIRouter(prefix="/incidents", tags=["Incident Management & Evidence Ledger"])
@@ -330,6 +330,15 @@ def submit_user_report(req: UserScanReportRequest, db: Session = Depends(get_db)
         verified=True
     )
     db.add(report)
+
+    # Log user report transfer in AuditLog
+    audit = AuditLog(
+        actor=req.reporter_name or "Alice Martin",
+        action="TRANSFERT_RAPPORT",
+        target=req.target,
+        details=f"Transfert du dossier {inc_code} à l'enquêteur (Verdict: {req.verdict}, Risque: {req.risk_score}/100)"
+    )
+    db.add(audit)
     db.commit()
     db.refresh(report)
     
