@@ -11,7 +11,11 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     if (token) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 6000);
+
       fetch(`${API_URL}/auth/me`, {
+        signal: controller.signal,
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -26,7 +30,15 @@ export const AuthProvider = ({ children }) => {
         .catch(() => {
           logout();
         })
-        .finally(() => setLoading(false));
+        .finally(() => {
+          clearTimeout(timeoutId);
+          setLoading(false);
+        });
+
+      return () => {
+        clearTimeout(timeoutId);
+        controller.abort();
+      };
     } else {
       setLoading(false);
     }

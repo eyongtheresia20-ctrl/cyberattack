@@ -3,7 +3,8 @@ import { Link } from 'react-router-dom';
 import {
   Globe, MessageSquare, ShieldCheck, FileSearch, MapPin,
   Sun, Moon, Lock, Zap,
-  ChevronLeft, ChevronRight
+  ChevronLeft, ChevronRight,
+  X, CheckCircle2, LayoutDashboard, Shield, FileText, Bot, Terminal, Mail, Info
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useLanguage } from '../context/LanguageContext';
@@ -13,6 +14,242 @@ export default function LandingPage() {
   const { isDark, toggle: toggleTheme } = useTheme();
   const { lang, toggle: toggleLang, t } = useLanguage();
   const [startIndex, setStartIndex] = useState(0);
+  const [activeModalKey, setActiveModalKey] = useState(null);
+
+  const footerModalData = {
+    footer_soc_dash: {
+      category: lang === 'fr' ? 'Plateforme' : 'Platform',
+      title: lang === 'fr' ? 'Tableau de bord SOC' : 'SOC Dashboard',
+      icon: LayoutDashboard,
+      desc: lang === 'fr'
+        ? "Le centre des opérations de sécurité (SOC) offre une vue globale en direct des cyberattaques web, de la répartition par type d'attaque, des niveaux de sévérité et du flux des incidents récents."
+        : "The Security Operations Center (SOC) provides a live bird's-eye overview of web cyberattacks, attack distribution, severity levels, and recent incident streams.",
+      highlights: lang === 'fr'
+        ? [
+            "Surveillance du trafic et des requêtes suspectes en continu",
+            "Indicateurs clés de performance de sécurité (KPI SOC)",
+            "Visualisation graphique des attaques web en temps réel"
+          ]
+        : [
+            "Continuous monitoring of traffic and suspicious requests",
+            "Key security operations performance indicators (SOC KPIs)",
+            "Real-time graphical visualization of web cyber threats"
+          ]
+    },
+    footer_url_scan: {
+      category: lang === 'fr' ? 'Plateforme' : 'Platform',
+      title: lang === 'fr' ? "Scanner d'URL" : "URL Threat Scanner",
+      icon: Globe,
+      desc: lang === 'fr'
+        ? "Moteur d'inspection d'URL combinant un modèle Machine Learning Random Forest entraîné sur plus de 15 caractéristiques lexicales, structurelles et d'entropie, enrichi par des vérifications de réputation externes."
+        : "Multi-factor URL inspection engine combining a Random Forest Machine Learning model trained on 15+ lexical, structural, and entropy features with reputation threat intelligence.",
+      highlights: lang === 'fr'
+        ? [
+            "Classification Random Forest à 94,8% de précision",
+            "Calcul d'entropie de Shannon et détection d'obfuscation",
+            "Interrogation VirusTotal & Google Safe Browsing"
+          ]
+        : [
+            "Random Forest classifier with 94.8% accuracy",
+            "Shannon entropy calculation and obfuscation detection",
+            "VirusTotal & Google Safe Browsing query feeds"
+          ]
+    },
+    footer_sms_email: {
+      category: lang === 'fr' ? 'Plateforme' : 'Platform',
+      title: lang === 'fr' ? "Analyse SMS & Email" : "SMS & Email NLP Analysis",
+      icon: MessageSquare,
+      desc: lang === 'fr'
+        ? "Pipeline de Traitement du Langage Naturel (NLP) avec vectorisation TF-IDF, spécialisé dans la détection d'ingénierie sociale, de pression d'urgence, de faux avertissements bancaires et d'usurpation."
+        : "Natural Language Processing (NLP) pipeline utilizing TF-IDF vectorization, specialized in detecting social engineering, urgency pressure, fraudulent banking warnings, and identity theft.",
+      highlights: lang === 'fr'
+        ? [
+            "Détection des modèles linguistiques de phishing et smishing",
+            "Contrôle de validation des enregistrements SPF, DKIM et DMARC",
+            "Calcul du score de risque psychologique et manipulations"
+          ]
+        : [
+            "Phishing and smishing linguistic pattern detection",
+            "SPF, DKIM, and DMARC record validation checks",
+            "Psychological urgency and manipulation risk scoring"
+          ]
+    },
+    footer_waf: {
+      category: lang === 'fr' ? 'Plateforme' : 'Platform',
+      title: lang === 'fr' ? "Moniteur d'attaques web" : "Web Attack Monitor",
+      icon: ShieldCheck,
+      desc: lang === 'fr'
+        ? "Système d'ingestion et de classification de logs de Pare-feu Applicatif Web (WAF) analysant les requêtes HTTP suspectes contre 16 familles d'attaques critiques."
+        : "Web Application Firewall (WAF) log ingestion and classification system analyzing suspicious HTTP queries across 16 critical cyber attack families.",
+      highlights: lang === 'fr'
+        ? [
+            "Classification automatique SQLi, XSS, Path Traversal, Brute Force",
+            "Détection des tentatives de contournement et encodages anormaux",
+            "Journalisation enrichie avec horodatage et code réponse HTTP"
+          ]
+        : [
+            "Automated SQLi, XSS, Path Traversal, and Brute Force classification",
+            "Bypass attempt identification and anomalous character encodings",
+            "Enriched logging with accurate timestamp and HTTP status codes"
+          ]
+    },
+    footer_incidents: {
+      category: lang === 'fr' ? 'Fonctionnalité' : 'Feature',
+      title: lang === 'fr' ? 'Incidents & Preuves' : 'Incidents & Evidence Ledger',
+      icon: FileSearch,
+      desc: lang === 'fr'
+        ? "Registre forensique numérique garantissant la chaîne de traçabilité des preuves collectées et la génération de rapports d'incident officiels."
+        : "Digital forensic ledger ensuring chain-of-custody preservation for gathered digital evidence and official security incident report generation.",
+      highlights: lang === 'fr'
+        ? [
+            "Scellement cryptographique des preuves avec empreinte SHA-256",
+            "Gestion des statuts d'enquête et assignation des analystes",
+            "Export de procès-verbaux d'incident au format standardisé"
+          ]
+        : [
+            "Cryptographic SHA-256 evidence item sealing",
+            "Investigation lifecycle status management and analyst assignment",
+            "Standardized formal incident report export"
+          ]
+    },
+    footer_investigator: {
+      category: lang === 'fr' ? 'Fonctionnalité' : 'Feature',
+      title: lang === 'fr' ? 'Portail investigateur' : 'Investigator Portal',
+      icon: Shield,
+      desc: lang === 'fr'
+        ? "Espace de vérification indépendant permettant aux auditeurs et autorités judiciaires de vérifier qu'un rapport ou une preuve n'a subi aucune falsification."
+        : "Independent verification workspace allowing auditors and authorities to certify that a security report or evidence has undergone zero tampering.",
+      highlights: lang === 'fr'
+        ? [
+            "Recalcul automatique du condensat SHA-256 en mémoire",
+            "Confrontation instantanée avec le registre de base immuable",
+            "Attestation de validité ou alerte immédiate d'altération"
+          ]
+        : [
+            "Automated in-memory SHA-256 digest recalculation",
+            "Instant verification against immutable database records",
+            "Tamper-proof certification badge or alert upon discrepancy"
+          ]
+    },
+    footer_ai: {
+      category: lang === 'fr' ? 'Fonctionnalité' : 'Feature',
+      title: lang === 'fr' ? 'Conseiller IA sécurité' : 'AI Security Advisor',
+      icon: Bot,
+      desc: lang === 'fr'
+        ? "Assistant conversationnel spécialisé dans la cyberdéfense, fournissant des directives de remédiation étape par étape et des conseils de durcissement système."
+        : "Conversational assistant specialized in cyber defense, providing step-by-step remediation procedures and system hardening guidance.",
+      highlights: lang === 'fr'
+        ? [
+            "Recommandations de correctifs de code (requêtes préparées, encodage)",
+            "Guides de configuration WAF, Nginx, Apache et en-têtes HTTP",
+            "Sensibilisation interactive aux tactiques d'ingénierie sociale"
+          ]
+        : [
+            "Code patch guidelines (parameterized queries, contextual escaping)",
+            "WAF, Nginx, Apache, and HTTP security header hardening configs",
+            "Interactive awareness on social engineering threat patterns"
+          ]
+    },
+    footer_geoip: {
+      category: lang === 'fr' ? 'Fonctionnalité' : 'Feature',
+      title: lang === 'fr' ? 'Traçage GeoIP' : 'GeoIP Threat Tracing',
+      icon: MapPin,
+      desc: lang === 'fr'
+        ? "Module de géolocalisation et de contextualisation des adresses IP assaillantes avec identification de l'ASN, de l'opérateur et détection de mandataires d'anonymisation."
+        : "Adversary IP geolocation and contextualization module resolving country, city, ASN, ISP, and identifying anonymizing proxies.",
+      highlights: lang === 'fr'
+        ? [
+            "Localisation géographique instantanée des adresses IP",
+            "Détection des réseaux Proxy, VPN et nœuds de sortie anonymes",
+            "Corrélation d'attaques par zone géographique"
+          ]
+        : [
+            "Instant geographic localization of suspicious IPs",
+            "Detection of Proxy, VPN, and anonymous exit nodes",
+            "Geographic threat correlation and origin clustering"
+          ]
+    },
+    footer_privacy: {
+      category: lang === 'fr' ? 'Légal' : 'Legal',
+      title: lang === 'fr' ? 'Politique de confidentialité' : 'Privacy Policy',
+      icon: FileText,
+      desc: lang === 'fr'
+        ? "CyberGuard respecte scrupuleusement la confidentialité des données traitées. Les analyses soumises ne sont jamais revendues, et les données sensibles ou identifiants personnels sont purgés lors des traitements d'inférence."
+        : "CyberGuard strictly respects data privacy. Submitted analyses are never monetized, and sensitive personal identifiers are scrubbed during ML inference.",
+      highlights: lang === 'fr'
+        ? [
+            "Chiffrement de bout en bout des communications et des jetons d'accès",
+            "Purge automatique des données de test et politiques de rétention strictes",
+            "Conformité avec les principes du RGPD et de minimisation des données"
+          ]
+        : [
+            "End-to-end encryption for API traffic and authentication tokens",
+            "Automated test data purging and strict retention policies",
+            "Compliance with GDPR principles and data minimization"
+          ]
+    },
+    footer_terms: {
+      category: lang === 'fr' ? 'Légal' : 'Legal',
+      title: lang === 'fr' ? "Conditions d'utilisation" : "Terms of Service",
+      icon: Shield,
+      desc: lang === 'fr'
+        ? "La plateforme CyberGuard est mise à disposition à des fins d'analyse défensive, de protection des systèmes informatiques et de travaux de recherche académique autorisés."
+        : "The CyberGuard platform is provided for defensive analysis, IT system protection, and authorized academic threat research.",
+      highlights: lang === 'fr'
+        ? [
+            "Interdiction formelle d'utilisation à des fins d'attaque ou de nuisance",
+            "Obligation d'obtenir l'accord des propriétaires avant tout scan de serveur tiers",
+            "Responsabilité limitée aux contextes de supervision déclarés"
+          ]
+        : [
+            "Strict prohibition of offensive exploitation or malicious disruption",
+            "Mandatory authorization from target owners prior to server scanning",
+            "Liability limited to authorized and defensive supervision scopes"
+          ]
+    },
+    footer_research: {
+      category: lang === 'fr' ? 'Légal' : 'Legal',
+      title: lang === 'fr' ? 'Recherche en sécurité' : 'Security Research',
+      icon: Terminal,
+      desc: lang === 'fr'
+        ? "Nous soutenons la recherche en cybersécurité et la divulgation responsable des vulnérabilités (Vulnerability Disclosure Program / Safe Harbor)."
+        : "We actively support academic cybersecurity research and coordinated vulnerability disclosure (Safe Harbor principles).",
+      highlights: lang === 'fr'
+        ? [
+            "Signalement éthique des anomalies et faux positifs",
+            "Partage académique des méthodologies et jeux de données d'apprentissage",
+            "Amélioration continue de la résilience des algorithmes d'IA"
+          ]
+        : [
+            "Ethical reporting of security anomalies and false positives",
+            "Academic sharing of training methodologies and feature datasets",
+            "Continuous resilience enhancement of detection algorithms"
+          ]
+    },
+    footer_contact: {
+      category: lang === 'fr' ? 'Légal' : 'Legal',
+      title: lang === 'fr' ? 'Nous contacter' : 'Contact Us',
+      icon: Mail,
+      desc: lang === 'fr'
+        ? "Besoin d'informations complémentaires, de signaler un incident de sécurité urgent ou d'obtenir un accompagnement technique ? L'équipe CyberGuard est à votre écoute."
+        : "Need additional information, urgent security incident reporting, or technical support? The CyberGuard team is at your service.",
+      highlights: lang === 'fr'
+        ? [
+            "Email du support : support@cyberguard.security",
+            "Signalement incident SOC : soc-emergency@cyberguard.security",
+            "Recherche & partenariats : research@cyberguard.security"
+          ]
+        : [
+            "Support Email: support@cyberguard.security",
+            "SOC Incident Reporting: soc-emergency@cyberguard.security",
+            "Research & Partnerships: research@cyberguard.security"
+          ]
+    }
+  };
+
+  const modalData = activeModalKey ? footerModalData[activeModalKey] : null;
+  const ModalIcon = modalData ? modalData.icon : Info;
+
 
   const features = [
     {
@@ -261,12 +498,20 @@ export default function LandingPage() {
             <h4 className="text-xs font-bold text-white uppercase tracking-widest">{t('footer_platform')}</h4>
             <ul className="space-y-2 text-xs">
               {[
-                { key: 'footer_soc_dash', to: '/dashboard' },
-                { key: 'footer_url_scan', to: '/url-analysis' },
-                { key: 'footer_sms_email', to: '/text-analysis' },
-                { key: 'footer_waf', to: '/site-monitoring' },
-              ].map((l) => (
-                <li key={l.key}><Link to={l.to} className="hover:text-sky-400 transition">{t(l.key)}</Link></li>
+                'footer_soc_dash',
+                'footer_url_scan',
+                'footer_sms_email',
+                'footer_waf',
+              ].map((key) => (
+                <li key={key}>
+                  <button
+                    type="button"
+                    onClick={() => setActiveModalKey(key)}
+                    className="hover:text-sky-400 transition text-left cursor-pointer focus:outline-none focus:text-sky-300"
+                  >
+                    {t(key)}
+                  </button>
+                </li>
               ))}
             </ul>
           </div>
@@ -276,12 +521,20 @@ export default function LandingPage() {
             <h4 className="text-xs font-bold text-white uppercase tracking-widest">{t('footer_features')}</h4>
             <ul className="space-y-2 text-xs">
               {[
-                { key: 'footer_incidents', to: '/incidents' },
-                { key: 'footer_investigator', to: '/verification' },
-                { key: 'footer_ai', to: '/assistant' },
-                { key: 'footer_geoip', to: '/site-monitoring' },
-              ].map((l) => (
-                <li key={l.key}><Link to={l.to} className="hover:text-sky-400 transition">{t(l.key)}</Link></li>
+                'footer_incidents',
+                'footer_investigator',
+                'footer_ai',
+                'footer_geoip',
+              ].map((key) => (
+                <li key={key}>
+                  <button
+                    type="button"
+                    onClick={() => setActiveModalKey(key)}
+                    className="hover:text-sky-400 transition text-left cursor-pointer focus:outline-none focus:text-sky-300"
+                  >
+                    {t(key)}
+                  </button>
+                </li>
               ))}
             </ul>
           </div>
@@ -290,8 +543,21 @@ export default function LandingPage() {
           <div className="space-y-3">
             <h4 className="text-xs font-bold text-white uppercase tracking-widest">{t('footer_legal')}</h4>
             <ul className="space-y-2 text-xs">
-              {['footer_privacy', 'footer_terms', 'footer_research', 'footer_contact'].map((key) => (
-                <li key={key}><a href="#" className="hover:text-sky-400 transition">{t(key)}</a></li>
+              {[
+                'footer_privacy',
+                'footer_terms',
+                'footer_research',
+                'footer_contact',
+              ].map((key) => (
+                <li key={key}>
+                  <button
+                    type="button"
+                    onClick={() => setActiveModalKey(key)}
+                    className="hover:text-sky-400 transition text-left cursor-pointer focus:outline-none focus:text-sky-300"
+                  >
+                    {t(key)}
+                  </button>
+                </li>
               ))}
             </ul>
           </div>
@@ -304,6 +570,92 @@ export default function LandingPage() {
           </div>
         </div>
       </footer>
+
+      {/* ===== FOOTER INFO / LEGAL MODAL ===== */}
+      {modalData && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in duration-200"
+          onClick={() => setActiveModalKey(null)}
+          role="dialog"
+          aria-modal="true"
+        >
+          <div
+            className="relative w-full max-w-lg bg-white dark:bg-[#161b27] border border-sky-100 dark:border-sky-900/60 rounded-2xl shadow-2xl p-6 sm:p-7 space-y-5 text-slate-900 dark:text-slate-100"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header: Badge & Close Button */}
+            <div className="flex items-center justify-between">
+              <span className="px-3 py-1 rounded-full text-xs font-bold bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20 uppercase tracking-wider">
+                {modalData.category}
+              </span>
+              <button
+                type="button"
+                onClick={() => setActiveModalKey(null)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                aria-label="Fermer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Title & Icon */}
+            <div className="flex items-start gap-3.5">
+              <div className="p-2.5 rounded-xl bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20 shrink-0">
+                <ModalIcon className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-white">
+                  {modalData.title}
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  CyberGuard Platform Overview
+                </p>
+              </div>
+            </div>
+
+            {/* Description */}
+            <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+              {modalData.desc}
+            </p>
+
+            {/* Highlights List */}
+            {modalData.highlights && modalData.highlights.length > 0 && (
+              <div className="p-4 rounded-xl bg-slate-50 dark:bg-[#0f1520] border border-slate-100 dark:border-slate-800 space-y-2.5">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  {lang === 'fr' ? 'Points clés & spécifications' : 'Key Specifications'}
+                </h4>
+                <ul className="space-y-2 text-xs text-slate-700 dark:text-slate-300">
+                  {modalData.highlights.map((item, idx) => (
+                    <li key={idx} className="flex items-start gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-sky-500 shrink-0 mt-0.5" />
+                      <span>{item}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* Actions */}
+            <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => setActiveModalKey(null)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+              >
+                {lang === 'fr' ? 'Fermer' : 'Close'}
+              </button>
+              <Link
+                to="/login"
+                onClick={() => setActiveModalKey(null)}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-sky-500 hover:bg-sky-600 text-white transition shadow-sm"
+              >
+                <Lock className="w-3.5 h-3.5" />
+                {lang === 'fr' ? 'Se connecter' : 'Sign In'}
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

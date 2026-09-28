@@ -201,11 +201,44 @@ def analyze_url(req: URLAnalysisRequest, db: Session = Depends(get_db), current_
             integrity_hash=integrity_hash
         )
         db.add(db_record)
+
+        # Increment user's scan count in database
+        if current_user and hasattr(current_user, "scan_count"):
+            current_user.scan_count = (current_user.scan_count or 0) + 1
+
         db.commit()
         db.refresh(db_record)
 
         response_payload["id"] = db_record.id
         response_payload["analysis_id"] = db_record.id
+
+        # MongoDB Sync
+        try:
+            from app.db.mongodb import mongo_collections
+            from datetime import datetime, timezone
+            mongo_rec = {
+                "id": str(db_record.id),
+                "user_id": str(authenticated_user_id) if authenticated_user_id else None,
+                "analysis_code": analysis_code,
+                "analysis_type": "URL",
+                "target_content": url,
+                "verdict": correlation["verdict"],
+                "risk_score": correlation["final_risk_score"],
+                "risk_level": correlation["risk_level"],
+                "ml_confidence": round(phishing_prob * 100.0, 2),
+                "details_json": response_payload,
+                "integrity_hash": integrity_hash,
+                "created_at": db_record.created_at or datetime.now(timezone.utc)
+            }
+            mongo_collections.analyses.insert_one(mongo_rec)
+            if authenticated_user_id:
+                mongo_collections.users.update_one(
+                    {"id": str(authenticated_user_id)},
+                    {"$inc": {"scan_count": 1}}
+                )
+        except Exception as mongo_err:
+            print(f"[MongoDB Sync Notice] {mongo_err}")
+
         return response_payload
 
     except ServicePipelineException as e:
@@ -293,11 +326,44 @@ def analyze_text(req: TextAnalysisRequest, db: Session = Depends(get_db), curren
             integrity_hash=integrity_hash
         )
         db.add(db_record)
+
+        # Increment user's scan count in database
+        if current_user and hasattr(current_user, "scan_count"):
+            current_user.scan_count = (current_user.scan_count or 0) + 1
+
         db.commit()
         db.refresh(db_record)
 
         response_payload["id"] = db_record.id
         response_payload["analysis_id"] = db_record.id
+
+        # MongoDB Sync
+        try:
+            from app.db.mongodb import mongo_collections
+            from datetime import datetime, timezone
+            mongo_rec = {
+                "id": str(db_record.id),
+                "user_id": str(authenticated_user_id) if authenticated_user_id else None,
+                "analysis_code": analysis_code,
+                "analysis_type": req.analysis_type or "MESSAGE",
+                "target_content": text,
+                "verdict": correlation["verdict"],
+                "risk_score": correlation["final_risk_score"],
+                "risk_level": correlation["risk_level"],
+                "ml_confidence": round(phishing_prob * 100.0, 2),
+                "details_json": response_payload,
+                "integrity_hash": integrity_hash,
+                "created_at": db_record.created_at or datetime.now(timezone.utc)
+            }
+            mongo_collections.analyses.insert_one(mongo_rec)
+            if authenticated_user_id:
+                mongo_collections.users.update_one(
+                    {"id": str(authenticated_user_id)},
+                    {"$inc": {"scan_count": 1}}
+                )
+        except Exception as mongo_err:
+            print(f"[MongoDB Sync Notice] {mongo_err}")
+
         return response_payload
 
     except ServicePipelineException as e:
@@ -316,25 +382,26 @@ def analyze_text(req: TextAnalysisRequest, db: Session = Depends(get_db), curren
 @router.get("/stats")
 def get_analysis_stats(db: Session = Depends(get_db), current_user = Depends(get_optional_user)):
     from sqlalchemy import or_
-    if not current_user or not hasattr(current_user, "id"):
-        return {
-            "total_analyses": 0,
-            "phishing_threats": 0,
-            "clean_analyses": 0,
-            "ml_accuracy": 98.4
-        }
-    
-    query = db.query(AnalysisRecord).filter(
-        AnalysisRecord.user_id == current_user.id,
-        AnalysisRecord.is_deleted_by_user == False
-    )
+    user_id = getattr(current_user, "id", None)
+    if user_id:
+        query = db.query(AnalysisRecord).filter(
+            or_(
+                AnalysisRecord.user_id == user_id,
+                AnalysisRecord.user_id == None
+            ),
+            AnalysisRecord.is_deleted_by_user == False
+        )
+    else:
+        query = db.query(AnalysisRecord).filter(AnalysisRecord.is_deleted_by_user == False)
+
     total = query.count()
     threats = query.filter(
         or_(
             AnalysisRecord.risk_score >= 50.0,
             AnalysisRecord.verdict.ilike("%PHISHING%"),
             AnalysisRecord.verdict.ilike("%MALICIOUS%"),
-            AnalysisRecord.verdict.ilike("%SUSPICIOUS%")
+            AnalysisRecord.verdict.ilike("%SUSPICIOUS%"),
+            AnalysisRecord.verdict.ilike("%MENACES%")
         )
     ).count()
     clean = max(0, total - threats)
@@ -348,13 +415,20 @@ def get_analysis_stats(db: Session = Depends(get_db), current_user = Depends(get
 
 @router.get("/history")
 def get_analysis_history(db: Session = Depends(get_db), current_user = Depends(get_optional_user)):
-    if not current_user or not hasattr(current_user, "id"):
-        return {"history": [], "total": 0}
-    
-    records = db.query(AnalysisRecord).filter(
-        AnalysisRecord.user_id == current_user.id,
-        AnalysisRecord.is_deleted_by_user == False
-    ).order_by(AnalysisRecord.created_at.desc()).all()
+    from sqlalchemy import or_
+    user_id = getattr(current_user, "id", None)
+    if user_id:
+        records = db.query(AnalysisRecord).filter(
+            or_(
+                AnalysisRecord.user_id == user_id,
+                AnalysisRecord.user_id == None
+            ),
+            AnalysisRecord.is_deleted_by_user == False
+        ).order_by(AnalysisRecord.created_at.desc()).all()
+    else:
+        records = db.query(AnalysisRecord).filter(
+            AnalysisRecord.is_deleted_by_user == False
+        ).order_by(AnalysisRecord.created_at.desc()).all()
     history = []
     
     for r in records:

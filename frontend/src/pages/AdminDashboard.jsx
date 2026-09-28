@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   Users, ShieldCheck, UserCheck, FileText,
   ArrowRight, Lock, Unlock, AlertTriangle,
-  CheckCircle2, Clock, ShieldAlert, Activity, BarChart3, PieChart as PieIcon, Zap, Shield, Search
+  CheckCircle2, ShieldAlert, Activity, BarChart3, PieChart as PieIcon, Shield
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -195,43 +195,6 @@ export default function AdminDashboard() {
             </button>
           );
         })}
-      </div>
-
-      {/* Quick URL Scanner & Search Card for Admin */}
-      <div className="bg-gradient-to-r from-sky-500/10 via-cyan-500/5 to-blue-500/10 border border-sky-200 dark:border-sky-800/60 rounded-3xl p-5 shadow-sm">
-        <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
-          <div className="flex items-center gap-3.5">
-            <div className="p-3 bg-gradient-to-tr from-sky-500 to-blue-600 text-white rounded-2xl shadow-md">
-              <Search className="w-5 h-5" />
-            </div>
-            <div>
-              <h3 className="text-sm font-black text-slate-900 dark:text-white">
-                {lang === 'fr' ? "Recherche & Analyse d'URL Rapide" : "Quick URL Search & Analysis"}
-              </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                {lang === 'fr' 
-                  ? "Recherchez et testez des liens suspects, consultez votre historique personnel et transférez directement les dossiers aux enquêteurs SOC." 
-                  : "Search and test suspicious links, review your scan history, and forward files directly to SOC investigators."}
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2.5">
-            <button
-              onClick={() => navigate('/history')}
-              className="px-4 py-2.5 bg-white dark:bg-[#0f172a] hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold text-xs rounded-xl border border-slate-200 dark:border-slate-800 transition shadow-sm flex items-center gap-2 cursor-pointer"
-            >
-              <Clock className="w-4 h-4 text-slate-400" />
-              <span>{lang === 'fr' ? 'Mon Historique' : 'My Scan History'}</span>
-            </button>
-            <button
-              onClick={() => navigate('/scanner')}
-              className="px-5 py-2.5 bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 text-white font-extrabold text-xs rounded-xl shadow-md shadow-sky-500/20 transition flex items-center gap-2 cursor-pointer"
-            >
-              <Zap className="w-4 h-4" />
-              <span>{lang === 'fr' ? 'Ouvrir le Scanner' : 'Open Scanner'}</span>
-            </button>
-          </div>
-        </div>
       </div>
 
       {/* === CLEAN & CLEAR THREAT ANALYTICS DASHBOARD === */}

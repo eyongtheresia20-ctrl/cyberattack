@@ -9,7 +9,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.db.database import engine, Base
 from app.db.mongodb import init_mongo_indexes
-from app.api.v1 import analyze, monitor, incidents, verify, assistant, auth, users, ml_metrics
+from app.api.v1 import analyze, monitor, incidents, verify, assistant, auth, users, ml_metrics, enterprise_security
+from app.services.firewall_service import is_ip_blocked, get_blocked_ip_info
+from fastapi import Request
+from fastapi.responses import JSONResponse
 
 # Initialize MongoDB connection & indexes
 try:
@@ -56,6 +59,31 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Active Inline WAF Firewall Middleware
+@app.middleware("http")
+async def waf_active_firewall_middleware(request: Request, call_next):
+    try:
+        client_ip = request.headers.get("x-forwarded-for", "").split(",")[0].strip() or (request.client.host if request.client else "127.0.0.1")
+        if not request.url.path.startswith("/api/v1/enterprise/firewall") and not request.url.path.startswith("/docs"):
+            if is_ip_blocked(client_ip):
+                ban_info = get_blocked_ip_info(client_ip) or {}
+                return JSONResponse(
+                    status_code=403,
+                    content={
+                        "error": "ACCES_REFUSE_PAR_PARE_FEU_CYBERGUARD",
+                        "status": "IP_BANNIE_PAR_WAF",
+                        "client_ip": client_ip,
+                        "reason": ban_info.get("reason", "Activité hostile interceptée par le WAF"),
+                        "severity": ban_info.get("severity", "CRITICAL"),
+                        "blocked_at": ban_info.get("blocked_at", ""),
+                        "message": "Votre adresse IP a été bloquée par le pare-feu applicatif CyberGuard en raison de tentatives d'intrusion répétées."
+                    }
+                )
+    except Exception:
+        pass
+    response = await call_next(request)
+    return response
+
 # Include Routers
 app.include_router(auth.router, prefix=settings.API_V1_STR)
 app.include_router(users.router, prefix=settings.API_V1_STR)
@@ -65,6 +93,7 @@ app.include_router(incidents.router, prefix=settings.API_V1_STR)
 app.include_router(verify.router, prefix=settings.API_V1_STR)
 app.include_router(assistant.router, prefix=settings.API_V1_STR)
 app.include_router(ml_metrics.router, prefix=settings.API_V1_STR)
+app.include_router(enterprise_security.router, prefix=settings.API_V1_STR)
 
 @app.get("/")
 def root():

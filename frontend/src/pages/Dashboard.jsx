@@ -8,7 +8,7 @@ import { RefreshCw, Shield } from 'lucide-react';
 export default function Dashboard() {
   const { user, loading } = useAuth();
 
-  if (loading) {
+  if (loading && !user) {
     return (
       <div className="min-h-[50vh] flex flex-col items-center justify-center space-y-4 animate-fade-in">
         <div className="p-4 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-500">

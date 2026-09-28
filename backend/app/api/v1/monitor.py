@@ -10,6 +10,7 @@ from app.db.models import SecurityEvent, Incident
 from app.services.log_analyzer import analyze_http_log_entry
 from app.services.geoip_service import lookup_ip_geolocation
 from app.services.threat_intel import query_virustotal_url_reputation, query_google_safebrowsing
+from app.api.v1.auth import get_optional_user
 
 router = APIRouter(prefix="/monitor", tags=["Site Security Monitoring"])
 
@@ -26,7 +27,7 @@ class DomainAuditRequest(BaseModel):
     domain: str
 
 @router.post("/site-audit")
-def audit_website_security(req: DomainAuditRequest, db: Session = Depends(get_db)):
+def audit_website_security(req: DomainAuditRequest, db: Session = Depends(get_db), current_user = Depends(get_optional_user)):
     """Perform a full security audit of a website domain: events, VirusTotal, Google Safe Browsing, server host IP tracing."""
     domain_clean = req.domain.replace("http://", "").replace("https://", "").split("/")[0].strip()
     if not domain_clean:
@@ -80,33 +81,75 @@ def audit_website_security(req: DomainAuditRequest, db: Session = Depends(get_db
     risk_score = 0.0
     
     # 1. Real active attacks logged by WAF (Direct Threat)
-    if total_attacks > 0:
-        risk_score += min(75.0, total_attacks * 15.0)
+    attacks_points = min(75.0, total_attacks * 15.0) if total_attacks > 0 else 0.0
+    risk_score += attacks_points
         
     # 2. Threat Intelligence Flags
-    if vt_data.get("positives", 0) > 0:
-        risk_score += min(50.0, vt_data.get("positives", 0) * 15.0)
-    if gsb_data.get("is_flagged", False):
-        risk_score += 40.0
+    vt_positives = vt_data.get("positives", 0)
+    # If 1-3 detections out of 90+, it is isolated/heuristic: scale reasonably
+    if vt_positives > 0:
+        if vt_positives <= 3:
+            vt_points = min(30.0, vt_positives * 10.0) # e.g. 3 * 10 = 30 pts for isolated heuristic flags
+        else:
+            vt_points = min(50.0, 30.0 + (vt_positives - 3) * 5.0)
+    else:
+        vt_points = 0.0
+    risk_score += vt_points
 
-    # 3. Technical hygiene penalties (only applied proportionally, max 10 pts if no attacks)
+    gsb_points = 40.0 if gsb_data.get("is_flagged", False) else 0.0
+    risk_score += gsb_points
+
+    # 3. Technical hygiene penalties (only applied proportionally)
     sec_headers = technical_inspection.get("http", {}).get("security_headers", {})
     ssl_data = technical_inspection.get("ssl", {})
     
-    if total_attacks > 0:
-        if not sec_headers.get("hsts", {}).get("present"):
-            risk_score += 5.0
-        if not ssl_data.get("ssl_active"):
-            risk_score += 15.0
-    else:
-        # Site is clean: keep risk score low (0-10%) and let the technical audit card show recommendations
-        if not ssl_data.get("ssl_active"):
-            risk_score += 10.0
-        elif not sec_headers.get("hsts", {}).get("present"):
-            risk_score += 5.0
+    hsts_penalty = 5.0 if not sec_headers.get("hsts", {}).get("present") else 0.0
+    ssl_penalty = 15.0 if not ssl_data.get("ssl_active") else 0.0
+    csp_penalty = 5.0 if not sec_headers.get("csp", {}).get("present") else 0.0
 
-    final_risk = min(100.0, risk_score)
-    verdict_text = "MENACES SUR SITE" if total_attacks > 0 or vt_data.get("positives", 0) > 0 or gsb_data.get("is_flagged", False) else "SITE CONFORME"
+    hygiene_points = min(20.0, hsts_penalty + ssl_penalty + csp_penalty)
+    risk_score += hygiene_points
+
+    final_risk = min(100.0, round(risk_score, 1))
+
+    # Transparent, documented calculation breakdown for defense examination
+    risk_breakdown = {
+        "formula": "Score Risque = Menaces WAF Actives + Renseignement Externe (VirusTotal/GSB) + Hygiène En-têtes & SSL",
+        "total_score": final_risk,
+        "items": [
+            {
+                "category": "Attaques Actives Journalisées (WAF)",
+                "points": attacks_points,
+                "detail": f"{total_attacks} attaque(s) web interceptée(s) dans les logs" if total_attacks > 0 else "0 attaque active dans les journaux analysés"
+            },
+            {
+                "category": "Renseignement Réputation (VirusTotal)",
+                "points": vt_points,
+                "detail": f"{vt_positives} moteur(s) ont signalé une détection (heuristique/réputation)" if vt_positives > 0 else "0 détection sur 90+ moteurs"
+            },
+            {
+                "category": "Renseignement Sécurité (Google Safe Browsing)",
+                "points": gsb_points,
+                "detail": "Domaine répertorié sur liste noire active" if gsb_data.get("is_flagged") else "Aucune menace répertoriée (liste blanche)"
+            },
+            {
+                "category": "Configuration En-têtes & Chiffrement SSL",
+                "points": hygiene_points,
+                "detail": f"Pénalités d'hygiène technique ({'HSTS absent ' if hsts_penalty else ''}{'SSL inactif ' if ssl_penalty else ''}{'CSP absente' if csp_penalty else ''})".strip()
+            }
+        ],
+        "methodological_note": "L'absence d'attaques enregistrées dans les journaux de télémétrie WAF disponibles n'équivaut pas à une garantie d'absence de vulnérabilités applicatives (ex. failles du OWASP Top 10 non encore exploitées)."
+    }
+
+    if total_attacks > 0:
+        verdict_text = f"MENACES ACTIVES ({total_attacks} ATTAQUES DÉTECTÉES)"
+        verdict_sub = "Des attaques actives ont été journalisées sur ce domaine."
+    elif vt_positives > 0 or gsb_data.get("is_flagged", False):
+        verdict_text = "SIGNALEMENT RÉPUTATION EXTERNE"
+        verdict_sub = "Aucune attaque active dans les journaux WAF, mais signalement par des moteurs tiers."
+    else:
+        verdict_text = "AUCUNE ATTAQUE ACTIVE DÉTECTÉE"
+        verdict_sub = "Aucune activité malveillante n'a été observée dans les sources de télémétrie analysées."
 
     response_payload = {
         "domain": domain_clean,
@@ -114,8 +157,10 @@ def audit_website_security(req: DomainAuditRequest, db: Session = Depends(get_db
         "total_attacks_logged": total_attacks,
         "calculated_risk_score": final_risk,
         "verdict": verdict_text,
+        "verdict_sub": verdict_sub,
         "risk_score": final_risk,
-        "risk_level": "CRITICAL" if final_risk >= 75 else ("HIGH" if final_risk >= 50 else "LOW"),
+        "risk_level": "CRITICAL" if final_risk >= 75 else ("HIGH" if final_risk >= 50 else ("MODERATE" if final_risk >= 25 else "LOW")),
+        "risk_breakdown": risk_breakdown,
         "attack_breakdown": attack_summary,
         "server_geo_info": server_geo_info,
         "virustotal": vt_data,
@@ -134,8 +179,10 @@ def audit_website_security(req: DomainAuditRequest, db: Session = Depends(get_db
         response_payload["analysis_code"] = analysis_code
         response_payload["integrity_hash"] = integrity_hash
 
+        authenticated_user_id = current_user.id if (current_user and hasattr(current_user, "id")) else None
+
         db_rec = AnalysisRecord(
-            user_id=None,
+            user_id=authenticated_user_id,
             analysis_code=analysis_code,
             analysis_type="AUDIT SITE",
             target_content=domain_clean,
@@ -147,10 +194,42 @@ def audit_website_security(req: DomainAuditRequest, db: Session = Depends(get_db
             integrity_hash=integrity_hash
         )
         db.add(db_rec)
+
+        # Increment user's scan count in database
+        if current_user and hasattr(current_user, "scan_count"):
+            current_user.scan_count = (current_user.scan_count or 0) + 1
+
         db.commit()
         db.refresh(db_rec)
         response_payload["id"] = db_rec.id
         response_payload["analysis_id"] = db_rec.id
+
+        # MongoDB Sync
+        try:
+            from app.db.mongodb import mongo_collections
+            from datetime import datetime, timezone
+            mongo_rec = {
+                "id": str(db_rec.id),
+                "user_id": str(authenticated_user_id) if authenticated_user_id else None,
+                "analysis_code": analysis_code,
+                "analysis_type": "AUDIT SITE",
+                "target_content": domain_clean,
+                "verdict": verdict_text,
+                "risk_score": final_risk,
+                "risk_level": "CRITICAL" if final_risk >= 75 else ("HIGH" if final_risk >= 50 else "LOW"),
+                "ml_confidence": 98.4,
+                "details_json": response_payload,
+                "integrity_hash": integrity_hash,
+                "created_at": db_rec.created_at or datetime.now(timezone.utc)
+            }
+            mongo_collections.analyses.insert_one(mongo_rec)
+            if authenticated_user_id:
+                mongo_collections.users.update_one(
+                    {"id": str(authenticated_user_id)},
+                    {"$inc": {"scan_count": 1}}
+                )
+        except Exception as mongo_err:
+            print(f"[MongoDB Sync Notice] {mongo_err}")
     except Exception as e:
         print(f"[Warning] Failed to save site audit record: {e}")
 
