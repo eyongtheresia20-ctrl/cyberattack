@@ -101,6 +101,7 @@ def inspect_ssl_certificate(hostname: str, port: int = 443) -> Dict[str, Any]:
     ssl_data = {
         "ssl_active": False,
         "ssl_status": "Non Détecté (HTTP ou Hors Ligne)",
+        "ssl_status_en": "Not Detected (HTTP or Offline)",
         "issuer": "Inconnu",
         "issuer_org": "Inconnu",
         "subject_cn": "Inconnu",
@@ -128,6 +129,7 @@ def inspect_ssl_certificate(hostname: str, port: int = 443) -> Dict[str, Any]:
                     ssl_data["ssl_active"] = True
                     ssl_data["is_trusted"] = True
                     ssl_data["ssl_status"] = "VALIDE & CHIFFRÉ"
+                    ssl_data["ssl_status_en"] = "VALID & ENCRYPTED"
 
                     if cert:
                         issuer_dict = dict(x[0] for x in cert.get('issuer', []))
@@ -152,6 +154,7 @@ def inspect_ssl_certificate(hostname: str, port: int = 443) -> Dict[str, Any]:
                                 if days_left < 0:
                                     ssl_data["is_expired"] = True
                                     ssl_data["ssl_status"] = "EXPIRÉ ❌"
+                                    ssl_data["ssl_status_en"] = "EXPIRED ❌"
                             except Exception:
                                 pass
                         if not_before:
@@ -161,10 +164,12 @@ def inspect_ssl_certificate(hostname: str, port: int = 443) -> Dict[str, Any]:
             ssl_data["ssl_active"] = True
             ssl_data["is_trusted"] = False
             ssl_data["ssl_status"] = "CERTIFICAT NON APPROUVÉ / AUTO-SIGNÉ ⚠️"
+            ssl_data["ssl_status_en"] = "UNTRUSTED / SELF-SIGNED CERTIFICATE ⚠️"
             ssl_data["error"] = str(cert_err)
     except Exception as e:
         ssl_data["error"] = str(e)
         ssl_data["ssl_status"] = "Non Sécurisé / Échec TLS"
+        ssl_data["ssl_status_en"] = "Insecure / TLS Failure"
 
     return ssl_data
 
@@ -302,6 +307,7 @@ def inspect_http_connection(target_url: str) -> Dict[str, Any]:
     except Exception as e:
         http_data["is_reachable"] = False
         http_data["status_text"] = f"Échec de Connexion ({type(e).__name__})"
+        http_data["status_text_en"] = f"Connection Failed ({type(e).__name__})"
 
     return http_data
 
@@ -318,7 +324,8 @@ def detect_brand_impersonation(hostname: str) -> Dict[str, Any]:
                     "brand_name": brand.upper(),
                     "official_domains": legit_domains,
                     "severity": "CRITIQUE",
-                    "explanation": f"Le domaine cible contient le mot-clé protégé '{brand}' mais n'appartient PAS aux domaines officiels vérifiés ({', '.join(legit_domains)}). C'est un indicateur majeur d'usurpation de marque / phishing."
+                    "explanation": f"Le domaine cible contient le mot-clé protégé '{brand}' mais n'appartient PAS aux domaines officiels vérifiés ({', '.join(legit_domains)}). C'est un indicateur majeur d'usurpation de marque / phishing.",
+                    "explanation_en": f"The target domain contains the protected brand keyword '{brand}' but does NOT belong to verified official domains ({', '.join(legit_domains)}). This is a major brand impersonation / phishing indicator."
                 }
 
     return {
@@ -326,7 +333,8 @@ def detect_brand_impersonation(hostname: str) -> Dict[str, Any]:
         "brand_name": None,
         "official_domains": [],
         "severity": "AUCUNE",
-        "explanation": "Aucune usurpation de marque notoire détectée dans le nom de domaine."
+        "explanation": "Aucune usurpation de marque notoire détectée dans le nom de domaine.",
+        "explanation_en": "No major brand impersonation detected in domain name."
     }
 
 def inspect_endpoint_deeply(url_or_domain: str) -> Dict[str, Any]:

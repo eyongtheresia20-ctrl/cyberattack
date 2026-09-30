@@ -189,45 +189,68 @@ def lookup_ip_geolocation(ip_address: str, domain_context: str = "",
            for k in ["CLOUDFLARE", "AKAMAI", "FASTLY", "CLOUDFRONT", "INCAPSULA", "EDGECAST"]):
         is_cdn = True
         network_type       = "Réseau CDN Anycast (Reverse-Proxy)"
+        network_type_en    = "Anycast CDN Network (Reverse-Proxy)"
         proxy_label        = "Nœud CDN Edge (Reverse Proxy Anycast)"
+        proxy_label_en     = "CDN Edge Node (Anycast Reverse Proxy)"
         proxy_status_display = "CDN Anycast (Reverse Proxy)"
+        proxy_status_display_en = "CDN Anycast (Reverse Proxy)"
         disclaimer = (
             "📍 Remarque SOC : L'adresse IP appartient au réseau CDN Anycast. "
             "La géolocalisation indique le nœud Edge POP, et non le serveur d'origine réel."
         )
+        disclaimer_en = (
+            "📍 SOC Note: The IP address belongs to an Anycast CDN network. "
+            "Geolocation reflects the Edge POP node, not the origin server."
+        )
     elif is_vpn_proxy or ml_asn_risk >= 0.7:
         network_type = "Nœud Anonymisé (VPN / Proxy / Tor)"
+        network_type_en = "Anonymized Node (VPN / Proxy / Tor)"
         proxy_label  = "VPN / Tor / Proxy Détecté"
+        proxy_label_en = "VPN / Tor / Proxy Detected"
         proxy_status_display = "OUI — Anonymisé (VPN/Proxy)"
+        proxy_status_display_en = "YES — Anonymized (VPN/Proxy)"
         disclaimer = "⚠️ Attention : IP provenant d'un proxy, nœud VPN/Tor ou ASN bulletproof."
+        disclaimer_en = "⚠️ Warning: IP originating from a proxy, VPN/Tor node, or bulletproof ASN."
     else:
         network_type = "Serveur d'Hébergement Web Direct"
+        network_type_en = "Direct Web Hosting Server"
         proxy_label  = "Connexion Directe (Pas de Proxy VPN)"
+        proxy_label_en = "Direct Connection (No VPN Proxy)"
         proxy_status_display = "NON (Connexion Directe)"
+        proxy_status_display_en = "NO (Direct Connection)"
         disclaimer = "📍 Localisation estimée basée sur le registre ASN."
+        disclaimer_en = "📍 Estimated location based on ASN registry."
 
     # Country risk tier
     country_risk_tier = "HIGH" if country in HIGH_RISK_COUNTRIES else "LOW"
 
-    display_country = f"{country} (Apparent / Anycast)" if is_cdn else f"{country} (Estimé)"
-    display_city    = f"{city} (Nœud Edge POP)" if is_cdn else city
+    display_country    = f"{country} (Apparent / Anycast)" if is_cdn else f"{country} (Estimé)"
+    display_country_en = f"{country} (Apparent / Anycast)" if is_cdn else f"{country} (Estimated)"
+    display_city       = f"{city} (Nœud Edge POP)" if is_cdn else city
+    display_city_en    = f"{city} (Edge POP Node)" if is_cdn else city
 
     return {
         "ip":                    ip_address,
         "country":               display_country,
+        "country_en":            display_country_en,
         "city":                  display_city,
+        "city_en":               display_city_en,
         "raw_country":           country,
         "raw_city":              city,
         "asn":                   asn,
         "org":                   org,
         "network_type":          network_type,
+        "network_type_en":       network_type_en,
         "proxy_label":           proxy_label,
+        "proxy_label_en":        proxy_label_en,
         "proxy_status_display":  proxy_status_display,
+        "proxy_status_display_en": proxy_status_display_en,
         "is_cdn":                is_cdn,
         "is_vpn_proxy":          is_vpn_proxy,
         "country_risk_tier":     country_risk_tier,
         "asn_risk_ml":           round(ml_asn_risk, 4),
         "disclaimer":            disclaimer,
+        "disclaimer_en":         disclaimer_en,
         "accuracy_guarantee":    "Vérification Registre ASN & POP Anycast — GeoIP Live + ML Enrichment",
         "source":                "ip-api.com Live + ML ASN Enrichment",
         "api_status":            "live"

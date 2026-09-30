@@ -2,8 +2,10 @@ import React, { useState } from 'react';
 import { Globe, Search, ShieldCheck, AlertOctagon, CheckCircle2, Copy, ExternalLink, Cpu } from 'lucide-react';
 import RiskBadge from '../components/RiskBadge';
 import { api } from '../services/api';
+import { useLanguage } from '../context/LanguageContext';
 
 export default function UrlAnalysis() {
+  const { lang } = useLanguage();
   const [urlInput, setUrlInput] = useState('http://192.168.1.100/paypal.com/login-verify-account.php?id=99283');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
@@ -196,16 +198,18 @@ export default function UrlAnalysis() {
                 <div className="p-4 bg-slate-900/80 rounded-xl border border-slate-800 space-y-2 text-xs">
                   <div className="flex items-center justify-between">
                     <span className="font-bold text-white flex items-center gap-1.5">
-                      📍 Localisation Réseau Apparente (GeoIP & ASN)
+                      📍 {lang === 'fr' ? 'Localisation Réseau Apparente (GeoIP & ASN)' : 'Apparent Network Location (GeoIP & ASN)'}
                     </span>
                     <span className="font-mono text-cyan-400 font-bold">{result.geoip_info.ip}</span>
                   </div>
                   <div className="grid grid-cols-2 gap-2 text-slate-300 font-mono">
-                    <div>Pays / Ville : <strong className="text-white">{result.geoip_info.country}, {result.geoip_info.city}</strong></div>
-                    <div>Réseau ASN : <strong className="text-white">{result.geoip_info.asn}</strong></div>
+                    <div>{lang === 'fr' ? 'Pays / Ville :' : 'Country / City:'} <strong className="text-white">{result.geoip_info.country_en && lang === 'en' ? result.geoip_info.country_en : result.geoip_info.country}, {result.geoip_info.city_en && lang === 'en' ? result.geoip_info.city_en : result.geoip_info.city}</strong></div>
+                    <div>{lang === 'fr' ? 'Réseau ASN :' : 'ASN Network:'} <strong className="text-white">{result.geoip_info.asn}</strong></div>
                   </div>
                   <p className="text-[10px] text-amber-400/90 italic bg-amber-950/30 p-2 rounded border border-amber-800/40 mt-1">
-                    ⚠️ {result.geoip_info.disclaimer || "Le système fournit la localisation réseau apparente. Un VPN, Proxy ou réseau Tor peut masquer l'auteur physique réel."}
+                    {lang === 'en' 
+                      ? (result.geoip_info.disclaimer_en || "⚠️ Warning: The system provides apparent network location. A VPN, Proxy, or Tor network can obscure the real physical perpetrator.")
+                      : (result.geoip_info.disclaimer || "⚠️ Le système fournit la localisation réseau apparente. Un VPN, Proxy ou réseau Tor peut masquer l'auteur physique réel.")}
                   </p>
                 </div>
               )}

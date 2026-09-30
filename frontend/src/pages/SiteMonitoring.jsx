@@ -2,8 +2,10 @@ import React, { useEffect, useState } from 'react';
 import { ShieldAlert, Terminal, RefreshCw, AlertTriangle, Globe, MapPin, Database, Server, CheckCircle2, XCircle } from 'lucide-react';
 import RiskBadge from '../components/RiskBadge';
 import { api } from '../services/api';
+import { useLanguage } from '../context/LanguageContext';
 
 export default function SiteMonitoring() {
+  const { lang } = useLanguage();
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(false);
   const [auditLoading, setAuditLoading] = useState(false);
@@ -228,8 +230,10 @@ export default function SiteMonitoring() {
             <div className="p-2.5 rounded bg-blue-950/30 border border-blue-500/30 text-[10px] text-slate-300 flex items-start gap-2 font-sans">
               <AlertTriangle className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
               <div>
-                <strong className="text-blue-300 block mb-0.5">Apparent Network Location Disclaimer (Jury Reference)</strong>
-                {auditResult.disclaimer}
+                <strong className="text-blue-300 block mb-0.5">{lang === 'fr' ? 'Avis de Localisation Réseau Apparente (Référence Jury)' : 'Apparent Network Location Disclaimer (Jury Reference)'}</strong>
+                {lang === 'en' 
+                  ? (auditResult.disclaimer_en || auditResult.disclaimer?.replace(/⚠️\s*Attention\s*:\s*IP provenant d'un proxy, nœud VPN\/Tor ou ASN bulletproof\./gi, '⚠️ Warning: IP originating from a proxy, VPN/Tor node, or bulletproof ASN.').replace(/📍\s*Localisation estimée basée sur le registre ASN\./gi, '📍 Estimated location based on ASN registry.'))
+                  : auditResult.disclaimer}
               </div>
             </div>
           </div>

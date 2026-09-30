@@ -487,6 +487,164 @@ export default function StandardDashboard({ isHistoryView = false }) {
   };
 
 
+  // Comprehensive translation helpers for live probe, network telemetry, and threat analysis
+  const translateHeaderStatus = (status, present) => {
+    if (!status) return present ? (lang === 'fr' ? 'Actif' : 'Active') : (lang === 'fr' ? 'Manquant' : 'Missing');
+    if (lang === 'en') {
+      return status
+        .replace('Actif & Conforme (Protection SSL-Strip)', 'Active & Compliant (SSL-Strip Protection)')
+        .replace('Configuré (Atténuation XSS / Injection)', 'Configured (XSS / Injection Mitigation)')
+        .replace('Anti-Clickjacking Actif', 'Active (Anti-Clickjacking)')
+        .replace('Protection MIME Sniffing Actif', 'Active (MIME Sniffing Protection)')
+        .replace("Contrôle Fuite d'URL", 'URL Leakage Control')
+        .replace('Restreint (APIs Navigateur Sécurisées)', 'Restricted (Secured Browser APIs)')
+        .replace('Manquant (Risque Downgrade HTTP)', 'Missing (HTTP Downgrade Risk)')
+        .replace('Manquant (Risque Injections XSS)', 'Missing (XSS Injection Risk)')
+        .replace('Manquant (Risque Clickjacking)', 'Missing (Clickjacking Risk)')
+        .replace('Manquant (Risque MIME Sniffing)', 'Missing (MIME Sniffing Risk)')
+        .replace("Manquant (Fuite Référent)", "Missing (Referrer Leak)")
+        .replace('Non Restreint', 'Unrestricted')
+        .replace('Non Configuré', 'Not Configured')
+        .replace('Actif (Anti-Clickjacking)', 'Active (Anti-Clickjacking)')
+        .replace('Actif (Protection MIME)', 'Active (MIME Protection)')
+        .replace('Actif (Politique Référent)', 'Active (Referrer Policy)')
+        .replace('Actif (HSTS Enforcé)', 'Active (HSTS Enforced)')
+        .replace('Actif (CSP Configuré)', 'Active (CSP Configured)')
+        .replace('Actif (Permissions Restreintes)', 'Active (Permissions Restricted)')
+        .replace('Manquant', 'Missing')
+        .replace('Actif', 'Active');
+    }
+    return status;
+  };
+
+  const translateSslStatus = (status) => {
+    if (!status) return lang === 'fr' ? 'Inconnu' : 'Unknown';
+    if (lang === 'en') {
+      return status
+        .replace(/Non Sécurisé \/ Échec TLS/gi, 'Insecure / TLS Failure')
+        .replace(/Non Détecté \(HTTP ou Hors Ligne\)/gi, 'Not Detected (HTTP or Offline)')
+        .replace(/VALIDE & CHIFFRÉ/gi, 'VALID & ENCRYPTED')
+        .replace(/Valide & Chiffré/gi, 'Valid & Encrypted')
+        .replace(/EXPIRÉ ❌/gi, 'EXPIRED ❌')
+        .replace(/EXPIRÉ/gi, 'EXPIRED')
+        .replace(/Certificat Expiré/gi, 'Expired Certificate')
+        .replace(/CERTIFICAT NON APPROUVÉ \/ AUTO-SIGNÉ ⚠️/gi, 'UNTRUSTED / SELF-SIGNED CERTIFICATE ⚠️')
+        .replace(/Auto-signé \/ Non Approuvé/gi, 'Self-signed / Untrusted')
+        .replace(/Non Chiffré \(HTTP\)/gi, 'Unencrypted (HTTP)')
+        .replace(/Invalide/gi, 'Invalid')
+        .replace(/Inconnu/gi, 'Unknown');
+    }
+    return status;
+  };
+
+  const translateHttpStatus = (statusText) => {
+    if (!statusText) return lang === 'fr' ? 'Injoignable' : 'Unreachable';
+    if (lang === 'en') {
+      return statusText
+        .replace(/Échec de Connexion/gi, 'Connection Failed')
+        .replace(/Injoignable/gi, 'Unreachable')
+        .replace(/Connexion Réussie/gi, 'Connection Successful')
+        .replace(/Délai d'attente dépassé/gi, 'Connection Timed Out');
+    }
+    return statusText;
+  };
+
+  const translateServerBanner = (banner) => {
+    if (!banner) return lang === 'fr' ? 'Non Divulgué' : 'Undisclosed';
+    if (lang === 'en') {
+      return banner
+        .replace(/Non Divulgué \(Masqué par WAF ou Hébergeur\)/gi, 'Undisclosed (Masked by WAF or Host)')
+        .replace(/Non Divulgué/gi, 'Undisclosed')
+        .replace(/Inconnu/gi, 'Unknown');
+    }
+    return banner;
+  };
+
+  const translateBrandExplanation = (brandObj) => {
+    if (!brandObj) return '';
+    if (lang === 'en') {
+      if (brandObj.explanation_en) return brandObj.explanation_en;
+      if (brandObj.is_impersonating) {
+        const legits = (brandObj.official_domains || []).join(', ');
+        return `The target domain contains the protected brand keyword '${brandObj.brand_name || 'brand'}' but does NOT belong to verified official domains (${legits}). This is a major brand impersonation / phishing indicator.`;
+      }
+      return 'No major brand impersonation detected in domain name.';
+    }
+    return brandObj.explanation || (brandObj.is_impersonating ? "Tentative d'usurpation de marque détectée." : "Aucune usurpation de marque notoire détectée.");
+  };
+
+  const translateGeoDisclaimer = (text) => {
+    if (!text) return '';
+    if (lang === 'en') {
+      return text
+        .replace(/⚠️\s*Attention\s*:\s*IP provenant d'un proxy, nœud VPN\/Tor ou ASN bulletproof\./gi, '⚠️ Warning: IP originating from a proxy, VPN/Tor node, or bulletproof ASN.')
+        .replace(/Attention\s*:\s*IP provenant d'un proxy, nœud VPN\/Tor ou ASN bulletproof\./gi, 'Warning: IP originating from a proxy, VPN/Tor node, or bulletproof ASN.')
+        .replace(/📍\s*Remarque SOC\s*:\s*L'adresse IP appartient au réseau CDN Anycast\. La géolocalisation indique le nœud Edge POP, et non le serveur d'origine réel\./gi, '📍 SOC Note: The IP address belongs to an Anycast CDN network. Geolocation reflects the Edge POP node, not the origin server.')
+        .replace(/📍\s*Localisation estimée basée sur le registre ASN\./gi, '📍 Estimated location based on ASN registry.')
+        .replace(/ℹ️\s*Cette IP appartient à un CDN mondial\. L'adresse réelle du serveur d'origine est masquée derrière ce proxy inverse\./gi, 'ℹ️ This IP belongs to a global CDN. The actual origin server IP is shielded behind this reverse proxy.')
+        .replace(/ℹ️\s*Géolocalisation apparente du serveur d'hébergement\. Ne constitue pas une preuve légale d'attribution physique de l'attaquant\./gi, 'ℹ️ Apparent hosting server geolocation. Does not constitute formal legal proof of physical attacker attribution.')
+        .replace(/Le système fournit la localisation réseau apparente\. Un VPN, Proxy ou réseau Tor peut masquer l'auteur physique réel\./gi, 'The system provides apparent network location. A VPN, Proxy, or Tor network can obscure the real physical perpetrator.')
+        .replace(/La géolocalisation IP et le renseignement ASN indiquent la source apparente sur le réseau\./gi, 'IP geolocation and ASN intelligence indicate the apparent network source. Physical attribution requires formal legal authority.');
+    }
+    return text;
+  };
+
+  const translateGeoLocationText = (val) => {
+    if (!val) return lang === 'fr' ? 'Inconnu' : 'Unknown';
+    if (lang === 'en') {
+      return String(val)
+        .replace(/\(Estimé\)/gi, '(Estimated)')
+        .replace(/\(Nœud Edge POP\)/gi, '(Edge POP Node)')
+        .replace(/\(Apparent \/ Anycast\)/gi, '(Apparent / Anycast)')
+        .replace(/Inconnu/gi, 'Unknown');
+    }
+    return val;
+  };
+
+  const translateProxyDisplay = (val) => {
+    if (!val) return lang === 'fr' ? 'NON (Connexion Directe)' : 'NO (Direct Connection)';
+    if (lang === 'en') {
+      return String(val)
+        .replace(/OUI — Anonymisé \(VPN\/Proxy\)/gi, 'YES — Anonymized (VPN/Proxy)')
+        .replace(/OUI — Anonymisé/gi, 'YES — Anonymized')
+        .replace(/NON \(Connexion Directe\)/gi, 'NO (Direct Connection)')
+        .replace(/Connexion Directe \(Pas de Proxy public détecté\)/gi, 'Direct Connection (No public proxy detected)')
+        .replace(/⚠️ Proxy \/ VPN \/ Nœud Tor Détecté/gi, '⚠️ Proxy / VPN / Tor Node Detected')
+        .replace(/Nœud Anonymisé \(VPN \/ Proxy \/ Tor\)/gi, 'Anonymized Node (VPN / Proxy / Tor)')
+        .replace(/Serveur d'Hébergement Web Direct/gi, 'Direct Web Hosting Server')
+        .replace(/Réseau CDN Anycast \(Reverse-Proxy\)/gi, 'Anycast CDN Network (Reverse-Proxy)')
+        .replace(/CDN Anycast \(Reverse Proxy\)/gi, 'CDN Anycast (Reverse Proxy)')
+        .replace(/Nœud CDN Edge \(Reverse Proxy Anycast\)/gi, 'CDN Edge Node (Anycast Reverse Proxy)');
+    }
+    return val;
+  };
+
+  const translateRuleTrigger = (rule) => {
+    if (!rule) return '';
+    if (lang === 'en') {
+      return rule
+        .replace(/ALERTE USURPATION : Tentative d'usurpation de la marque (.*?) \(\+45 risque\)/gi, 'BRAND SPOOFING ALERT: Impersonation attempt of brand $1 (+45 risk)')
+        .replace(/Certificat SSL non approuvé ou auto-signé \(\+20 risque\)/gi, 'Untrusted or self-signed SSL certificate (+20 risk)')
+        .replace(/Certificat SSL expiré \(\+25 risque\)/gi, 'Expired SSL certificate (+25 risk)')
+        .replace(/Analyse de menaces heuristique effectuée/gi, 'Heuristic threat analysis executed')
+        .replace(/Analyse heuristique de sécurité effectuée/gi, 'Heuristic security analysis executed');
+    } else {
+      return rule
+        .replace(/BRAND SPOOFING ALERT: Impersonation attempt of brand (.*?) \(\+45 risk\)/gi, "ALERTE USURPATION : Tentative d'usurpation de la marque $1 (+45 risque)")
+        .replace(/Untrusted or self-signed SSL certificate \(\+20 risk\)/gi, "Certificat SSL non approuvé ou auto-signé (+20 risque)")
+        .replace(/Expired SSL certificate \(\+25 risk\)/gi, "Certificat SSL expiré (+25 risque)")
+        .replace(/Direct IP Host used instead of domain name \(\+30 risk\)/gi, "Hôte IP direct utilisé au lieu d'un nom de domaine (+30 risque)")
+        .replace(/Contains (\d+) high-risk keywords \(\+25 risk\)/gi, "Contient $1 mots-clés à haut risque (+25 risque)")
+        .replace(/Suspicious \/ High-risk TLD detected \(\+20 risk\)/gi, "TLD suspect / à haut risque détecté (+20 risque)")
+        .replace(/Insecure HTTP connection \(\+15 risk\)/gi, "Connexion HTTP non sécurisée (+15 risque)")
+        .replace(/Excessive subdomains \((\d+) count\) \(\+15 risk\)/gi, "Sous-domaines excessifs ($1 détectés) (+15 risque)")
+        .replace(/Urgency \/ Time pressure language detected: (.*)/gi, "Langage d'urgence / pression temporelle détecté : $1")
+        .replace(/Credential harvesting keywords detected: (.*)/gi, "Mots-clés de vol d'identifiants détectés : $1")
+        .replace(/Financial \/ Payment impersonation detected: (.*)/gi, "Usurpation de paiement / service financier détectée : $1")
+        .replace(/Contains (\d+) embedded URL link\(s\)/gi, "Contient $1 lien(s) URL intégré(s)");
+    }
+  };
+
   // Render deep technical inspection details (HTTP, SSL, Security Headers, DNS, Brand)
   const renderTechnicalDetails = (tech, blockNumber = 5) => {
     if (!tech) return null;
@@ -499,42 +657,6 @@ export default function StandardDashboard({ isHistoryView = false }) {
     const mxRecords = dns.mx_records || [];
     const isSslGood = ssl.ssl_active && ssl.is_trusted && !ssl.is_expired;
 
-    const translateHeaderStatus = (status, present) => {
-      if (!status) return present ? (lang === 'fr' ? 'Actif' : 'Active') : (lang === 'fr' ? 'Manquant' : 'Missing');
-      if (lang === 'en') {
-        return status
-          .replace('Manquant (Risque Downgrade HTTP)', 'Missing (HTTP Downgrade Risk)')
-          .replace('Manquant (Risque Injections XSS)', 'Missing (XSS Injection Risk)')
-          .replace('Manquant (Risque Clickjacking)', 'Missing (Clickjacking Risk)')
-          .replace('Manquant (Risque MIME Sniffing)', 'Missing (MIME Sniffing Risk)')
-          .replace("Manquant (Fuite Référent)", "Missing (Referrer Leak)")
-          .replace('Non Restreint', 'Unrestricted')
-          .replace('Non Configuré', 'Not Configured')
-          .replace('Actif (Anti-Clickjacking)', 'Active (Anti-Clickjacking)')
-          .replace('Actif (Protection MIME)', 'Active (MIME Protection)')
-          .replace('Actif (Politique Référent)', 'Active (Referrer Policy)')
-          .replace('Actif (HSTS Enforcé)', 'Active (HSTS Enforced)')
-          .replace('Actif (CSP Configuré)', 'Active (CSP Configured)')
-          .replace('Actif (Permissions Restreintes)', 'Active (Permissions Restricted)')
-          .replace('Manquant', 'Missing')
-          .replace('Actif', 'Active');
-      }
-      return status;
-    };
-
-    const translateSslStatus = (status) => {
-      if (!status) return lang === 'fr' ? 'Inconnu' : 'Unknown';
-      if (lang === 'en') {
-        return status
-          .replace('Valide & Chiffré', 'Valid & Encrypted')
-          .replace('Certificat Expiré', 'Expired Certificate')
-          .replace('Auto-signé / Non Approuvé', 'Self-signed / Untrusted')
-          .replace('Non Chiffré (HTTP)', 'Unencrypted (HTTP)')
-          .replace('Invalide', 'Invalid');
-      }
-      return status;
-    };
-
     return (
       <div className="space-y-3">
         {/* Brand Impersonation Alert if triggered */}
@@ -544,7 +666,7 @@ export default function StandardDashboard({ isHistoryView = false }) {
               <AlertOctagon className="w-5 h-5 shrink-0 text-rose-500 animate-pulse" />
               <span>{lang === 'fr' ? `ALERTE CRITIQUE : TENTATIVE D'USURPATION DE LA MARQUE ${brand.brand_name} DÉTECTÉE !` : `CRITICAL ALERT: BRAND IMPERSONATION ATTEMPT DETECTED (${brand.brand_name})!`}</span>
             </div>
-            <p className="text-xs leading-relaxed font-sans">{brand.explanation}</p>
+            <p className="text-xs leading-relaxed font-sans">{translateBrandExplanation(brand)}</p>
             {brand.official_domains?.length > 0 && (
               <div className="text-[11px] font-mono pt-1 flex flex-wrap items-center gap-1.5">
                 <span className="font-bold text-slate-700 dark:text-slate-300">{lang === 'fr' ? 'Domaines officiels légitimes :' : 'Official legitimate domains:'}</span>
@@ -593,7 +715,7 @@ export default function StandardDashboard({ isHistoryView = false }) {
                   <span className="text-[9px] text-slate-400 uppercase font-bold block">{lang === 'fr' ? 'Réponse HTTP' : 'HTTP Response'}</span>
                   <div className="flex items-center gap-1.5 mt-1">
                     <span className={`w-2 h-2 rounded-full shrink-0 ${http.status_code === 200 ? 'bg-emerald-500' : http.status_code ? 'bg-amber-500' : 'bg-rose-500'}`} />
-                    <span className="font-black text-slate-900 dark:text-white truncate">{http.status_text || (lang === 'fr' ? 'Injoignable' : 'Unreachable')}</span>
+                    <span className="font-black text-slate-900 dark:text-white truncate">{translateHttpStatus(http.status_text)}</span>
                   </div>
                 </div>
 
@@ -609,7 +731,7 @@ export default function StandardDashboard({ isHistoryView = false }) {
                 <div className="p-3 bg-slate-50 dark:bg-[#161b27] rounded-xl border border-slate-200 dark:border-slate-800">
                   <span className="text-[9px] text-slate-400 uppercase font-bold block">{lang === 'fr' ? 'Serveur Détecté' : 'Detected Server'}</span>
                   <span className="font-black text-slate-800 dark:text-slate-200 truncate block mt-1" title={http.server_banner}>
-                    {http.server_banner || (lang === 'fr' ? 'Non Divulgué' : 'Undisclosed')}
+                    {translateServerBanner(http.server_banner)}
                   </span>
                 </div>
 
@@ -663,19 +785,19 @@ export default function StandardDashboard({ isHistoryView = false }) {
                   <div>
                     <span className="text-[9px] text-slate-400 block uppercase font-bold">{lang === 'fr' ? 'Autorité Émettrice' : 'Issuing Authority'}</span>
                     <strong className="text-slate-800 dark:text-slate-200 truncate block mt-0.5" title={ssl.issuer_org || ssl.issuer}>
-                      {ssl.issuer_org || ssl.issuer || (lang === 'fr' ? 'Inconnu' : 'Unknown')}
+                      {ssl.issuer_org && ssl.issuer_org !== 'Inconnu' ? ssl.issuer_org : ssl.issuer && ssl.issuer !== 'Inconnu' ? ssl.issuer : (lang === 'fr' ? 'Inconnu' : 'Unknown')}
                     </strong>
                   </div>
                   <div>
                     <span className="text-[9px] text-slate-400 block uppercase font-bold">{lang === 'fr' ? 'Nom Commun (CN)' : 'Common Name (CN)'}</span>
                     <strong className="text-slate-800 dark:text-slate-200 truncate block mt-0.5" title={ssl.subject_cn}>
-                      {ssl.subject_cn || (lang === 'fr' ? 'Inconnu' : 'Unknown')}
+                      {ssl.subject_cn && ssl.subject_cn !== 'Inconnu' ? ssl.subject_cn : (lang === 'fr' ? 'Inconnu' : 'Unknown')}
                     </strong>
                   </div>
                   <div>
                     <span className="text-[9px] text-slate-400 block uppercase font-bold">{lang === 'fr' ? 'Échéance Expiration' : 'Expiration Date'}</span>
                     <strong className={`block mt-0.5 ${ssl.days_remaining !== null && ssl.days_remaining < 15 ? 'text-rose-500' : 'text-emerald-600 dark:text-emerald-400'}`}>
-                      {ssl.days_remaining !== null ? (lang === 'fr' ? `${ssl.days_remaining} jours restants` : `${ssl.days_remaining} days remaining`) : (ssl.valid_to ? ssl.valid_to : (lang === 'fr' ? 'Inconnu' : 'Unknown'))}
+                      {ssl.days_remaining !== null ? (lang === 'fr' ? `${ssl.days_remaining} jours restants` : `${ssl.days_remaining} days remaining`) : (ssl.valid_to && ssl.valid_to !== 'Inconnu' ? ssl.valid_to : (lang === 'fr' ? 'Inconnu' : 'Unknown'))}
                     </strong>
                   </div>
                   <div>
@@ -1812,10 +1934,10 @@ export default function StandardDashboard({ isHistoryView = false }) {
                     <div className="space-y-2">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="px-2.5 py-1 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border border-indigo-200/60 dark:border-indigo-800/60 rounded-lg text-[10px] font-bold font-mono uppercase tracking-wider">
-                          AUDIT SÉCURITÉ SITE & TRAÇABILITÉ WAF
+                          {lang === 'fr' ? 'AUDIT SÉCURITÉ SITE & TRAÇABILITÉ WAF' : 'SITE SECURITY AUDIT & WAF TRACEABILITY'}
                         </span>
                         <span className="px-2.5 py-1 bg-sky-50 dark:bg-sky-950/50 text-sky-600 dark:text-sky-400 border border-sky-200/60 dark:border-sky-800/60 rounded-lg text-[10px] font-bold font-mono">
-                          Moteur WAF + VirusTotal + GSB + Sonde Réseau
+                          {lang === 'fr' ? 'Moteur WAF + VirusTotal + GSB + Sonde Réseau' : 'WAF Engine + VirusTotal + GSB + Network Probe'}
                         </span>
                         <span className="text-[11px] text-slate-400 font-mono">{currentResult.timestamp}</span>
                       </div>
@@ -1826,13 +1948,13 @@ export default function StandardDashboard({ isHistoryView = false }) {
                         <div>
                           <h3 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white tracking-tight">
                             {hasAttacks 
-                              ? `${attackCount} Attaque(s) Active(s) Journalisée(s)` 
-                              : "Aucune attaque détectée dans les journaux disponibles"}
+                              ? (lang === 'fr' ? `${attackCount} Attaque(s) Active(s) Journalisée(s)` : `${attackCount} Active Attack(s) Logged`)
+                              : (lang === 'fr' ? "Aucune attaque détectée dans les journaux disponibles" : "No attacks detected in available logs")}
                           </h3>
                           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 font-sans">
                             {hasAttacks
-                              ? 'Des attaques actives ont été interceptées et journalisées sur ce domaine. Preuves et vecteurs détaillés ci-dessous.'
-                              : "Aucune activité malveillante n'a été observée dans les sources de télémétrie analysées."}
+                              ? (lang === 'fr' ? 'Des attaques actives ont été interceptées et journalisées sur ce domaine. Preuves et vecteurs détaillés ci-dessous.' : 'Active attacks were intercepted and logged on this domain. Detailed evidence and vectors below.')
+                              : (lang === 'fr' ? "Aucune activité malveillante n'a été observée dans les sources de télémétrie analysées." : "No malicious activity observed in analyzed telemetry sources.")}
                           </p>
                         </div>
                       </div>
@@ -1842,9 +1964,11 @@ export default function StandardDashboard({ isHistoryView = false }) {
                       <div>
                         <div className="flex items-baseline gap-1.5 font-mono">
                           <span className={`text-3xl sm:text-4xl font-black ${hasAttacks ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>{attackCount}</span>
-                          <span className="text-[11px] text-slate-400 font-sans font-bold">attaques</span>
+                          <span className="text-[11px] text-slate-400 font-sans font-bold">{lang === 'fr' ? 'attaques' : 'attacks'}</span>
                         </div>
-                        <span className="text-[10px] uppercase font-mono font-bold tracking-wider text-slate-500 block mt-0.5">Événements Journalisés</span>
+                        <span className="text-[10px] uppercase font-mono font-bold tracking-wider text-slate-500 block mt-0.5">
+                          {lang === 'fr' ? 'Événements Journalisés' : 'Logged Events'}
+                        </span>
                       </div>
                       <div className="h-10 w-[1px] bg-slate-200 dark:bg-slate-700/60" />
                       <div>
@@ -1856,12 +1980,14 @@ export default function StandardDashboard({ isHistoryView = false }) {
                               : 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/30'
                         }`}>
                           {hasAttacks 
-                            ? 'MENACES ACTIVES' 
+                            ? (lang === 'fr' ? 'MENACES ACTIVES' : 'ACTIVE THREATS')
                             : currentResult.riskScore > 30 
-                              ? 'RÉPUTATION / HYGIÈNE' 
-                              : 'AUCUNE ATTAQUE ACTIVE DÉTECTÉE'}
+                              ? (lang === 'fr' ? 'RÉPUTATION / HYGIÈNE' : 'REPUTATION / HYGIENE')
+                              : (lang === 'fr' ? 'AUCUNE ATTAQUE ACTIVE DÉTECTÉE' : 'NO ACTIVE ATTACKS DETECTED')}
                         </span>
-                        <p className="text-[10px] text-slate-400 font-mono text-center mt-1">Score Risque: {currentResult.riskScore}%</p>
+                        <p className="text-[10px] text-slate-400 font-mono text-center mt-1">
+                          {lang === 'fr' ? `Score Risque: ${currentResult.riskScore}%` : `Risk Score: ${currentResult.riskScore}%`}
+                        </p>
                       </div>
                     </div>
                   </div>
@@ -1871,10 +1997,14 @@ export default function StandardDashboard({ isHistoryView = false }) {
                     <Info className="w-5 h-5 text-sky-600 dark:text-sky-400 shrink-0 mt-0.5" />
                     <div className="space-y-1">
                       <p className="font-bold text-sky-950 dark:text-sky-200 font-mono text-[11px] uppercase tracking-wide">
-                        Distinction Méthodologique Importante (Télémétrie WAF vs Vulnérabilités Code Source) :
+                        {lang === 'fr' ? 'Distinction Méthodologique Importante (Télémétrie WAF vs Vulnérabilités Code Source) :' : 'Important Methodological Distinction (WAF Telemetry vs Source Code Vulnerabilities):'}
                       </p>
                       <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed font-sans">
-                        La mention <strong className="text-sky-700 dark:text-sky-300 font-mono">« Aucune attaque détectée dans les journaux disponibles »</strong> atteste qu'aucun flux malveillant n'a été capturé par les sondes au moment de l'analyse. Cependant, cela <strong>ne garantit pas l'absence de vulnérabilités applicatives intrinsèques</strong> dans le code du site audité (par exemple, <em>OWASP Juice Shop</em> est intentionnellement vulnérable et contient des failles documentées OWASP Top 10, bien que les journaux publics ne répertorient pas nécessairement d'attaques actives immédiates).
+                        {lang === 'fr' ? (
+                          <>La mention <strong className="text-sky-700 dark:text-sky-300 font-mono">« Aucune attaque détectée dans les journaux disponibles »</strong> atteste qu'aucun flux malveillant n'a été capturé par les sondes au moment de l'analyse. Cependant, cela <strong>ne garantit pas l'absence de vulnérabilités applicatives intrinsèques</strong> dans le code du site audité (par exemple, <em>OWASP Juice Shop</em> est intentionnellement vulnérable et contient des failles documentées OWASP Top 10, bien que les journaux publics ne répertorient pas nécessairement d'attaques actives immédiates).</>
+                        ) : (
+                          <>The mention <strong className="text-sky-700 dark:text-sky-300 font-mono">"No attacks detected in available logs"</strong> certifies that no malicious traffic was captured by the probes at the time of analysis. However, this <strong>does not guarantee the absence of intrinsic application vulnerabilities</strong> in the target site code (for example, <em>OWASP Juice Shop</em> is intentionally vulnerable and contains documented OWASP Top 10 flaws, even though public logs might not show immediate active attacks).</>
+                        )}
                       </p>
                     </div>
                   </div>
@@ -1884,7 +2014,7 @@ export default function StandardDashboard({ isHistoryView = false }) {
                     <div className="flex items-center gap-3 overflow-hidden">
                       <div className="p-2 bg-indigo-500/10 text-indigo-500 rounded-xl shrink-0"><Globe className="w-4 h-4" /></div>
                       <div className="overflow-hidden">
-                        <span className="text-[10px] uppercase font-mono font-bold text-slate-400 block">Domaine Audité</span>
+                        <span className="text-[10px] uppercase font-mono font-bold text-slate-400 block">{lang === 'fr' ? 'Domaine Audité' : 'Audited Domain'}</span>
                         <p className="text-xs sm:text-sm font-mono font-bold text-slate-900 dark:text-slate-100 truncate">{currentResult.target}</p>
                       </div>
                     </div>
@@ -2205,13 +2335,13 @@ export default function StandardDashboard({ isHistoryView = false }) {
                         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
                           {[
                             { label: lang === 'fr' ? 'Adresse IP' : 'IP Address', value: d.server_geo_info.ip || 'N/A', icon: '🌐', highlight: 'text-sky-500 font-bold' },
-                            { label: lang === 'fr' ? 'Localisation Estimée' : 'Estimated Location', value: `${d.server_geo_info.country || (lang === 'fr' ? 'Inconnu' : 'Unknown')}${d.server_geo_info.city && d.server_geo_info.city !== 'Unknown' ? ` (${d.server_geo_info.city})` : ''}`, icon: '📍', highlight: '' },
+                            { label: lang === 'fr' ? 'Localisation Estimée' : 'Estimated Location', value: `${translateGeoLocationText(d.server_geo_info.country) || (lang === 'fr' ? 'Inconnu' : 'Unknown')}${d.server_geo_info.city && d.server_geo_info.city !== 'Unknown' ? ` (${translateGeoLocationText(d.server_geo_info.city)})` : ''}`, icon: '📍', highlight: '' },
                             { label: lang === 'fr' ? 'Hébergeur / ASN' : 'Hosting / ASN', value: d.server_geo_info.asn || 'AS6724 Strato', icon: '🔌', highlight: '' },
                             { label: lang === 'fr' ? 'Organisation Réseau' : 'Network Organization', value: d.server_geo_info.org || 'Strato AG', icon: '🏢', highlight: '' },
-                            { label: lang === 'fr' ? 'Serveur HTTP Détecté' : 'Detected HTTP Server', value: d.technical_inspection?.http?.server_banner || 'Heroku', icon: '🖥️', highlight: 'text-indigo-600 dark:text-indigo-400' },
+                            { label: lang === 'fr' ? 'Serveur HTTP Détecté' : 'Detected HTTP Server', value: translateServerBanner(d.technical_inspection?.http?.server_banner) || 'Heroku', icon: '🖥️', highlight: 'text-indigo-600 dark:text-indigo-400' },
                             {
                               label: 'Proxy / CDN / PaaS',
-                              value: d.server_geo_info.proxy_status_display || (d.server_geo_info.is_cdn ? (lang === 'fr' ? 'CDN Anycast' : 'Anycast CDN') : d.server_geo_info.is_vpn_proxy ? (lang === 'fr' ? 'OUI — Anonymisé' : 'YES — Anonymized') : (lang === 'fr' ? 'Direct / Routé' : 'Direct / Routed')),
+                              value: translateProxyDisplay(d.server_geo_info.proxy_status_display) || (d.server_geo_info.is_cdn ? (lang === 'fr' ? 'CDN Anycast' : 'Anycast CDN') : d.server_geo_info.is_vpn_proxy ? (lang === 'fr' ? 'OUI — Anonymisé' : 'YES — Anonymized') : (lang === 'fr' ? 'Direct / Routé' : 'Direct / Routed')),
                               icon: d.server_geo_info.is_vpn_proxy ? '🔴' : d.server_geo_info.is_cdn ? '🔵' : '🟢',
                               risk: !!d.server_geo_info.is_vpn_proxy,
                               isCdn: !!d.server_geo_info.is_cdn,
@@ -2235,14 +2365,14 @@ export default function StandardDashboard({ isHistoryView = false }) {
                             {lang === 'fr' ? (
                               <>Le scan identifie <strong>« {d.technical_inspection?.http?.server_banner || 'Heroku'} »</strong> via l'en-tête HTTP <code>Server: Heroku</code> / <code>Via: heroku-router</code> (couche applicative PaaS), tandis que l'adresse IP <code>{d.server_geo_info.ip}</code> est routée sur le système autonome <strong>{d.server_geo_info.asn || 'AS6724'} ({d.server_geo_info.org || 'Strato AG'})</strong> en Allemagne (couche réseau et transit IP). Cette double attribution reflète l'architecture réelle où une application déployée sur PaaS est relayée par un point de présence réseau spécifique.</>
                             ) : (
-                              <>The scan identifies <strong>"{d.technical_inspection?.http?.server_banner || 'Heroku'}"</strong> via the HTTP header <code>Server: Heroku</code> / <code>Via: heroku-router</code> (PaaS application layer), while IP address <code>{d.server_geo_info.ip}</code> is routed on autonomous system <strong>{d.server_geo_info.asn || 'AS6724'} ({d.server_geo_info.org || 'Strato AG'})</strong> in Germany (network layer & IP transit). This dual attribution reflects real-world architecture where PaaS apps route through specific points of presence.</>
+                              <>The scan identifies <strong>"{translateServerBanner(d.technical_inspection?.http?.server_banner) || 'Heroku'}"</strong> via the HTTP header <code>Server: Heroku</code> / <code>Via: heroku-router</code> (PaaS application layer), while IP address <code>{d.server_geo_info.ip}</code> is routed on autonomous system <strong>{d.server_geo_info.asn || 'AS6724'} ({d.server_geo_info.org || 'Strato AG'})</strong> in Germany (network layer & IP transit). This dual attribution reflects real-world architecture where PaaS apps route through specific points of presence.</>
                             )}
                           </p>
                         </div>
 
                         {/* Praised Geolocation Disclaimer */}
                         <p className="text-[10px] text-slate-400 font-mono italic border-t border-slate-200 dark:border-slate-800 pt-2">
-                          ℹ️ {d.server_geo_info.disclaimer || (lang === 'fr' ? "La géolocalisation IP et le renseignement ASN indiquent la source apparente sur le réseau." : "IP geolocation and ASN intelligence indicate the apparent network source. Physical attribution requires formal legal authority.")}
+                          ℹ️ {translateGeoDisclaimer(d.server_geo_info.disclaimer) || (lang === 'fr' ? "La géolocalisation IP et le renseignement ASN indiquent la source apparente sur le réseau." : "IP geolocation and ASN intelligence indicate the apparent network source. Physical attribution requires formal legal authority.")}
                         </p>
                       </div>
                     </div>
@@ -2325,7 +2455,7 @@ export default function StandardDashboard({ isHistoryView = false }) {
 
                   {/* ── DISCLAIMER ── */}
                   {d.disclaimer && (
-                    <p className="text-[10px] text-slate-400 font-mono italic px-1">ℹ️ {d.disclaimer}</p>
+                    <p className="text-[10px] text-slate-400 font-mono italic px-1">ℹ️ {translateGeoDisclaimer(d.disclaimer)}</p>
                   )}
 
                   {/* ── ACTION TOOLBAR ── */}
@@ -2572,7 +2702,7 @@ export default function StandardDashboard({ isHistoryView = false }) {
                             {currentResult.details.rule_triggers.map((rule, i) => (
                               <div key={i} className="flex items-center gap-2.5 p-2.5 bg-rose-50 dark:bg-rose-950/10 border border-rose-200 dark:border-rose-900/30 rounded-xl text-xs">
                                 <div className="w-4 h-4 rounded-full bg-rose-500 flex items-center justify-center text-white text-[9px] font-black shrink-0">!</div>
-                                <span className="font-mono text-rose-700 dark:text-rose-300 font-semibold">{rule}</span>
+                                <span className="font-mono text-rose-700 dark:text-rose-300 font-semibold">{translateRuleTrigger(rule)}</span>
                               </div>
                             ))}
                           </div>
@@ -2638,13 +2768,13 @@ export default function StandardDashboard({ isHistoryView = false }) {
                       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
                         {[
                           { label: (lang === 'fr' ? 'Adresse IP' : 'IP Address'), value: geoip.ip || 'N/A', icon: '🌐', risk: false, highlight: 'text-sky-500 font-bold' },
-                          { label: (lang === 'fr' ? 'Pays (Apparent)' : 'Country (Apparent)'), value: geoip.country || (lang === 'fr' ? 'Inconnu' : 'Unknown'), icon: '🏳️', risk: false },
-                          { label: (lang === 'fr' ? 'Ville (Estimée / POP)' : 'City (Estimated / POP)'), value: geoip.city || (lang === 'fr' ? 'Inconnu' : 'Unknown'), icon: '📍', risk: false },
+                          { label: (lang === 'fr' ? 'Pays (Apparent)' : 'Country (Apparent)'), value: translateGeoLocationText(geoip.country) || (lang === 'fr' ? 'Inconnu' : 'Unknown'), icon: '🏳️', risk: false },
+                          { label: (lang === 'fr' ? 'Ville (Estimée / POP)' : 'City (Estimated / POP)'), value: translateGeoLocationText(geoip.city) || (lang === 'fr' ? 'Inconnu' : 'Unknown'), icon: '📍', risk: false },
                           { label: 'ASN', value: geoip.asn || 'N/A', icon: '🔌', risk: false },
                           { label: lang === 'fr' ? 'Organisation' : 'Organization', value: geoip.org || (lang === 'fr' ? 'Inconnu' : 'Unknown'), icon: '🏢', risk: false },
                           { 
                             label: (lang === 'fr' ? 'Statut Proxy / CDN' : 'Proxy / CDN Status'), 
-                            value: geoip.proxy_status_display || (geoip.is_cdn ? 'CDN Anycast (Reverse Proxy)' : geoip.is_vpn_proxy ? (lang === 'fr' ? 'OUI — Anonymisé' : 'YES — Anonymized') : (lang === 'fr' ? 'NON (Connexion Directe)' : 'NO (Direct Connection)')), 
+                            value: translateProxyDisplay(geoip.proxy_status_display) || (geoip.is_cdn ? 'CDN Anycast (Reverse Proxy)' : geoip.is_vpn_proxy ? (lang === 'fr' ? 'OUI — Anonymisé' : 'YES — Anonymized') : (lang === 'fr' ? 'NON (Connexion Directe)' : 'NO (Direct Connection)')), 
                             icon: geoip.is_vpn_proxy ? '🔴' : geoip.is_cdn ? '🔵' : '🟢', 
                             risk: !!geoip.is_vpn_proxy,
                             isCdn: !!geoip.is_cdn
@@ -2657,7 +2787,7 @@ export default function StandardDashboard({ isHistoryView = false }) {
                           </div>
                         ))}
                       </div>
-                      {geoip.disclaimer && <p className="text-[10px] text-slate-400 font-mono italic border-t border-slate-200 dark:border-slate-800 pt-2">ℹ️ {geoip.disclaimer}</p>}
+                      {geoip.disclaimer && <p className="text-[10px] text-slate-400 font-mono italic border-t border-slate-200 dark:border-slate-800 pt-2">ℹ️ {translateGeoDisclaimer(geoip.disclaimer)}</p>}
                     </div>
                   </div>
                 )}

@@ -120,15 +120,15 @@ def analyze_url(req: URLAnalysisRequest, db: Session = Depends(get_db), current_
         # Brand Impersonation check
         brand_spoof = technical_inspection.get("brand_impersonation", {})
         if brand_spoof.get("is_impersonating"):
-            rule_triggers.append(f"ALERTE USURPATION : Tentative d'usurpation de la marque {brand_spoof.get('brand_name')} (+45 risque)")
+            rule_triggers.append(f"BRAND SPOOFING ALERT: Impersonation attempt of brand {brand_spoof.get('brand_name')} (+45 risk)")
             rule_score += 45.0
 
         ssl_info = technical_inspection.get("ssl", {})
         if ssl_info.get("ssl_active") and not ssl_info.get("is_trusted"):
-            rule_triggers.append("Certificat SSL non approuvé ou auto-signé (+20 risque)")
+            rule_triggers.append("Untrusted or self-signed SSL certificate (+20 risk)")
             rule_score += 20.0
         elif ssl_info.get("is_expired"):
-            rule_triggers.append("Certificat SSL expiré (+25 risque)")
+            rule_triggers.append("Expired SSL certificate (+25 risk)")
             rule_score += 25.0
 
         # 5. External Threat Intelligence & GeoIP Lookup
