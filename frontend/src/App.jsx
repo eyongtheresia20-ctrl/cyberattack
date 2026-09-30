@@ -28,7 +28,7 @@ import FloatingAiAssistant from './components/FloatingAiAssistant';
 const PUBLIC_ROUTES = ['/', '/login', '/register'];
 
 function AppLayout() {
-  const { user } = useAuth();
+  const { user, token, loading } = useAuth();
   const location = useLocation();
   const isPublic = PUBLIC_ROUTES.includes(location.pathname);
   const [authModalOpen, setAuthModalOpen] = useState(false);
@@ -51,6 +51,11 @@ function AppLayout() {
         <AuthModal isOpen={authModalOpen} onClose={() => setAuthModalOpen(false)} />
       </>
     );
+  }
+
+  // If user is not authenticated, take them directly to the Landing Page (/)
+  if (!token && !loading) {
+    return <Navigate to="/" replace />;
   }
 
   const isStandardUser = user?.role === 'UTILISATEUR_STANDARD';

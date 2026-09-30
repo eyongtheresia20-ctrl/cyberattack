@@ -267,24 +267,8 @@ def ingest_log_event(req: LogIngestRequest, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(event)
 
-    # Automatically create Incident if Severity is HIGH or CRITICAL
+    # Security events are saved in SecurityEvent for WAF telemetry without polluting the investigator queue
     created_incident_code = None
-    if analysis["is_attack"] and analysis["severity"] in ["HIGH", "CRITICAL"]:
-        inc_code = f"INC-2026-{random.randint(1000, 9999)}"
-        incident = Incident(
-            incident_code=inc_code,
-            title=f"Cyber Attack Detected: {analysis['attack_type']} from {req.source_ip}",
-            category="Web Cyber Attack",
-            severity=analysis["severity"],
-            status="NEW",
-            source_type="LOG_EVENT",
-            source_ref_id=event.id,
-            summary=f"Automated detection triggered rule: {analysis['rule_triggered']}. Path: {req.request_path}",
-            evidence_hash=event.id
-        )
-        db.add(incident)
-        db.commit()
-        created_incident_code = inc_code
 
     return {
         "status": "ingested",

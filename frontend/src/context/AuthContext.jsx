@@ -3,7 +3,14 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState(() => {
+    try {
+      const cached = localStorage.getItem('phishguard_user');
+      return cached ? JSON.parse(cached) : null;
+    } catch (e) {
+      return null;
+    }
+  });
   const [token, setToken] = useState(localStorage.getItem('phishguard_token') || null);
   const [loading, setLoading] = useState(true);
 
@@ -25,7 +32,11 @@ export const AuthProvider = ({ children }) => {
           throw new Error('Token expiré');
         })
         .then((data) => {
-          setUser(data.user || data);
+          const userData = data.user || data;
+          setUser(userData);
+          try {
+            localStorage.setItem('phishguard_user', JSON.stringify(userData));
+          } catch (e) {}
         })
         .catch(() => {
           logout();
@@ -41,11 +52,14 @@ export const AuthProvider = ({ children }) => {
       };
     } else {
       setLoading(false);
+      setUser(null);
+      localStorage.removeItem('phishguard_user');
     }
   }, [token]);
 
   const logout = () => {
     localStorage.removeItem('phishguard_token');
+    localStorage.removeItem('phishguard_user');
     setToken(null);
     setUser(null);
   };
@@ -94,6 +108,9 @@ export const AuthProvider = ({ children }) => {
     }
     
     localStorage.setItem('phishguard_token', data.token);
+    try {
+      localStorage.setItem('phishguard_user', JSON.stringify(data.user));
+    } catch(e) {}
     setToken(data.token);
     setUser(data.user);
     return data.user;

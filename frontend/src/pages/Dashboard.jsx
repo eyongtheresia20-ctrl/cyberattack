@@ -1,9 +1,10 @@
 import React from 'react';
+import { Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import StandardDashboard from './StandardDashboard';
 import InvestigatorDashboard from './InvestigatorDashboard';
 import AdminDashboard from './AdminDashboard';
-import { RefreshCw, Shield } from 'lucide-react';
+import { RefreshCw } from 'lucide-react';
 
 export default function Dashboard() {
   const { user, loading } = useAuth();
@@ -21,14 +22,21 @@ export default function Dashboard() {
     );
   }
 
+  // If not logged in, take the user directly to the Landing Page
+  if (!user) {
+    return <Navigate to="/" replace />;
+  }
+
   if (user?.role === 'ENQUETEUR') {
     return <InvestigatorDashboard />;
   }
   if (user?.role === 'ADMINISTRATEUR') {
     return <AdminDashboard />;
   }
+  if (user?.role === 'UTILISATEUR_STANDARD') {
+    return <StandardDashboard />;
+  }
 
-  // Default for Standard User and logged-in user: show StandardDashboard
-  return <StandardDashboard />;
+  return <Navigate to="/" replace />;
 }
 

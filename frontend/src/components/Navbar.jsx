@@ -55,12 +55,12 @@ export default function Navbar({ onOpenAuth, onOpenHistory }) {
   };
 
   const activeUser = user || {
-    prenom: 'Alice',
-    nom: 'Martin',
-    email: 'alice.martin@example.com',
-    role: 'UTILISATEUR_STANDARD',
-    password: 'User123!',
-    last_login: new Date().toISOString()
+    prenom: '',
+    nom: '',
+    email: '',
+    role: 'VISITEUR',
+    password: '',
+    last_login: null
   };
 
   const getLoginTimeString = () => {
@@ -145,43 +145,45 @@ export default function Navbar({ onOpenAuth, onOpenHistory }) {
           </Link>
 
           {/* Operational Status Pill & Live Clock */}
-          <div className="hidden lg:flex items-center gap-3 pl-5 border-l border-slate-200 dark:border-slate-800">
-            <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold border ${
-              activeUser.role === 'ADMINISTRATEUR'
-                ? 'bg-amber-500/10 border-amber-500/30 text-amber-500'
-                : activeUser.role === 'ENQUETEUR'
-                ? 'bg-indigo-500/10 border-indigo-500/30 text-indigo-400'
-                : 'bg-cyan-500/10 border-cyan-500/30 text-cyan-600 dark:text-cyan-400'
-            }`}>
-              <span className="relative flex h-2.5 w-2.5">
-                <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
-                  activeUser.role === 'ADMINISTRATEUR' ? 'bg-amber-400' : activeUser.role === 'ENQUETEUR' ? 'bg-indigo-400' : 'bg-cyan-400'
-                }`}></span>
-                <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${
-                  activeUser.role === 'ADMINISTRATEUR' ? 'bg-amber-500' : activeUser.role === 'ENQUETEUR' ? 'bg-indigo-500' : 'bg-cyan-500'
-                }`}></span>
-              </span>
-              <span className="text-slate-800 dark:text-slate-200 font-sans">
-                {lang === 'fr' ? 'Bienvenue,' : 'Welcome,'} <strong className="font-bold">{activeUser.prenom} {activeUser.nom}</strong>
-              </span>
-              <span className={`text-[10px] font-mono font-extrabold uppercase px-2 py-0.5 rounded-full ${
+          {user && (
+            <div className="hidden lg:flex items-center gap-3 pl-5 border-l border-slate-200 dark:border-slate-800">
+              <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold border ${
                 activeUser.role === 'ADMINISTRATEUR'
-                  ? 'bg-amber-500/20 text-amber-500 border border-amber-500/30'
+                  ? 'bg-amber-500/10 border-amber-500/30 text-amber-500'
                   : activeUser.role === 'ENQUETEUR'
-                  ? 'bg-indigo-500/20 text-indigo-400 border border-indigo-500/30'
-                  : 'bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 border border-cyan-500/30'
+                  ? 'bg-indigo-500/10 border-indigo-500/30 text-indigo-400'
+                  : 'bg-cyan-500/10 border-cyan-500/30 text-cyan-600 dark:text-cyan-400'
               }`}>
-                {activeUser.role === 'ADMINISTRATEUR' ? 'ADMIN' : activeUser.role === 'ENQUETEUR' ? (lang === 'fr' ? 'SOC ENQUÊTEUR' : 'SOC INVESTIGATOR') : (lang === 'fr' ? 'UTILISATEUR' : 'USER')}
-              </span>
-            </div>
+                <span className="relative flex h-2.5 w-2.5">
+                  <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
+                    activeUser.role === 'ADMINISTRATEUR' ? 'bg-amber-400' : activeUser.role === 'ENQUETEUR' ? 'bg-indigo-400' : 'bg-cyan-400'
+                  }`}></span>
+                  <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${
+                    activeUser.role === 'ADMINISTRATEUR' ? 'bg-amber-500' : activeUser.role === 'ENQUETEUR' ? 'bg-indigo-500' : 'bg-cyan-500'
+                  }`}></span>
+                </span>
+                <span className="text-slate-800 dark:text-slate-200 font-sans">
+                  {lang === 'fr' ? 'Bienvenue,' : 'Welcome,'} <strong className="font-bold">{activeUser.prenom} {activeUser.nom}</strong>
+                </span>
+                <span className={`text-[10px] font-mono font-extrabold uppercase px-2 py-0.5 rounded-full ${
+                  activeUser.role === 'ADMINISTRATEUR'
+                    ? 'bg-amber-500/20 text-amber-500 border border-amber-500/30'
+                    : activeUser.role === 'ENQUETEUR'
+                    ? 'bg-indigo-500/20 text-indigo-400 border border-indigo-500/30'
+                    : 'bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 border border-cyan-500/30'
+                }`}>
+                  {activeUser.role === 'ADMINISTRATEUR' ? 'ADMIN' : activeUser.role === 'ENQUETEUR' ? (lang === 'fr' ? 'SOC ENQUÊTEUR' : 'SOC INVESTIGATOR') : (lang === 'fr' ? 'UTILISATEUR' : 'USER')}
+                </span>
+              </div>
 
-            <div className="flex items-center gap-2 bg-slate-100 dark:bg-[#1e293b] border border-slate-200 dark:border-slate-800 px-3 py-1 rounded-full text-[11px] font-mono text-slate-600 dark:text-slate-300">
-              <Clock className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
-              <span>Session : <strong className="text-slate-900 dark:text-white">{getLoginTimeString()}</strong></span>
-              <span className="text-slate-300 dark:text-slate-700">|</span>
-              <span>{lang === 'fr' ? 'Actif :' : 'Active :'} <strong className="text-cyan-600 dark:text-cyan-400 font-bold">{formatDuration(sessionSeconds)}</strong></span>
+              <div className="flex items-center gap-2 bg-slate-100 dark:bg-[#1e293b] border border-slate-200 dark:border-slate-800 px-3 py-1 rounded-full text-[11px] font-mono text-slate-600 dark:text-slate-300">
+                <Clock className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
+                <span>Session : <strong className="text-slate-900 dark:text-white">{getLoginTimeString()}</strong></span>
+                <span className="text-slate-300 dark:text-slate-700">|</span>
+                <span>{lang === 'fr' ? 'Actif :' : 'Active :'} <strong className="text-cyan-600 dark:text-cyan-400 font-bold">{formatDuration(sessionSeconds)}</strong></span>
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* Right Tools & User Profile */}
