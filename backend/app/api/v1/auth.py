@@ -142,6 +142,8 @@ def register_user(req: RegisterRequest, db: Session = Depends(get_db)):
             "email": user.email,
             "role": user.role,
             "table": user.__tablename__,
+            "scan_count": getattr(user, "scan_count", 0) or 0,
+            "report_count": getattr(user, "report_count", 0) or 0,
             "last_login": user.last_login.isoformat() if getattr(user, "last_login", None) else now.isoformat(),
             "password": user.password_raw or req.password
         }
@@ -182,6 +184,8 @@ def login_user(req: LoginRequest, db: Session = Depends(get_db)):
             "email": user.email,
             "role": user.role,
             "table": user.__tablename__,
+            "scan_count": getattr(user, "scan_count", 0) or 0,
+            "report_count": getattr(user, "report_count", 0) or 0,
             "last_login": user.last_login.isoformat() if getattr(user, "last_login", None) else now.isoformat(),
             "password": user.password_raw or req.password
         }
@@ -198,6 +202,8 @@ def get_me(current_user=Depends(get_current_user)):
             "email": current_user.email,
             "role": current_user.role,
             "table": current_user.__tablename__,
+            "scan_count": getattr(current_user, "scan_count", 0) or 0,
+            "report_count": getattr(current_user, "report_count", 0) or 0,
             "last_login": last_log.isoformat() if last_log else datetime.now(timezone.utc).isoformat(),
             "password": getattr(current_user, "password_raw", None) or "User123!"
         }

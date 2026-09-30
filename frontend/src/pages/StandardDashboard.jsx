@@ -499,6 +499,42 @@ export default function StandardDashboard({ isHistoryView = false }) {
     const mxRecords = dns.mx_records || [];
     const isSslGood = ssl.ssl_active && ssl.is_trusted && !ssl.is_expired;
 
+    const translateHeaderStatus = (status, present) => {
+      if (!status) return present ? (lang === 'fr' ? 'Actif' : 'Active') : (lang === 'fr' ? 'Manquant' : 'Missing');
+      if (lang === 'en') {
+        return status
+          .replace('Manquant (Risque Downgrade HTTP)', 'Missing (HTTP Downgrade Risk)')
+          .replace('Manquant (Risque Injections XSS)', 'Missing (XSS Injection Risk)')
+          .replace('Manquant (Risque Clickjacking)', 'Missing (Clickjacking Risk)')
+          .replace('Manquant (Risque MIME Sniffing)', 'Missing (MIME Sniffing Risk)')
+          .replace("Manquant (Fuite Référent)", "Missing (Referrer Leak)")
+          .replace('Non Restreint', 'Unrestricted')
+          .replace('Non Configuré', 'Not Configured')
+          .replace('Actif (Anti-Clickjacking)', 'Active (Anti-Clickjacking)')
+          .replace('Actif (Protection MIME)', 'Active (MIME Protection)')
+          .replace('Actif (Politique Référent)', 'Active (Referrer Policy)')
+          .replace('Actif (HSTS Enforcé)', 'Active (HSTS Enforced)')
+          .replace('Actif (CSP Configuré)', 'Active (CSP Configured)')
+          .replace('Actif (Permissions Restreintes)', 'Active (Permissions Restricted)')
+          .replace('Manquant', 'Missing')
+          .replace('Actif', 'Active');
+      }
+      return status;
+    };
+
+    const translateSslStatus = (status) => {
+      if (!status) return lang === 'fr' ? 'Inconnu' : 'Unknown';
+      if (lang === 'en') {
+        return status
+          .replace('Valide & Chiffré', 'Valid & Encrypted')
+          .replace('Certificat Expiré', 'Expired Certificate')
+          .replace('Auto-signé / Non Approuvé', 'Self-signed / Untrusted')
+          .replace('Non Chiffré (HTTP)', 'Unencrypted (HTTP)')
+          .replace('Invalide', 'Invalid');
+      }
+      return status;
+    };
+
     return (
       <div className="space-y-3">
         {/* Brand Impersonation Alert if triggered */}
@@ -506,12 +542,12 @@ export default function StandardDashboard({ isHistoryView = false }) {
           <div className="p-4 rounded-2xl bg-rose-500/10 border-2 border-rose-500/40 text-rose-700 dark:text-rose-300 space-y-2 animate-in fade-in">
             <div className="flex items-center gap-2 font-mono font-black text-xs sm:text-sm text-rose-600 dark:text-rose-400">
               <AlertOctagon className="w-5 h-5 shrink-0 text-rose-500 animate-pulse" />
-              <span>ALERTE CRITIQUE : TENTATIVE D'USURPATION DE LA MARQUE {brand.brand_name} DÉTECTÉE !</span>
+              <span>{lang === 'fr' ? `ALERTE CRITIQUE : TENTATIVE D'USURPATION DE LA MARQUE ${brand.brand_name} DÉTECTÉE !` : `CRITICAL ALERT: BRAND IMPERSONATION ATTEMPT DETECTED (${brand.brand_name})!`}</span>
             </div>
             <p className="text-xs leading-relaxed font-sans">{brand.explanation}</p>
             {brand.official_domains?.length > 0 && (
               <div className="text-[11px] font-mono pt-1 flex flex-wrap items-center gap-1.5">
-                <span className="font-bold text-slate-700 dark:text-slate-300">Domaines officiels légitimes :</span>
+                <span className="font-bold text-slate-700 dark:text-slate-300">{lang === 'fr' ? 'Domaines officiels légitimes :' : 'Official legitimate domains:'}</span>
                 {brand.official_domains.map(d => (
                   <span key={d} className="px-2 py-0.5 bg-rose-500/20 text-rose-800 dark:text-rose-200 rounded font-bold">{d}</span>
                 ))}
@@ -527,7 +563,7 @@ export default function StandardDashboard({ isHistoryView = false }) {
               <div className="w-6 h-6 rounded-lg bg-sky-500 flex items-center justify-center text-white text-[10px] font-black shrink-0">{blockNumber}</div>
               <Server className="w-4 h-4 text-sky-500" />
               <span className="text-xs font-extrabold text-slate-800 dark:text-white font-mono uppercase tracking-wide">
-                Détails Techniques & Sonde Réseau Réelle (HTTP, SSL, En-têtes, DNS)
+                {lang === 'fr' ? 'Détails Techniques & Sonde Réseau Réelle (HTTP, SSL, En-têtes, DNS)' : 'Technical Details & Live Network Probe (HTTP, SSL, Headers, DNS)'}
               </span>
             </div>
             <div className="flex items-center gap-2">
@@ -537,11 +573,11 @@ export default function StandardDashboard({ isHistoryView = false }) {
                   ['B', 'C'].includes(http.security_grade) ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20' :
                   'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20'
                 }`}>
-                  Note En-têtes : {http.security_grade} ({http.security_score || 0}/100)
+                  {lang === 'fr' ? `Note En-têtes : ${http.security_grade} (${http.security_score || 0}/100)` : `Headers Grade: ${http.security_grade} (${http.security_score || 0}/100)`}
                 </span>
               )}
               <span className="text-[10px] font-mono text-slate-400">
-                {tech.inspected_at || 'Sonde Directe'}
+                {tech.inspected_at || (lang === 'fr' ? 'Sonde Directe' : 'Direct Probe')}
               </span>
             </div>
           </div>
@@ -550,37 +586,37 @@ export default function StandardDashboard({ isHistoryView = false }) {
             {/* 1. Live HTTP & Response Performance */}
             <div>
               <p className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-400 mb-2">
-                1. Connexion HTTP & Performance Réseau en Direct
+                {lang === 'fr' ? '1. Connexion HTTP & Performance Réseau en Direct' : '1. Live HTTP Connection & Network Performance'}
               </p>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 <div className="p-3 bg-slate-50 dark:bg-[#161b27] rounded-xl border border-slate-200 dark:border-slate-800">
-                  <span className="text-[9px] text-slate-400 uppercase font-bold block">Réponse HTTP</span>
+                  <span className="text-[9px] text-slate-400 uppercase font-bold block">{lang === 'fr' ? 'Réponse HTTP' : 'HTTP Response'}</span>
                   <div className="flex items-center gap-1.5 mt-1">
                     <span className={`w-2 h-2 rounded-full shrink-0 ${http.status_code === 200 ? 'bg-emerald-500' : http.status_code ? 'bg-amber-500' : 'bg-rose-500'}`} />
-                    <span className="font-black text-slate-900 dark:text-white truncate">{http.status_text || 'Injoignable'}</span>
+                    <span className="font-black text-slate-900 dark:text-white truncate">{http.status_text || (lang === 'fr' ? 'Injoignable' : 'Unreachable')}</span>
                   </div>
                 </div>
 
                 <div className="p-3 bg-slate-50 dark:bg-[#161b27] rounded-xl border border-slate-200 dark:border-slate-800">
-                  <span className="text-[9px] text-slate-400 uppercase font-bold block">Latence / RTT</span>
+                  <span className="text-[9px] text-slate-400 uppercase font-bold block">{lang === 'fr' ? 'Latence / RTT' : 'Latency / RTT'}</span>
                   <div className="flex items-center gap-1.5 mt-1">
                     <Activity className="w-3.5 h-3.5 text-sky-500 shrink-0" />
                     <span className="font-black text-sky-600 dark:text-sky-400">{http.latency_ms || 0} ms</span>
-                    <span className="text-[9px] text-slate-400 font-sans">({(http.latency_ms || 0) < 300 ? 'Rapide' : (http.latency_ms || 0) < 800 ? 'Moyen' : 'Lent'})</span>
+                    <span className="text-[9px] text-slate-400 font-sans">({(http.latency_ms || 0) < 300 ? (lang === 'fr' ? 'Rapide' : 'Fast') : (http.latency_ms || 0) < 800 ? (lang === 'fr' ? 'Moyen' : 'Medium') : (lang === 'fr' ? 'Lent' : 'Slow')})</span>
                   </div>
                 </div>
 
                 <div className="p-3 bg-slate-50 dark:bg-[#161b27] rounded-xl border border-slate-200 dark:border-slate-800">
-                  <span className="text-[9px] text-slate-400 uppercase font-bold block">Serveur Détecté</span>
+                  <span className="text-[9px] text-slate-400 uppercase font-bold block">{lang === 'fr' ? 'Serveur Détecté' : 'Detected Server'}</span>
                   <span className="font-black text-slate-800 dark:text-slate-200 truncate block mt-1" title={http.server_banner}>
-                    {http.server_banner || 'Non Divulgué'}
+                    {http.server_banner || (lang === 'fr' ? 'Non Divulgué' : 'Undisclosed')}
                   </span>
                 </div>
 
                 <div className="p-3 bg-slate-50 dark:bg-[#161b27] rounded-xl border border-slate-200 dark:border-slate-800">
-                  <span className="text-[9px] text-slate-400 uppercase font-bold block">Chaîne Redirections</span>
+                  <span className="text-[9px] text-slate-400 uppercase font-bold block">{lang === 'fr' ? 'Chaîne Redirections' : 'Redirect Chain'}</span>
                   <span className="font-black text-slate-800 dark:text-slate-200 block mt-1">
-                    {http.redirect_count > 0 ? `${http.redirect_count} Saut(s)` : '0 (Lien direct)'}
+                    {http.redirect_count > 0 ? (lang === 'fr' ? `${http.redirect_count} Saut(s)` : `${http.redirect_count} Hop(s)`) : (lang === 'fr' ? '0 (Lien direct)' : '0 (Direct link)')}
                   </span>
                 </div>
               </div>
@@ -589,13 +625,13 @@ export default function StandardDashboard({ isHistoryView = false }) {
                 <div className="mt-2 p-2.5 bg-slate-50 dark:bg-[#161b27] rounded-xl border border-slate-200 dark:border-slate-800 space-y-1 text-[11px]">
                   {http.page_title && (
                     <div className="flex items-center gap-2">
-                      <span className="text-slate-400 font-bold uppercase text-[9px] shrink-0">Titre Page HTML :</span>
+                      <span className="text-slate-400 font-bold uppercase text-[9px] shrink-0">{lang === 'fr' ? 'Titre Page HTML :' : 'HTML Page Title:'}</span>
                       <span className="font-sans font-semibold text-slate-800 dark:text-slate-200 truncate">"{http.page_title}"</span>
                     </div>
                   )}
                   {http.redirect_count > 0 && (
                     <div className="flex items-center gap-2 truncate">
-                      <span className="text-slate-400 font-bold uppercase text-[9px] shrink-0">Destination finale :</span>
+                      <span className="text-slate-400 font-bold uppercase text-[9px] shrink-0">{lang === 'fr' ? 'Destination finale :' : 'Final destination:'}</span>
                       <span className="text-indigo-600 dark:text-indigo-400 truncate">{http.final_url}</span>
                     </div>
                   )}
@@ -606,57 +642,57 @@ export default function StandardDashboard({ isHistoryView = false }) {
             {/* 2. SSL / TLS Certificate Deep Dive */}
             <div>
               <p className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-400 mb-2">
-                2. Certificat de Sécurité SSL / Chiffrement TLS
+                {lang === 'fr' ? '2. Certificat de Sécurité SSL / Chiffrement TLS' : '2. SSL Security Certificate / TLS Encryption'}
               </p>
               <div className="p-3.5 rounded-xl border border-sky-100 dark:border-sky-800/40 bg-sky-50/20 dark:bg-sky-950/20 space-y-2.5">
                 <div className="flex flex-wrap items-center justify-between gap-2 border-b border-sky-200/40 dark:border-sky-800/40 pb-2">
                   <div className="flex items-center gap-2">
                     <Lock className={`w-4 h-4 ${isSslGood ? 'text-emerald-500' : 'text-rose-500'}`} />
-                    <span className="font-bold text-slate-900 dark:text-white font-sans text-xs">Certificat d'Authenticité Numérique</span>
+                    <span className="font-bold text-slate-900 dark:text-white font-sans text-xs">{lang === 'fr' ? "Certificat d'Authenticité Numérique" : 'Digital Authenticity Certificate'}</span>
                   </div>
                   <span className={`px-2.5 py-0.5 rounded-md text-[10px] font-bold border ${
                     isSslGood ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20' :
                     ssl.is_expired ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20' :
                     'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20'
                   }`}>
-                    {ssl.ssl_status}
+                    {translateSslStatus(ssl.ssl_status)}
                   </span>
                 </div>
 
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-[11px]">
                   <div>
-                    <span className="text-[9px] text-slate-400 block uppercase font-bold">Autorité Émettrice</span>
+                    <span className="text-[9px] text-slate-400 block uppercase font-bold">{lang === 'fr' ? 'Autorité Émettrice' : 'Issuing Authority'}</span>
                     <strong className="text-slate-800 dark:text-slate-200 truncate block mt-0.5" title={ssl.issuer_org || ssl.issuer}>
-                      {ssl.issuer_org || ssl.issuer || 'Inconnu'}
+                      {ssl.issuer_org || ssl.issuer || (lang === 'fr' ? 'Inconnu' : 'Unknown')}
                     </strong>
                   </div>
                   <div>
-                    <span className="text-[9px] text-slate-400 block uppercase font-bold">Nom Commun (CN)</span>
+                    <span className="text-[9px] text-slate-400 block uppercase font-bold">{lang === 'fr' ? 'Nom Commun (CN)' : 'Common Name (CN)'}</span>
                     <strong className="text-slate-800 dark:text-slate-200 truncate block mt-0.5" title={ssl.subject_cn}>
-                      {ssl.subject_cn || 'Inconnu'}
+                      {ssl.subject_cn || (lang === 'fr' ? 'Inconnu' : 'Unknown')}
                     </strong>
                   </div>
                   <div>
-                    <span className="text-[9px] text-slate-400 block uppercase font-bold">Échéance Expiration</span>
+                    <span className="text-[9px] text-slate-400 block uppercase font-bold">{lang === 'fr' ? 'Échéance Expiration' : 'Expiration Date'}</span>
                     <strong className={`block mt-0.5 ${ssl.days_remaining !== null && ssl.days_remaining < 15 ? 'text-rose-500' : 'text-emerald-600 dark:text-emerald-400'}`}>
-                      {ssl.days_remaining !== null ? `${ssl.days_remaining} jours restants` : (ssl.valid_to ? ssl.valid_to : 'Inconnu')}
+                      {ssl.days_remaining !== null ? (lang === 'fr' ? `${ssl.days_remaining} jours restants` : `${ssl.days_remaining} days remaining`) : (ssl.valid_to ? ssl.valid_to : (lang === 'fr' ? 'Inconnu' : 'Unknown'))}
                     </strong>
                   </div>
                   <div>
-                    <span className="text-[9px] text-slate-400 block uppercase font-bold">Protocole Chiffré</span>
+                    <span className="text-[9px] text-slate-400 block uppercase font-bold">{lang === 'fr' ? 'Protocole Chiffré' : 'Encryption Protocol'}</span>
                     <strong className="text-slate-800 dark:text-slate-200 truncate block mt-0.5">
-                      {ssl.tls_version ? `${ssl.tls_version}` : 'Non Détecté'}
+                      {ssl.tls_version ? `${ssl.tls_version}` : (lang === 'fr' ? 'Non Détecté' : 'Not Detected')}
                     </strong>
                   </div>
                 </div>
 
                 {ssl.subject_alt_names?.length > 0 && (
                   <div className="pt-1.5 flex flex-wrap items-center gap-1.5 text-[10px] border-t border-sky-200/30 dark:border-sky-800/30">
-                    <span className="text-slate-400">Domaines SAN couverts :</span>
+                    <span className="text-slate-400">{lang === 'fr' ? 'Domaines SAN couverts :' : 'Covered SAN domains:'}</span>
                     {ssl.subject_alt_names.slice(0, 4).map((san, idx) => (
                       <span key={idx} className="px-1.5 py-0.5 bg-white dark:bg-slate-800 rounded border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-mono">{san}</span>
                     ))}
-                    {ssl.subject_alt_names.length > 4 && <span className="text-slate-400">+{ssl.subject_alt_names.length - 4} autres</span>}
+                    {ssl.subject_alt_names.length > 4 && <span className="text-slate-400">+{ssl.subject_alt_names.length - 4} {lang === 'fr' ? 'autres' : 'others'}</span>}
                   </div>
                 )}
               </div>
@@ -666,21 +702,21 @@ export default function StandardDashboard({ isHistoryView = false }) {
             <div>
               <div className="flex items-center justify-between mb-2">
                 <p className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-400">
-                  3. Audit des 6 En-têtes de Sécurité HTTP (Contrôles OWASP)
+                  {lang === 'fr' ? '3. Audit des 6 En-têtes de Sécurité HTTP (Contrôles OWASP)' : '3. Audit of 6 HTTP Security Headers (OWASP Controls)'}
                 </p>
                 <span className="text-[10px] text-slate-400 font-mono">
-                  {Object.values(secHeaders).filter(h => h.present).length} / 6 Conformes
+                  {Object.values(secHeaders).filter(h => h.present).length} / 6 {lang === 'fr' ? 'Conformes' : 'Compliant'}
                 </span>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                 {[
-                  { name: 'Strict-Transport-Security (HSTS)', data: secHeaders.hsts, desc: 'Empêche le déclassement SSL-Strip' },
-                  { name: 'Content-Security-Policy (CSP)', data: secHeaders.csp, desc: 'Bloque les injections de code XSS' },
-                  { name: 'X-Frame-Options', data: secHeaders.x_frame_options, desc: 'Protection anti-clickjacking' },
-                  { name: 'X-Content-Type-Options', data: secHeaders.x_content_type_options, desc: 'Bloque le reniflage MIME' },
-                  { name: 'Referrer-Policy', data: secHeaders.referrer_policy, desc: "Contrôle les fuites d'URL" },
-                  { name: 'Permissions-Policy', data: secHeaders.permissions_policy, desc: 'Restreint les APIs sensibles du navigateur' },
+                  { name: 'Strict-Transport-Security (HSTS)', data: secHeaders.hsts, desc: lang === 'fr' ? 'Empêche le déclassement SSL-Strip' : 'Prevents SSL-strip downgrade' },
+                  { name: 'Content-Security-Policy (CSP)', data: secHeaders.csp, desc: lang === 'fr' ? 'Bloque les injections de code XSS' : 'Blocks XSS code injection' },
+                  { name: 'X-Frame-Options', data: secHeaders.x_frame_options, desc: lang === 'fr' ? 'Protection anti-clickjacking' : 'Anti-clickjacking protection' },
+                  { name: 'X-Content-Type-Options', data: secHeaders.x_content_type_options, desc: lang === 'fr' ? 'Bloque le reniflage MIME' : 'Blocks MIME sniffing' },
+                  { name: 'Referrer-Policy', data: secHeaders.referrer_policy, desc: lang === 'fr' ? "Contrôle les fuites d'URL" : 'Controls URL referrer leakage' },
+                  { name: 'Permissions-Policy', data: secHeaders.permissions_policy, desc: lang === 'fr' ? 'Restreint les APIs sensibles du navigateur' : 'Restricts sensitive browser APIs' },
                 ].map((item, idx) => {
                   const isPass = item.data?.present;
                   return (
@@ -694,7 +730,7 @@ export default function StandardDashboard({ isHistoryView = false }) {
                         <p className="text-[11px] font-bold text-slate-800 dark:text-slate-100 truncate">{item.name}</p>
                         <p className="text-[9px] text-slate-400 font-sans leading-tight mt-0.5">{item.desc}</p>
                         <p className={`text-[10px] font-bold mt-1 ${isPass ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
-                          {item.data?.status || (isPass ? 'Actif' : 'Manquant')}
+                          {translateHeaderStatus(item.data?.status, isPass)}
                         </p>
                       </div>
                     </div>
@@ -706,14 +742,14 @@ export default function StandardDashboard({ isHistoryView = false }) {
             {/* 4. Live DNS Records & MX Mail Security */}
             <div>
               <p className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-400 mb-2">
-                4. Résolution DNS & Configuration Courrier Électronique (MX)
+                {lang === 'fr' ? '4. Résolution DNS & Configuration Courrier Électronique (MX)' : '4. DNS Resolution & Email Configuration (MX)'}
               </p>
               <div className="p-3 bg-slate-50 dark:bg-[#161b27] rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[11px]">
                   <div>
-                    <span className="text-slate-400 text-[10px] block font-bold uppercase">Enregistrements A (IPv4) :</span>
+                    <span className="text-slate-400 text-[10px] block font-bold uppercase">{lang === 'fr' ? 'Enregistrements A (IPv4) :' : 'A Records (IPv4):'}</span>
                     <span className="font-bold text-slate-800 dark:text-slate-200 break-all">
-                      {aRecords.length > 0 ? aRecords.join(', ') : 'Aucun enregistrement IPv4'}
+                      {aRecords.length > 0 ? aRecords.join(', ') : (lang === 'fr' ? 'Aucun enregistrement IPv4' : 'No IPv4 records')}
                     </span>
                     {dns.aaaa_records?.length > 0 && (
                       <span className="text-[10px] text-slate-400 block truncate mt-1">IPv6 : {dns.aaaa_records[0]}</span>
@@ -721,14 +757,14 @@ export default function StandardDashboard({ isHistoryView = false }) {
                   </div>
 
                   <div>
-                    <span className="text-slate-400 text-[10px] block font-bold uppercase">Serveurs Mail MX (Messagerie) :</span>
+                    <span className="text-slate-400 text-[10px] block font-bold uppercase">{lang === 'fr' ? 'Serveurs Mail MX (Messagerie) :' : 'MX Mail Servers (Email):'}</span>
                     {mxRecords.length > 0 ? (
                       <span className="font-bold text-emerald-600 dark:text-emerald-400 truncate block">
-                        ✓ {mxRecords[0]} {mxRecords.length > 1 ? `(+${mxRecords.length - 1} serveurs)` : ''}
+                        ✓ {mxRecords[0]} {mxRecords.length > 1 ? `(+${mxRecords.length - 1} ${lang === 'fr' ? 'serveurs' : 'servers'})` : ''}
                       </span>
                     ) : (
                       <span className="font-bold text-amber-600 dark:text-amber-400 block">
-                        ⚠️ Aucun serveur MX détecté (Courrier non configuré / Potentiel domaine jetable)
+                        ⚠️ {lang === 'fr' ? 'Aucun serveur MX détecté (Courrier non configuré / Potentiel domaine jetable)' : 'No MX server detected (Email unconfigured / Potential disposable domain)'}
                       </span>
                     )}
                   </div>
@@ -1864,19 +1900,21 @@ export default function StandardDashboard({ isHistoryView = false }) {
                       <div className="w-6 h-6 rounded-lg bg-rose-500 flex items-center justify-center text-white text-[10px] font-black shrink-0">1</div>
                       <Activity className="w-4 h-4 text-rose-500" />
                       <span className="text-xs font-extrabold text-slate-800 dark:text-white font-mono uppercase tracking-wide">
-                        Détection des Cyberattaques Web (WAF & Analyseurs IA)
+                        {lang === 'fr' ? 'Détection des Cyberattaques Web (WAF & Analyseurs IA)' : 'Web Cyberattack Detection (WAF & AI Analyzers)'}
                       </span>
                       <span className={`ml-auto text-[10px] font-mono font-bold px-2 py-0.5 rounded border ${hasAttacks ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20' : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'}`}>
-                        {attackCount} événement(s)
+                        {attackCount} {lang === 'fr' ? 'événement(s)' : 'event(s)'}
                       </span>
                     </div>
                     <div className="p-4 space-y-4">
                       {!hasAttacks ? (
                         <div className="flex flex-col items-center justify-center py-6 text-center gap-2">
                           <ShieldCheck className="w-12 h-12 text-emerald-400 opacity-60" />
-                          <p className="text-sm font-bold text-emerald-600 dark:text-emerald-400">Aucune attaque journalisée pour ce domaine</p>
+                          <p className="text-sm font-bold text-emerald-600 dark:text-emerald-400">{lang === 'fr' ? 'Aucune attaque journalisée pour ce domaine' : 'No attacks logged for this domain'}</p>
                           <p className="text-xs text-slate-400 max-w-md">
-                            Les journaux de télémétrie WAF ne contiennent aucun événement malveillant enregistré ciblant {currentResult.target}. Utilisez la suite de démonstration ci-dessous pour tester les capacités de détection CyberGuard en conditions réelles.
+                            {lang === 'fr' 
+                              ? `Les journaux de télémétrie WAF ne contiennent aucun événement malveillant enregistré ciblant ${currentResult.target}. Utilisez la suite de démonstration ci-dessous pour tester les capacités de détection CyberGuard en conditions réelles.`
+                              : `WAF telemetry logs contain no malicious events recorded for ${currentResult.target}. Use the demonstration suite below to test CyberGuard detection capabilities in real-time.`}
                           </p>
                         </div>
                       ) : (
@@ -1896,11 +1934,11 @@ export default function StandardDashboard({ isHistoryView = false }) {
                           <div className="flex items-center gap-2">
                             <Zap className="w-4 h-4 text-amber-500" />
                             <span className="text-xs font-bold text-slate-800 dark:text-white font-mono uppercase">
-                              Suite de Démonstration d'Attaques Web (Soutenance)
+                              {lang === 'fr' ? "Suite de Démonstration d'Attaques Web (Soutenance)" : 'Web Attack Demonstration Suite (Presentation)'}
                             </span>
                           </div>
                           <span className="text-[10px] text-slate-400 font-mono">
-                            Injecte une charge malveillante pour tester la détection, classification & GeoIP
+                            {lang === 'fr' ? 'Injecte une charge malveillante pour tester la détection, classification & GeoIP' : 'Injects a malicious payload to test detection, classification & GeoIP'}
                           </span>
                         </div>
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -1910,7 +1948,7 @@ export default function StandardDashboard({ isHistoryView = false }) {
                             disabled={isSimulatingAttack}
                             className="p-2.5 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-700 dark:text-rose-300 rounded-xl text-left transition cursor-pointer disabled:opacity-50 space-y-1"
                           >
-                            <span className="text-[11px] font-black font-mono block">💉 Injection SQL (SQLi)</span>
+                            <span className="text-[11px] font-black font-mono block">{lang === 'fr' ? '💉 Injection SQL (SQLi)' : '💉 SQL Injection (SQLi)'}</span>
                             <span className="text-[9px] text-slate-500 block truncate font-mono">' UNION SELECT ...</span>
                           </button>
                           <button
@@ -1919,7 +1957,7 @@ export default function StandardDashboard({ isHistoryView = false }) {
                             disabled={isSimulatingAttack}
                             className="p-2.5 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-700 dark:text-amber-300 rounded-xl text-left transition cursor-pointer disabled:opacity-50 space-y-1"
                           >
-                            <span className="text-[11px] font-black font-mono block">⚡ Scripting Cross-Site (XSS)</span>
+                            <span className="text-[11px] font-black font-mono block">{lang === 'fr' ? '⚡ Scripting Cross-Site (XSS)' : '⚡ Cross-Site Scripting (XSS)'}</span>
                             <span className="text-[9px] text-slate-500 block truncate font-mono">&lt;script&gt;steal.cookie...</span>
                           </button>
                           <button
@@ -1928,7 +1966,7 @@ export default function StandardDashboard({ isHistoryView = false }) {
                             disabled={isSimulatingAttack}
                             className="p-2.5 bg-orange-500/10 hover:bg-orange-500/20 border border-orange-500/30 text-orange-700 dark:text-orange-300 rounded-xl text-left transition cursor-pointer disabled:opacity-50 space-y-1"
                           >
-                            <span className="text-[11px] font-black font-mono block">📁 Traversée Répertoire (LFI)</span>
+                            <span className="text-[11px] font-black font-mono block">{lang === 'fr' ? '📁 Traversée Répertoire (LFI)' : '📁 Path Traversal (LFI)'}</span>
                             <span className="text-[9px] text-slate-500 block truncate font-mono">../../../../etc/passwd</span>
                           </button>
                           <button
@@ -1937,14 +1975,14 @@ export default function StandardDashboard({ isHistoryView = false }) {
                             disabled={isSimulatingAttack}
                             className="p-2.5 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 text-purple-700 dark:text-purple-300 rounded-xl text-left transition cursor-pointer disabled:opacity-50 space-y-1"
                           >
-                            <span className="text-[11px] font-black font-mono block">🔐 Force Brute (Auth)</span>
-                            <span className="text-[9px] text-slate-500 block truncate font-mono">50 requêtes/60s seuil</span>
+                            <span className="text-[11px] font-black font-mono block">{lang === 'fr' ? '🔐 Force Brute (Auth)' : '🔐 Brute Force (Auth)'}</span>
+                            <span className="text-[9px] text-slate-500 block truncate font-mono">{lang === 'fr' ? '50 requêtes/60s seuil' : '50 req/60s threshold'}</span>
                           </button>
                         </div>
                         {isSimulatingAttack && (
                           <div className="flex items-center gap-2 text-[11px] text-amber-600 dark:text-amber-400 font-mono">
                             <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                            <span>Capture de l'attaque, calcul de sévérité et résolution GeoIP en cours...</span>
+                            <span>{lang === 'fr' ? "Capture de l'attaque, calcul de sévérité et résolution GeoIP en cours..." : 'Capturing attack, computing severity and GeoIP resolution...'}</span>
                           </div>
                         )}
                       </div>
@@ -1957,17 +1995,25 @@ export default function StandardDashboard({ isHistoryView = false }) {
                       <div className="flex items-center gap-2 px-4 py-3 bg-gradient-to-r from-amber-50 to-slate-50 dark:from-amber-950/20 dark:to-slate-900/40 border-b border-slate-200 dark:border-slate-800">
                         <div className="w-6 h-6 rounded-lg bg-amber-500 flex items-center justify-center text-white text-[10px] font-black shrink-0">2</div>
                         <MapPin className="w-4 h-4 text-amber-500" />
-                        <span className="text-xs font-extrabold text-slate-800 dark:text-white font-mono uppercase tracking-wide">Attaquants Tracés — Rapport Forensique & Preuves Numériques</span>
-                        <span className="ml-auto text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">{attackers.length} Incident(s) Journalisé(s)</span>
+                        <span className="text-xs font-extrabold text-slate-800 dark:text-white font-mono uppercase tracking-wide">
+                          {lang === 'fr' ? 'Attaquants Tracés — Rapport Forensique & Preuves Numériques' : 'Traced Attackers — Forensic Report & Digital Evidence'}
+                        </span>
+                        <span className="ml-auto text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                          {attackers.length} {lang === 'fr' ? 'Incident(s) Journalisé(s)' : 'Logged Incident(s)'}
+                        </span>
                       </div>
                       <div className="p-4 space-y-3">
                         {/* Clear Forensics Attribution Callout */}
                         <div className="p-3 bg-sky-500/10 border border-sky-500/30 rounded-xl text-xs space-y-1">
                           <p className="font-bold text-sky-800 dark:text-sky-300 font-mono text-[10px] uppercase flex items-center gap-1.5">
-                            🛡️ Analyse Forensique d'Attribution : Qui a attaqué, Quand et Comment ?
+                            {lang === 'fr' ? "🛡️ Analyse Forensique d'Attribution : Qui a attaqué, Quand et Comment ?" : '🛡️ Forensic Attribution Analysis: Who attacked, When and How?'}
                           </p>
                           <p className="text-[11px] text-slate-700 dark:text-slate-300 leading-relaxed">
-                            Les journaux de télémétrie du Pare-feu Applicatif Web (WAF) ont intercepté <strong>{attackers.length} cyberattaque(s)</strong> ciblant le domaine <strong>{d.domain}</strong>. Pour chaque incident ci-dessous, le système certifie l'adresse IP source, l'horodatage précis, l'URL ciblée et la signature de la charge malveillante interceptée.
+                            {lang === 'fr' ? (
+                              <>Les journaux de télémétrie du Pare-feu Applicatif Web (WAF) ont intercepté <strong>{attackers.length} cyberattaque(s)</strong> ciblant le domaine <strong>{d.domain}</strong>. Pour chaque incident ci-dessous, le système certifie l'adresse IP source, l'horodatage précis, l'URL ciblée et la signature de la charge malveillante interceptée.</>
+                            ) : (
+                              <>WAF telemetry logs intercepted <strong>{attackers.length} cyberattack(s)</strong> targeting the domain <strong>{d.domain}</strong>. For each incident below, the system certifies the source IP, precise timestamp, targeted URL, and intercepted malicious payload signature.</>
+                            )}
                           </p>
                         </div>
 
@@ -1977,42 +2023,44 @@ export default function StandardDashboard({ isHistoryView = false }) {
                               <div className="flex items-center gap-2.5 flex-wrap">
                                 <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${atk.severity === 'CRITICAL' ? 'bg-rose-600 animate-ping' : atk.severity === 'HIGH' ? 'bg-rose-500' : 'bg-amber-400'}`} />
                                 <span className="font-black text-rose-600 dark:text-rose-400 text-sm">
-                                  {atk.attack === 'SQLi' || atk.attack === 'SQL_INJECTION' ? '💉 Injection SQL (SQLi)' :
-                                   atk.attack === 'XSS' ? '⚡ Scripting Cross-Site (XSS)' :
-                                   atk.attack === 'PathTraversal' || atk.attack === 'PATH_TRAVERSAL' ? '📁 Traversée Répertoire (LFI)' :
-                                   atk.attack === 'BruteForce' || atk.attack === 'BRUTE_FORCE' ? '🔐 Attaque par Force Brute' :
+                                  {atk.attack === 'SQLi' || atk.attack === 'SQL_INJECTION' ? (lang === 'fr' ? '💉 Injection SQL (SQLi)' : '💉 SQL Injection (SQLi)') :
+                                   atk.attack === 'XSS' ? (lang === 'fr' ? '⚡ Scripting Cross-Site (XSS)' : '⚡ Cross-Site Scripting (XSS)') :
+                                   atk.attack === 'PathTraversal' || atk.attack === 'PATH_TRAVERSAL' ? (lang === 'fr' ? '📁 Traversée Répertoire (LFI)' : '📁 Path Traversal (LFI)') :
+                                   atk.attack === 'BruteForce' || atk.attack === 'BRUTE_FORCE' ? (lang === 'fr' ? '🔐 Attaque par Force Brute' : '🔐 Brute Force Attack') :
                                    atk.attack?.replace(/_/g, ' ')}
                                 </span>
                                 <span className={`px-2 py-0.5 rounded text-[10px] font-black border ${atk.severity === 'CRITICAL' ? 'bg-rose-500/10 text-rose-600 border-rose-500/30' : 'bg-amber-500/10 text-amber-600 border-amber-500/30'}`}>
-                                  SÉVÉRITÉ : {atk.severity}
+                                  {lang === 'fr' ? 'SÉVÉRITÉ :' : 'SEVERITY:'} {atk.severity}
                                 </span>
                               </div>
                               <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400 text-[11px] font-mono">
                                 <Clock className="w-3.5 h-3.5 text-slate-400" />
-                                <span><strong>Horodatage :</strong> {atk.timestamp || 'Récemment'}</span>
+                                <span><strong>{lang === 'fr' ? 'Horodatage :' : 'Timestamp:'}</strong> {atk.timestamp || (lang === 'fr' ? 'Récemment' : 'Recently')}</span>
                               </div>
                             </div>
 
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[11px] text-slate-700 dark:text-slate-300">
                               <div className="space-y-1">
-                                <div className="text-slate-400 font-bold uppercase text-[9px]">👤 Auteur de l'Attaque (IP & Origine) :</div>
+                                <div className="text-slate-400 font-bold uppercase text-[9px]">{lang === 'fr' ? "👤 Auteur de l'Attaque (IP & Origine) :" : '👤 Attack Author (IP & Origin):'}</div>
                                 <div className="font-bold text-sky-600 dark:text-sky-400 text-xs">
                                   {atk.ip}
                                 </div>
                                 <div className="text-slate-500 dark:text-slate-400 text-[10px]">
-                                  📍 {atk.city && atk.city !== 'Unknown' ? `${atk.city}, ` : ''}{atk.country} ({atk.asn || 'ASN Inconnu'})
+                                  📍 {atk.city && atk.city !== 'Unknown' ? `${atk.city}, ` : ''}{atk.country} ({atk.asn || (lang === 'fr' ? 'ASN Inconnu' : 'Unknown ASN')})
                                   {atk.is_vpn_proxy && <span className="ml-1.5 px-1.5 py-0.2 bg-amber-500/20 text-amber-600 dark:text-amber-400 rounded text-[9px] font-bold">VPN/Proxy</span>}
                                 </div>
                               </div>
                               <div className="space-y-1">
-                                <div className="text-slate-400 font-bold uppercase text-[9px]">🎯 Cible & URL Réseau :</div>
+                                <div className="text-slate-400 font-bold uppercase text-[9px]">{lang === 'fr' ? '🎯 Cible & URL Réseau :' : '🎯 Target & Network URL:'}</div>
                                 <div className="font-bold text-slate-800 dark:text-slate-200 truncate">
                                   <span className="text-purple-600 dark:text-purple-400 font-black mr-1">{atk.http_method || 'POST'}</span>
                                   https://{d.domain}{atk.request_path || '/login'}
                                 </div>
                                 <div className="flex items-center gap-2">
                                   <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${atk.status_code === 403 ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'bg-rose-500/10 text-rose-600 dark:text-rose-400'}`}>
-                                    {atk.status_code === 403 ? 'Statut HTTP 403 (Bloqué par WAF)' : `Statut HTTP ${atk.status_code || 400} (Requête Anormale)`}
+                                    {atk.status_code === 403 
+                                      ? (lang === 'fr' ? 'Statut HTTP 403 (Bloqué par WAF)' : 'HTTP 403 Status (Blocked by WAF)')
+                                      : (lang === 'fr' ? `Statut HTTP ${atk.status_code || 400} (Requête Anormale)` : `HTTP ${atk.status_code || 400} Status (Anomalous Request)`)}
                                   </span>
                                 </div>
                               </div>
@@ -2020,14 +2068,14 @@ export default function StandardDashboard({ isHistoryView = false }) {
 
                             {atk.payload && (
                               <div className="p-2.5 bg-slate-900 text-rose-300 rounded-lg text-[10px] font-mono break-all border border-rose-900/30 space-y-1">
-                                <span className="text-rose-400 font-bold uppercase text-[9px] block">🔍 Preuve Forensique / Charge Malveillante Interceptée :</span>
+                                <span className="text-rose-400 font-bold uppercase text-[9px] block">{lang === 'fr' ? '🔍 Preuve Forensique / Charge Malveillante Interceptée :' : '🔍 Forensic Evidence / Intercepted Payload:'}</span>
                                 <span className="select-all font-mono text-emerald-300 dark:text-rose-300">{atk.payload}</span>
                               </div>
                             )}
                           </div>
                         ))}
                         {attackers.length > 6 && (
-                          <p className="text-[10px] font-mono text-slate-400 text-center pt-1">+ {attackers.length - 6} autres attaquants tracés</p>
+                          <p className="text-[10px] font-mono text-slate-400 text-center pt-1">+ {attackers.length - 6} {lang === 'fr' ? 'autres attaquants tracés' : 'more traced attackers'}</p>
                         )}
                       </div>
                     </div>
@@ -2038,7 +2086,9 @@ export default function StandardDashboard({ isHistoryView = false }) {
                     <div className="flex items-center gap-2 px-4 py-3 bg-gradient-to-r from-purple-50 to-slate-50 dark:from-purple-950/20 dark:to-slate-900/40 border-b border-slate-200 dark:border-slate-800">
                       <div className="w-6 h-6 rounded-lg bg-purple-500 flex items-center justify-center text-white text-[10px] font-black shrink-0">{attackers.length > 0 ? 3 : 2}</div>
                       <ShieldCheck className="w-4 h-4 text-purple-500" />
-                      <span className="text-xs font-extrabold text-slate-800 dark:text-white font-mono uppercase tracking-wide">Threat Intelligence — Renseignement VirusTotal & Google Safe Browsing</span>
+                      <span className="text-xs font-extrabold text-slate-800 dark:text-white font-mono uppercase tracking-wide">
+                        {lang === 'fr' ? 'Threat Intelligence — Renseignement VirusTotal & Google Safe Browsing' : 'Threat Intelligence — VirusTotal & Google Safe Browsing Intel'}
+                      </span>
                     </div>
                     <div className="p-4 space-y-3">
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -2047,15 +2097,22 @@ export default function StandardDashboard({ isHistoryView = false }) {
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
                               <span className="text-xl">🔬</span>
-                              <div><p className="text-xs font-black text-slate-800 dark:text-white">VirusTotal</p><p className="text-[10px] text-slate-400">91 moteurs antivirus & réputation</p></div>
+                              <div>
+                                <p className="text-xs font-black text-slate-800 dark:text-white">VirusTotal</p>
+                                <p className="text-[10px] text-slate-400">{lang === 'fr' ? '91 moteurs antivirus & réputation' : '91 antivirus & reputation engines'}</p>
+                              </div>
                             </div>
                             <span className={`px-2 py-0.5 rounded-md text-[10px] font-mono font-bold border ${(siteVt?.positives || 0) > 3 ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20' : (siteVt?.positives || 0) > 0 ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20' : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'}`}>
-                              {(siteVt?.positives || 0) > 3 ? `⚠️ DÉTECTIONS MULTIPLES (${siteVt.positives})` : (siteVt?.positives || 0) > 0 ? `⚠️ SIGNALEMENT ISOLÉ (${siteVt.positives}/${siteVt.total_engines || 91})` : '✓ AUCUNE DÉTECTION'}
+                              {(siteVt?.positives || 0) > 3 
+                                ? (lang === 'fr' ? `⚠️ DÉTECTIONS MULTIPLES (${siteVt.positives})` : `⚠️ MULTIPLE DETECTIONS (${siteVt.positives})`)
+                                : (siteVt?.positives || 0) > 0 
+                                  ? (lang === 'fr' ? `⚠️ SIGNALEMENT ISOLÉ (${siteVt.positives}/${siteVt.total_engines || 91})` : `⚠️ ISOLATED DETECTION (${siteVt.positives}/${siteVt.total_engines || 91})`)
+                                  : (lang === 'fr' ? '✓ AUCUNE DÉTECTION' : '✓ NO DETECTIONS')}
                             </span>
                           </div>
                           <div className="space-y-2 text-[11px] font-mono">
                             <div className="flex justify-between">
-                              <span className="text-slate-500">Moteurs ayant signalé une détection</span>
+                              <span className="text-slate-500">{lang === 'fr' ? 'Moteurs ayant signalé une détection' : 'Engines reporting detection'}</span>
                               <span className={`font-black ${(siteVt?.positives || 0) > 3 ? 'text-rose-600 dark:text-rose-400' : (siteVt?.positives || 0) > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'}`}>{siteVt?.positives || 0} / {siteVt?.total_engines || 91}</span>
                             </div>
                             <div className="h-2 w-full bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
@@ -2063,8 +2120,8 @@ export default function StandardDashboard({ isHistoryView = false }) {
                             </div>
                             <p className="text-[9px] text-slate-400">
                               {(siteVt?.positives || 0) > 0 && (siteVt?.positives || 0) <= 3 
-                                ? "Détections marginales (souvent liées à des règles heuristiques ou des historiques de test)." 
-                                : `Source : ${siteVt?.source || 'VirusTotal Intelligence API v3'}`}
+                                ? (lang === 'fr' ? "Détections marginales (souvent liées à des règles heuristiques ou des historiques de test)." : "Marginal detections (often related to heuristic rules or test histories).")
+                                : (lang === 'fr' ? `Source : ${siteVt?.source || 'VirusTotal Intelligence API v3'}` : `Source: ${siteVt?.source || 'VirusTotal Intelligence API v3'}`)}
                             </p>
                           </div>
                         </div>
@@ -2074,16 +2131,29 @@ export default function StandardDashboard({ isHistoryView = false }) {
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
                               <span className="text-xl">🛡️</span>
-                              <div><p className="text-xs font-black text-slate-800 dark:text-white">Google Safe Browsing</p><p className="text-[10px] text-slate-400">Base mondiale malware & phishing</p></div>
+                              <div>
+                                <p className="text-xs font-black text-slate-800 dark:text-white">Google Safe Browsing</p>
+                                <p className="text-[10px] text-slate-400">{lang === 'fr' ? 'Base mondiale malware & phishing' : 'Global malware & phishing database'}</p>
+                              </div>
                             </div>
                             <span className={`px-2 py-0.5 rounded-md text-[10px] font-mono font-bold border ${siteGsb?.is_flagged ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20' : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'}`}>
-                              {siteGsb?.is_flagged ? '⚠️ MENACE RÉPERTORIÉE' : '✓ AUCUNE MENACE RÉPERTORIÉE'}
+                              {siteGsb?.is_flagged ? (lang === 'fr' ? '⚠️ MENACE RÉPERTORIÉE' : '⚠️ THREAT LISTED') : (lang === 'fr' ? '✓ AUCUNE MENACE RÉPERTORIÉE' : '✓ NO THREAT DETECTED')}
                             </span>
                           </div>
                           <div className="space-y-2 text-[10px] font-mono text-slate-400">
-                            <div className="flex justify-between"><span>Statut</span><span className={`font-black ${siteGsb?.is_flagged ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>{siteGsb?.is_flagged ? 'MALICIEUX / SIGNALÉ' : 'SÉCURISÉ / LISTE BLANCHE'}</span></div>
-                            <div className="flex justify-between"><span>Types de menace</span><span className={`font-bold ${siteGsb?.threat_types?.length > 0 ? 'text-rose-500' : 'text-emerald-500'}`}>{siteGsb?.threat_types?.length > 0 ? siteGsb.threat_types.join(', ') : 'Aucune menace active'}</span></div>
-                            <p className="text-[9px] pt-1">Source : {siteGsb?.source || 'Google Safe Browsing Update API'}</p>
+                            <div className="flex justify-between">
+                              <span>{lang === 'fr' ? 'Statut' : 'Status'}</span>
+                              <span className={`font-black ${siteGsb?.is_flagged ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                                {siteGsb?.is_flagged ? (lang === 'fr' ? 'MALICIEUX / SIGNALÉ' : 'MALICIOUS / FLAGGED') : (lang === 'fr' ? 'SÉCURISÉ / LISTE BLANCHE' : 'SECURE / WHITELISTED')}
+                              </span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>{lang === 'fr' ? 'Types de menace' : 'Threat types'}</span>
+                              <span className={`font-bold ${siteGsb?.threat_types?.length > 0 ? 'text-rose-500' : 'text-emerald-500'}`}>
+                                {siteGsb?.threat_types?.length > 0 ? siteGsb.threat_types.join(', ') : (lang === 'fr' ? 'Aucune menace active' : 'No active threats')}
+                              </span>
+                            </div>
+                            <p className="text-[9px] pt-1">{lang === 'fr' ? `Source : ${siteGsb?.source || 'Google Safe Browsing Update API'}` : `Source: ${siteGsb?.source || 'Google Safe Browsing Update API'}`}</p>
                           </div>
                         </div>
                       </div>
@@ -2091,15 +2161,28 @@ export default function StandardDashboard({ isHistoryView = false }) {
                       {/* Comparative Reconciliation Explanation Banner */}
                       <div className="p-3 bg-slate-50 dark:bg-[#111622] rounded-xl border border-slate-200 dark:border-slate-800 text-[11px] space-y-2">
                         <p className="font-bold text-slate-800 dark:text-slate-200 font-mono text-[10px] uppercase">
-                          ⚖️ Synthèse Comparative : Comment ces 4 attaques ont-elles été détectées ?
+                          {lang === 'fr' ? '⚖️ Synthèse Comparative : Comment ces attaques ont-elles été détectées ?' : '⚖️ Comparative Synthesis: How were these attacks detected?'}
                         </p>
                         <div className="text-slate-600 dark:text-slate-300 text-[11px] leading-relaxed font-sans space-y-1">
-                          <p>
-                            • <strong>VirusTotal (0/91) & Google Safe Browsing (Liste Blanche) :</strong> Ces bases publiques testent si le domaine lui-même distribue des virus ou du phishing aux internautes. Comme <code>{d.domain}</code> est votre propre site (la victime), sa réputation publique externe est saine.
-                          </p>
-                          <p>
-                            • <strong>Moteur de Détection WAF & IA CyberGuard (Détections Actives) :</strong> C'est le pare-feu applicatif web (WAF) et le moteur d'analyse des journaux d'accès HTTP de votre serveur qui ont inspecté les requêtes entrantes en temps réel, intercepté les charges malveillantes (injections SQL, scripts XSS, tentatives d'intrusion LFI et brute force), identifié les IP attaquantes et horodaté chaque preuve dans le registre sécurisé.
-                          </p>
+                          {lang === 'fr' ? (
+                            <>
+                              <p>
+                                • <strong>VirusTotal ({siteVt?.positives || 0}/91) & Google Safe Browsing ({siteGsb?.is_flagged ? 'Liste Noire' : 'Liste Blanche'}) :</strong> Ces bases publiques testent si le domaine lui-même distribue des virus ou du phishing aux internautes. Comme <code>{d.domain}</code> est votre propre site (la cible), sa réputation publique externe peut rester saine.
+                              </p>
+                              <p>
+                                • <strong>Moteur de Détection WAF & IA CyberGuard (Détections Actives) :</strong> C'est le pare-feu applicatif web (WAF) et le moteur d'analyse des journaux d'accès HTTP de votre serveur qui ont inspecté les requêtes entrantes en temps réel, intercepté les charges malveillantes (injections SQL, scripts XSS, tentatives d'intrusion LFI et brute force), identifié les IP attaquantes et horodaté chaque preuve dans le registre sécurisé.
+                              </p>
+                            </>
+                          ) : (
+                            <>
+                              <p>
+                                • <strong>VirusTotal ({siteVt?.positives || 0}/91) & Google Safe Browsing ({siteGsb?.is_flagged ? 'Blacklist' : 'Whitelist'}):</strong> These public databases test whether the domain itself is distributing malware or phishing to visitors. As <code>{d.domain}</code> is your own server (the target), its external public reputation may remain clean.
+                              </p>
+                              <p>
+                                • <strong>WAF Detection Engine & CyberGuard AI (Active Detections):</strong> The Web Application Firewall (WAF) and server HTTP access log analysis engine inspected incoming traffic in real-time, intercepting malicious payloads (SQL injections, XSS scripts, LFI attempts, and brute force), identifying attacker IPs, and timestamping evidence in the immutable ledger.
+                              </p>
+                            </>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -2112,21 +2195,23 @@ export default function StandardDashboard({ isHistoryView = false }) {
                         <div className="w-6 h-6 rounded-lg bg-sky-500 flex items-center justify-center text-white text-[10px] font-black shrink-0">{attackers.length > 0 ? 4 : 3}</div>
                         <MapPin className="w-4 h-4 text-sky-500" />
                         <span className="text-xs font-extrabold text-slate-800 dark:text-white font-mono uppercase tracking-wide">
-                          Infrastructure Serveur — Localisation Réseau Estimée & Attribution
+                          {lang === 'fr' ? 'Infrastructure Serveur — Localisation Réseau Estimée & Attribution' : 'Server Infrastructure — Estimated Network Location & Attribution'}
                         </span>
-                        <span className="ml-auto text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20">Hôte Résolu Live</span>
+                        <span className="ml-auto text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20">
+                          {lang === 'fr' ? 'Hôte Résolu Live' : 'Live Resolved Host'}
+                        </span>
                       </div>
                       <div className="p-4 space-y-3">
                         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
                           {[
-                            { label: 'Adresse IP', value: d.server_geo_info.ip || 'N/A', icon: '🌐', highlight: 'text-sky-500 font-bold' },
-                            { label: 'Localisation Estimée', value: `${d.server_geo_info.country || 'Inconnu'}${d.server_geo_info.city && d.server_geo_info.city !== 'Unknown' ? ` (${d.server_geo_info.city})` : ''}`, icon: '📍', highlight: '' },
-                            { label: 'Hébergeur / ASN', value: d.server_geo_info.asn || 'AS6724 Strato', icon: '🔌', highlight: '' },
-                            { label: 'Organisation Réseau', value: d.server_geo_info.org || 'Strato AG', icon: '🏢', highlight: '' },
-                            { label: 'Serveur HTTP Détecté', value: d.technical_inspection?.http?.server_banner || 'Heroku', icon: '🖥️', highlight: 'text-indigo-600 dark:text-indigo-400' },
+                            { label: lang === 'fr' ? 'Adresse IP' : 'IP Address', value: d.server_geo_info.ip || 'N/A', icon: '🌐', highlight: 'text-sky-500 font-bold' },
+                            { label: lang === 'fr' ? 'Localisation Estimée' : 'Estimated Location', value: `${d.server_geo_info.country || (lang === 'fr' ? 'Inconnu' : 'Unknown')}${d.server_geo_info.city && d.server_geo_info.city !== 'Unknown' ? ` (${d.server_geo_info.city})` : ''}`, icon: '📍', highlight: '' },
+                            { label: lang === 'fr' ? 'Hébergeur / ASN' : 'Hosting / ASN', value: d.server_geo_info.asn || 'AS6724 Strato', icon: '🔌', highlight: '' },
+                            { label: lang === 'fr' ? 'Organisation Réseau' : 'Network Organization', value: d.server_geo_info.org || 'Strato AG', icon: '🏢', highlight: '' },
+                            { label: lang === 'fr' ? 'Serveur HTTP Détecté' : 'Detected HTTP Server', value: d.technical_inspection?.http?.server_banner || 'Heroku', icon: '🖥️', highlight: 'text-indigo-600 dark:text-indigo-400' },
                             {
                               label: 'Proxy / CDN / PaaS',
-                              value: d.server_geo_info.proxy_status_display || (d.server_geo_info.is_cdn ? 'CDN Anycast' : d.server_geo_info.is_vpn_proxy ? 'OUI — Anonymisé' : 'Direct / Routé'),
+                              value: d.server_geo_info.proxy_status_display || (d.server_geo_info.is_cdn ? (lang === 'fr' ? 'CDN Anycast' : 'Anycast CDN') : d.server_geo_info.is_vpn_proxy ? (lang === 'fr' ? 'OUI — Anonymisé' : 'YES — Anonymized') : (lang === 'fr' ? 'Direct / Routé' : 'Direct / Routed')),
                               icon: d.server_geo_info.is_vpn_proxy ? '🔴' : d.server_geo_info.is_cdn ? '🔵' : '🟢',
                               risk: !!d.server_geo_info.is_vpn_proxy,
                               isCdn: !!d.server_geo_info.is_cdn,
@@ -2144,16 +2229,20 @@ export default function StandardDashboard({ isHistoryView = false }) {
                         {/* Explicit Architecture Attribution Note (Heroku banner vs Strato network) */}
                         <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-xs space-y-1">
                           <p className="font-bold text-amber-700 dark:text-amber-300 font-mono text-[10px] uppercase">
-                            ℹ️ Précision d'Architecture Serveur (En-tête Heroku vs ASN Strato GmbH) :
+                            {lang === 'fr' ? "ℹ️ Précision d'Architecture Serveur (En-tête Heroku vs ASN Strato GmbH) :" : 'ℹ️ Server Architecture Details (Heroku Header vs Strato GmbH ASN):'}
                           </p>
                           <p className="text-[10px] text-slate-600 dark:text-slate-300 leading-relaxed font-sans">
-                            Le scan identifie <strong>« {d.technical_inspection?.http?.server_banner || 'Heroku'} »</strong> via l'en-tête HTTP <code>Server: Heroku</code> / <code>Via: heroku-router</code> (couche applicative PaaS), tandis que l'adresse IP <code>{d.server_geo_info.ip}</code> est routée sur le système autonome <strong>{d.server_geo_info.asn || 'AS6724'} ({d.server_geo_info.org || 'Strato AG'})</strong> en Allemagne (couche réseau et transit IP). Cette double attribution reflète l'architecture réelle où une application déployée sur PaaS est relayée par un point de présence réseau spécifique.
+                            {lang === 'fr' ? (
+                              <>Le scan identifie <strong>« {d.technical_inspection?.http?.server_banner || 'Heroku'} »</strong> via l'en-tête HTTP <code>Server: Heroku</code> / <code>Via: heroku-router</code> (couche applicative PaaS), tandis que l'adresse IP <code>{d.server_geo_info.ip}</code> est routée sur le système autonome <strong>{d.server_geo_info.asn || 'AS6724'} ({d.server_geo_info.org || 'Strato AG'})</strong> en Allemagne (couche réseau et transit IP). Cette double attribution reflète l'architecture réelle où une application déployée sur PaaS est relayée par un point de présence réseau spécifique.</>
+                            ) : (
+                              <>The scan identifies <strong>"{d.technical_inspection?.http?.server_banner || 'Heroku'}"</strong> via the HTTP header <code>Server: Heroku</code> / <code>Via: heroku-router</code> (PaaS application layer), while IP address <code>{d.server_geo_info.ip}</code> is routed on autonomous system <strong>{d.server_geo_info.asn || 'AS6724'} ({d.server_geo_info.org || 'Strato AG'})</strong> in Germany (network layer & IP transit). This dual attribution reflects real-world architecture where PaaS apps route through specific points of presence.</>
+                            )}
                           </p>
                         </div>
 
                         {/* Praised Geolocation Disclaimer */}
                         <p className="text-[10px] text-slate-400 font-mono italic border-t border-slate-200 dark:border-slate-800 pt-2">
-                          ℹ️ {d.server_geo_info.disclaimer || "IP geolocation and ASN intelligence indicate the apparent network source. Physical attribution requires formal legal authority and ISP cooperation."}
+                          ℹ️ {d.server_geo_info.disclaimer || (lang === 'fr' ? "La géolocalisation IP et le renseignement ASN indiquent la source apparente sur le réseau." : "IP geolocation and ASN intelligence indicate the apparent network source. Physical attribution requires formal legal authority.")}
                         </p>
                       </div>
                     </div>
@@ -2168,46 +2257,50 @@ export default function StandardDashboard({ isHistoryView = false }) {
                       <div className="w-6 h-6 rounded-lg bg-indigo-500 flex items-center justify-center text-white text-[10px] font-black shrink-0">∑</div>
                       <Calculator className="w-4 h-4 text-indigo-500" />
                       <span className="text-xs font-extrabold text-slate-800 dark:text-white font-mono uppercase tracking-wide">
-                        Justification & Calcul Détaillé du Score de Risque ({currentResult.riskScore}%)
+                        {lang === 'fr' ? `Justification & Calcul Détaillé du Score de Risque (${currentResult.riskScore}%)` : `Detailed Risk Score Breakdown & Calculation (${currentResult.riskScore}%)`}
                       </span>
                     </div>
                     <div className="p-4 space-y-3">
                       <p className="text-xs text-slate-500 dark:text-slate-400">
-                        Pour répondre aux exigences méthodologiques de la soutenance, le score global de <strong>{currentResult.riskScore}%</strong> est calculé selon une formule transparente et documentée combinant 4 dimensions de télémétrie :
+                        {lang === 'fr' ? (
+                          <>Pour répondre aux exigences méthodologiques de la soutenance, le score global de <strong>{currentResult.riskScore}%</strong> est calculé selon une formule transparente et documentée combinant 4 dimensions de télémétrie :</>
+                        ) : (
+                          <>The overall risk score of <strong>{currentResult.riskScore}%</strong> is calculated using a transparent and documented formula combining 4 telemetry dimensions:</>
+                        )}
                       </p>
                       <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5 text-xs font-mono">
                         <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 text-center">
-                          <span className="text-[10px] text-slate-400 uppercase font-bold block">1. Attaques WAF Actives</span>
+                          <span className="text-[10px] text-slate-400 uppercase font-bold block">{lang === 'fr' ? '1. Attaques WAF Actives' : '1. Active WAF Attacks'}</span>
                           <span className={`text-xl font-black block mt-1 ${attackCount > 0 ? 'text-rose-500' : 'text-emerald-500'}`}>
                             +{d.risk_breakdown?.attacks_points ?? (attackCount > 0 ? Math.min(50, attackCount * 15) : 0)}%
                           </span>
-                          <span className="text-[9px] text-slate-400 block mt-0.5">{attackCount} événement(s) logué(s)</span>
+                          <span className="text-[9px] text-slate-400 block mt-0.5">{attackCount} {lang === 'fr' ? 'événement(s) logué(s)' : 'logged event(s)'}</span>
                         </div>
                         <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 text-center">
-                          <span className="text-[10px] text-slate-400 uppercase font-bold block">2. VirusTotal (Intel)</span>
+                          <span className="text-[10px] text-slate-400 uppercase font-bold block">{lang === 'fr' ? '2. VirusTotal (Intel)' : '2. VirusTotal (Intel)'}</span>
                           <span className={`text-xl font-black block mt-1 ${(siteVt?.positives || 0) > 0 ? 'text-amber-500' : 'text-emerald-500'}`}>
                             +{d.risk_breakdown?.vt_points ?? ((siteVt?.positives || 0) > 0 ? Math.min(30, (siteVt?.positives || 0) * 10) : 0)}%
                           </span>
-                          <span className="text-[9px] text-slate-400 block mt-0.5">{siteVt?.positives || 0}/{siteVt?.total_engines || 91} détection(s)</span>
+                          <span className="text-[9px] text-slate-400 block mt-0.5">{siteVt?.positives || 0}/{siteVt?.total_engines || 91} {lang === 'fr' ? 'détection(s)' : 'detection(s)'}</span>
                         </div>
                         <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 text-center">
-                          <span className="text-[10px] text-slate-400 uppercase font-bold block">3. Google Safe Browsing</span>
+                          <span className="text-[10px] text-slate-400 uppercase font-bold block">{lang === 'fr' ? '3. Google Safe Browsing' : '3. Google Safe Browsing'}</span>
                           <span className={`text-xl font-black block mt-1 ${siteGsb?.is_flagged ? 'text-rose-500' : 'text-emerald-500'}`}>
                             +{d.risk_breakdown?.gsb_points ?? (siteGsb?.is_flagged ? 40 : 0)}%
                           </span>
-                          <span className="text-[9px] text-slate-400 block mt-0.5">{siteGsb?.is_flagged ? 'Liste Noire (+40%)' : 'Liste Blanche (+0%)'}</span>
+                          <span className="text-[9px] text-slate-400 block mt-0.5">{siteGsb?.is_flagged ? (lang === 'fr' ? 'Liste Noire (+40%)' : 'Blacklist (+40%)') : (lang === 'fr' ? 'Liste Blanche (+0%)' : 'Whitelist (+0%)')}</span>
                         </div>
                         <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 text-center">
-                          <span className="text-[10px] text-slate-400 uppercase font-bold block">4. Hygiène & En-têtes</span>
+                          <span className="text-[10px] text-slate-400 uppercase font-bold block">{lang === 'fr' ? '4. Hygiène & En-têtes' : '4. Hygiene & Headers'}</span>
                           <span className="text-xl font-black text-indigo-500 block mt-1">
                             +{d.risk_breakdown?.hygiene_points ?? 25}%
                           </span>
-                          <span className="text-[9px] text-slate-400 block mt-0.5">Absence HSTS / CSP / TLS</span>
+                          <span className="text-[9px] text-slate-400 block mt-0.5">{lang === 'fr' ? 'Absence HSTS / CSP / TLS' : 'Missing HSTS / CSP / TLS'}</span>
                         </div>
                       </div>
                       {d.risk_breakdown?.hygiene_penalties && d.risk_breakdown.hygiene_penalties.length > 0 && (
                         <div className="text-[10px] font-mono text-slate-500 flex flex-wrap gap-2 pt-1">
-                          <span className="font-bold">Détail des pénalités d'hygiène :</span>
+                          <span className="font-bold">{lang === 'fr' ? "Détail des pénalités d'hygiène :" : 'Hygiene penalty breakdown:'}</span>
                           {d.risk_breakdown.hygiene_penalties.map((pen, i) => (
                             <span key={i} className="px-1.5 py-0.5 bg-amber-500/10 text-amber-600 dark:text-amber-400 rounded border border-amber-500/20">{pen}</span>
                           ))}
@@ -2219,7 +2312,7 @@ export default function StandardDashboard({ isHistoryView = false }) {
                   {/* ── DEFENSIVE RECOMMENDATIONS ── */}
                   {advice.length > 0 && (
                     <div className="bg-sky-500/10 border border-sky-500/30 rounded-2xl p-5 space-y-2">
-                      <h4 className="text-xs font-bold text-sky-600 dark:text-sky-400 uppercase font-mono tracking-wider flex items-center gap-2"><Sparkles className="w-4 h-4" /> Recommandations de Sécurité Site :</h4>
+                      <h4 className="text-xs font-bold text-sky-600 dark:text-sky-400 uppercase font-mono tracking-wider flex items-center gap-2"><Sparkles className="w-4 h-4" /> {lang === 'fr' ? 'Recommandations de Sécurité Site :' : 'Site Security Recommendations:'}</h4>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 text-xs text-slate-800 dark:text-slate-200 font-sans">
                         {advice.map((item, idx) => (
                           <div key={idx} className="flex items-start gap-2 bg-white/60 dark:bg-slate-900/60 p-2.5 rounded-xl border border-sky-200/40 dark:border-sky-800/40">

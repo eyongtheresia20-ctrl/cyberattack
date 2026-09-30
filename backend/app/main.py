@@ -36,6 +36,16 @@ try:
                 conn.commit()
             except Exception:
                 pass
+            try:
+                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN scan_count INTEGER DEFAULT 0"))
+                conn.commit()
+            except Exception:
+                pass
+            try:
+                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN report_count INTEGER DEFAULT 0"))
+                conn.commit()
+            except Exception:
+                pass
         try:
             conn.execute(text("ALTER TABLE analysis_records ADD COLUMN IF NOT EXISTS user_id VARCHAR(36)"))
             conn.commit()

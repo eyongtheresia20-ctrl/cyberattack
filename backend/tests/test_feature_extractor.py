@@ -38,9 +38,9 @@ def test_output_is_dict():
     assert isinstance(result, dict), "Output must be a dictionary"
 
 
-def test_output_has_17_features():
+def test_output_has_27_features():
     result = extract_url_features(LEGIT_URL_GOOGLE)
-    assert len(result) == 17, f"Expected 17 features, got {len(result)}"
+    assert len(result) == 27, f"Expected 27 features, got {len(result)}"
 
 
 def test_all_expected_keys_present():
@@ -51,16 +51,20 @@ def test_all_expected_keys_present():
         "num_question", "num_equals", "num_slashes",
         "num_digits", "num_special_chars", "num_subdomains",
         "has_ip", "is_https", "keyword_count",
-        "has_suspicious_tld", "entropy"
+        "has_suspicious_tld", "entropy",
+        "vt_positives_sim", "gsb_social_sim", "gsb_malware_sim",
+        "asn_risk_score", "is_hosting_server", "is_proxy_vpn_sim",
+        "domain_age_risk", "brand_impersonation_sim",
+        "threat_category_sim", "multi_engine_consensus"
     ]
     for key in expected_keys:
         assert key in result, f"Missing feature key: '{key}'"
 
 
-def test_feature_list_has_17_elements():
+def test_feature_list_has_27_elements():
     feats = extract_url_features(LEGIT_URL_GOOGLE)
     feat_list = feature_dict_to_list(feats)
-    assert len(feat_list) == 17, f"feature_dict_to_list must return 17 values, got {len(feat_list)}"
+    assert len(feat_list) == 27, f"feature_dict_to_list must return 27 values, got {len(feat_list)}"
 
 
 # ══════════════════════════════════════════════════

@@ -42,6 +42,8 @@ class Enqueteur(Base):
     badge_number = Column(String(50), nullable=True)
     clearance_level = Column(String(50), default="LEVEL_2_SOC")
     cases_resolved = Column(Integer, default=0)
+    scan_count = Column(Integer, default=0)
+    report_count = Column(Integer, default=0)
     is_active = Column(Boolean, default=True)
     password_raw = Column(String(255), nullable=True)
     last_login = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=True)
@@ -61,6 +63,8 @@ class Administrateur(Base):
     role = Column(String(30), default="ADMINISTRATEUR", nullable=False)
     admin_level = Column(String(50), default="SUPER_ADMIN")
     can_manage_roles = Column(Boolean, default=True)
+    scan_count = Column(Integer, default=0)
+    report_count = Column(Integer, default=0)
     is_active = Column(Boolean, default=True)
     password_raw = Column(String(255), nullable=True)
     last_login = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=True)
@@ -74,7 +78,7 @@ class AnalysisRecord(Base):
     __tablename__ = "analysis_records"
 
     id = Column(String(36), primary_key=True, default=generate_uuid)
-    user_id = Column(String(36), ForeignKey("utilisateurs_standards.id"), nullable=True, index=True)
+    user_id = Column(String(36), nullable=True, index=True) # supports Standard, Investigator & Admin IDs
     analysis_code = Column(String(20), unique=True, nullable=False, index=True) # e.g. ANL-2026-0001
     analysis_type = Column(String(20), nullable=False) # URL, EMAIL, MESSAGE
     target_content = Column(Text, nullable=False)

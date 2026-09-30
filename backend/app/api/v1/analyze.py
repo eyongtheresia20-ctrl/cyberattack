@@ -383,7 +383,11 @@ def analyze_text(req: TextAnalysisRequest, db: Session = Depends(get_db), curren
 def get_analysis_stats(db: Session = Depends(get_db), current_user = Depends(get_optional_user)):
     from sqlalchemy import or_
     user_id = getattr(current_user, "id", None)
-    if user_id:
+    role = getattr(current_user, "role", "UTILISATEUR_STANDARD")
+
+    if role in ["ENQUETEUR", "ADMINISTRATEUR"]:
+        query = db.query(AnalysisRecord).filter(AnalysisRecord.is_deleted_by_user == False)
+    elif user_id:
         query = db.query(AnalysisRecord).filter(
             or_(
                 AnalysisRecord.user_id == user_id,
@@ -417,7 +421,13 @@ def get_analysis_stats(db: Session = Depends(get_db), current_user = Depends(get
 def get_analysis_history(db: Session = Depends(get_db), current_user = Depends(get_optional_user)):
     from sqlalchemy import or_
     user_id = getattr(current_user, "id", None)
-    if user_id:
+    role = getattr(current_user, "role", "UTILISATEUR_STANDARD")
+
+    if role in ["ENQUETEUR", "ADMINISTRATEUR"]:
+        records = db.query(AnalysisRecord).filter(
+            AnalysisRecord.is_deleted_by_user == False
+        ).order_by(AnalysisRecord.created_at.desc()).all()
+    elif user_id:
         records = db.query(AnalysisRecord).filter(
             or_(
                 AnalysisRecord.user_id == user_id,
