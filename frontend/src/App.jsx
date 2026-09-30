@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Routes, Route, useLocation } from 'react-router-dom';
+import { Routes, Route, useLocation, Navigate } from 'react-router-dom';
 import { ThemeProvider } from './context/ThemeContext';
 import { LanguageProvider } from './context/LanguageContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -67,12 +67,12 @@ function AppLayout() {
             <Route path="/history" element={<HistoryPage />} />
             <Route path="/url-analysis" element={<UrlAnalysis />} />
             <Route path="/text-analysis" element={<TextAnalysis />} />
-            <Route path="/site-monitoring" element={<SiteMonitoring />} />
+            <Route path="/site-monitoring" element={!isStandardUser ? <SiteMonitoring /> : <Navigate to="/dashboard" replace />} />
             <Route path="/incidents" element={<Incidents />} />
             <Route path="/verification" element={<Verification />} />
             <Route path="/assistant" element={<Assistant />} />
-            <Route path="/admin/users" element={<AdminUsersPage />} />
-            <Route path="/activity-logs" element={<ActivityLogsPage />} />
+            <Route path="/admin/users" element={user?.role === 'ADMINISTRATEUR' ? <AdminUsersPage /> : <Navigate to="/dashboard" replace />} />
+            <Route path="/activity-logs" element={user?.role === 'ADMINISTRATEUR' ? <ActivityLogsPage /> : <Navigate to="/dashboard" replace />} />
           </Routes>
         </main>
       </div>

@@ -9,15 +9,11 @@ import {
   Pin, Printer, FilePlus, Share2, Trash2, Copy, Check, ExternalLink, ShieldAlert,
   AlertOctagon, Layers, Award, Terminal, Server, Wifi, Link2, Radio, Info, Calculator
 } from 'lucide-react';
-import MLMetricsPanel from '../components/MLMetricsPanel';
 import EnterpriseDefenseSuite from '../components/EnterpriseDefenseSuite';
 
 export default function StandardDashboard({ isHistoryView = false }) {
   const { user } = useAuth();
   const { lang, t } = useLanguage();
-  
-  // Tab switcher state
-  const [activeMainTab, setActiveMainTab] = useState('SCANNER'); // 'SCANNER' or 'METRICS'
 
   // Real-time clock & date
   const [timeString, setTimeString] = useState('');
@@ -41,6 +37,13 @@ export default function StandardDashboard({ isHistoryView = false }) {
   const [selectedModel, setSelectedModel] = useState('rf'); // 'rf', 'gbm', 'mlp'
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef(null);
+
+  // Enforce CONTENT mode for standard users (no domain/system audits)
+  useEffect(() => {
+    if (user?.role === 'UTILISATEUR_STANDARD' && investigationObjective !== 'CONTENT') {
+      setInvestigationObjective('CONTENT');
+    }
+  }, [user?.role, investigationObjective]);
 
   // Close dropdown menu when clicking outside on empty space
   useEffect(() => {
@@ -1623,9 +1626,8 @@ export default function StandardDashboard({ isHistoryView = false }) {
 
         {/* Card 3: Machine Learning Engine */}
         <div 
-          onClick={() => setActiveMainTab('METRICS')}
-          className="bg-white/80 dark:bg-[#111622]/90 backdrop-blur-xl border border-sky-100 dark:border-sky-800/40 rounded-3xl p-6 shadow-xl relative overflow-hidden group hover:border-emerald-400/60 transition duration-300 cursor-pointer"
-          title={lang === 'fr' ? 'Cliquer pour voir les métriques 5-fold CV et matrices de confusion' : 'Click to view 5-fold CV metrics & confusion matrices'}
+          className="bg-white/80 dark:bg-[#111622]/90 backdrop-blur-xl border border-sky-100 dark:border-sky-800/40 rounded-3xl p-6 shadow-xl relative overflow-hidden group hover:border-emerald-400/60 transition duration-300"
+          title={lang === 'fr' ? 'Précision globale du moteur de détection ML' : 'Global ML detection engine accuracy'}
         >
           <div className="flex items-center justify-between">
             <div className="space-y-1">
@@ -1644,67 +1646,51 @@ export default function StandardDashboard({ isHistoryView = false }) {
 
       </div>
 
-      {/* Conditional ML Metrics Cross-Validation Tab */}
-      {activeMainTab === 'METRICS' && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between bg-white dark:bg-[#111622] p-4 rounded-2xl border border-sky-100 dark:border-sky-800/40">
-            <span className="font-bold text-xs text-slate-800 dark:text-white font-mono">
-              {lang === 'fr' ? '📊 Métriques de Validation Croisée (5-Fold CV) & Performances ML' : '📊 5-Fold Cross-Validation Metrics & ML Performances'}
-            </span>
-            <button
-              onClick={() => setActiveMainTab('SCANNER')}
-              className="px-4 py-2 bg-sky-500 hover:bg-sky-600 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
-            >
-              <span>{lang === 'fr' ? '← Revenir au Scanner' : '← Return to Scanner'}</span>
-            </button>
-          </div>
-          <MLMetricsPanel lang={lang} />
-        </div>
-      )}
-
       {/* Main Interactive Scanner Container */}
       <div className="bg-white/80 dark:bg-[#111622]/90 backdrop-blur-xl border border-sky-100 dark:border-sky-800/40 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6">
         
-        {/* Objective Mode Switcher Bar */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 p-1.5 bg-slate-100 dark:bg-slate-900/90 rounded-2xl border border-slate-200 dark:border-slate-800">
-          <button
-            type="button"
-            onClick={() => {
-              setInvestigationObjective('CONTENT');
-              setIsDropdownOpen(false);
-            }}
-            className={`flex-1 flex items-center justify-center gap-2.5 px-4 py-3 rounded-xl font-bold text-xs transition cursor-pointer ${
-              investigationObjective === 'CONTENT'
-                ? 'bg-gradient-to-r from-sky-500 to-blue-600 text-white shadow-md shadow-sky-500/20'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-white/50 dark:hover:bg-slate-800/50'
-            }`}
-          >
-            <span className="text-base">🔗</span>
-            <div className="text-left">
-              <span className="block font-black leading-tight">{lang === 'fr' ? 'Vérifier une URL / Lien Externe' : 'Verify External URL / Link'}</span>
-              <span className="text-[10px] opacity-80 block font-normal">{lang === 'fr' ? 'Détection Phishing & Malware (3 Modèles IA + 17 Signatures)' : 'Phishing & Malware Detection (3 AI Models + 17 Signatures)'}</span>
-            </div>
-          </button>
+        {/* Objective Mode Switcher Bar (Admins & SOC Investigators only) */}
+        {user?.role !== 'UTILISATEUR_STANDARD' && (
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 p-1.5 bg-slate-100 dark:bg-slate-900/90 rounded-2xl border border-slate-200 dark:border-slate-800">
+            <button
+              type="button"
+              onClick={() => {
+                setInvestigationObjective('CONTENT');
+                setIsDropdownOpen(false);
+              }}
+              className={`flex-1 flex items-center justify-center gap-2.5 px-4 py-3 rounded-xl font-bold text-xs transition cursor-pointer ${
+                investigationObjective === 'CONTENT'
+                  ? 'bg-gradient-to-r from-sky-500 to-blue-600 text-white shadow-md shadow-sky-500/20'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-white/50 dark:hover:bg-slate-800/50'
+              }`}
+            >
+              <span className="text-base">🔗</span>
+              <div className="text-left">
+                <span className="block font-black leading-tight">{lang === 'fr' ? 'Vérifier une URL / Lien Externe' : 'Verify External URL / Link'}</span>
+                <span className="text-[10px] opacity-80 block font-normal">{lang === 'fr' ? 'Détection Phishing & Malware (3 Modèles IA + 17 Signatures)' : 'Phishing & Malware Detection (3 AI Models + 17 Signatures)'}</span>
+              </div>
+            </button>
 
-          <button
-            type="button"
-            onClick={() => {
-              setInvestigationObjective('SYSTEM');
-              setIsDropdownOpen(false);
-            }}
-            className={`flex-1 flex items-center justify-center gap-2.5 px-4 py-3 rounded-xl font-bold text-xs transition cursor-pointer ${
-              investigationObjective === 'SYSTEM'
-                ? 'bg-gradient-to-r from-indigo-500 to-purple-600 text-white shadow-md shadow-indigo-500/20'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-white/50 dark:hover:bg-slate-800/50'
-            }`}
-          >
-            <span className="text-base">🛡️</span>
-            <div className="text-left">
-              <span className="block font-black leading-tight">{lang === 'fr' ? 'Vérifier mon Propre Site Web' : 'Verify My Own Website'}</span>
-              <span className="text-[10px] opacity-80 block font-normal">{lang === 'fr' ? 'Audit de Sécurité Domaine (Attaques WAF, Attaquants Tracés & Renseignement)' : 'Domain Security Audit (WAF Attacks, Attacker Tracing & Intel)'}</span>
-            </div>
-          </button>
-        </div>
+            <button
+              type="button"
+              onClick={() => {
+                setInvestigationObjective('SYSTEM');
+                setIsDropdownOpen(false);
+              }}
+              className={`flex-1 flex items-center justify-center gap-2.5 px-4 py-3 rounded-xl font-bold text-xs transition cursor-pointer ${
+                investigationObjective === 'SYSTEM'
+                  ? 'bg-gradient-to-r from-indigo-500 to-purple-600 text-white shadow-md shadow-indigo-500/20'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-white/50 dark:hover:bg-slate-800/50'
+              }`}
+            >
+              <span className="text-base">🛡️</span>
+              <div className="text-left">
+                <span className="block font-black leading-tight">{lang === 'fr' ? 'Vérifier mon Propre Site Web' : 'Verify My Own Website'}</span>
+                <span className="text-[10px] opacity-80 block font-normal">{lang === 'fr' ? 'Audit de Sécurité Domaine (Attaques WAF, Attaquants Tracés & Renseignement)' : 'Domain Security Audit (WAF Attacks, Attacker Tracing & Intel)'}</span>
+              </div>
+            </button>
+          </div>
+        )}
 
         {/* Content Subtype Selector for CONTENT objective */}
         {investigationObjective === 'CONTENT' && (
@@ -2511,22 +2497,6 @@ export default function StandardDashboard({ isHistoryView = false }) {
                     <p className="text-[10px] text-slate-400 font-mono italic px-1">ℹ️ {translateGeoDisclaimer(d.disclaimer)}</p>
                   )}
 
-                  {/* ── BLOCK: INTEGRATED ACTIVE WAF, PCAP & HONEYPOTS DEFENSE ── */}
-                  <div className="pt-6 border-t border-slate-100 dark:border-slate-800/80 space-y-4">
-                    <div>
-                      <h4 className="text-xs font-black uppercase font-mono tracking-wider text-slate-900 dark:text-white flex items-center gap-2">
-                        <ShieldAlert className="w-4 h-4 text-indigo-500" />
-                        <span>{lang === 'fr' ? "Suite de Défense Active & Télémétrie Réseau" : "Active Defense Suite & Network Telemetry"}</span>
-                      </h4>
-                      <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                        {lang === 'fr'
-                          ? "Inspection approfondie des trames réseau (PCAP L3/4), gestion du pare-feu applicatif (bannissement IP) et sondes pièges honeypot pour ce domaine."
-                          : "Deep network packet inspection (PCAP L3/4), application firewall controls (IP bans), and decoy honeypot traps for this domain."}
-                      </p>
-                    </div>
-                    <EnterpriseDefenseSuite lang={lang} mode="SYSTEM_DEFENSE" initialUrl={currentResult.target} />
-                  </div>
-
                   {/* ── ACTION TOOLBAR ── */}
                   <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3">
                     <button onClick={() => setIsReportModalOpen(true)} className="w-full sm:w-auto px-5 py-3 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold text-xs rounded-2xl flex items-center justify-center gap-2 transition cursor-pointer">
@@ -2880,8 +2850,8 @@ export default function StandardDashboard({ isHistoryView = false }) {
                 {/* ── BLOCK 5: LIVE TECHNICAL INSPECTION (HTTP, SSL, HEADERS, DNS, BRAND) ── */}
                 {currentResult.details?.technical_inspection && renderTechnicalDetails(currentResult.details.technical_inspection, 5)}
 
-                {/* ── BLOCK 6: DYNAMIC HEADLESS SANDBOX & DOM DETONATION ── */}
-                {(currentResult.type === 'URL' || currentResult.target?.startsWith('http')) && (
+                {/* ── BLOCK 6: DYNAMIC HEADLESS SANDBOX & DOM DETONATION (ADMIN & SOC INVESTIGATORS ONLY) ── */}
+                {user?.role !== 'UTILISATEUR_STANDARD' && (currentResult.type === 'URL' || currentResult.target?.startsWith('http')) && (
                   <div className="pt-4 border-t border-slate-100 dark:border-slate-800/80 space-y-3">
                     <div className="flex items-center justify-between">
                       <h4 className="text-xs font-black uppercase font-mono tracking-wider text-slate-900 dark:text-white flex items-center gap-2">
