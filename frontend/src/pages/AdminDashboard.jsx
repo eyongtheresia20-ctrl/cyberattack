@@ -17,7 +17,6 @@ import {
   Tooltip
 } from 'recharts';
 import EnterpriseDefenseSuite from '../components/EnterpriseDefenseSuite';
-import MLMetricsPanel from '../components/MLMetricsPanel';
 import { api } from '../services/api';
 
 export default function AdminDashboard() {
@@ -206,15 +205,15 @@ export default function AdminDashboard() {
       action: () => setActiveAdminTab('WAF'),
     },
     {
-      id: 'ML',
-      label: lang === 'fr' ? 'Performances Modèles ML' : 'ML Engine 5-Fold CV',
-      value: '98.4%',
-      subtext: 'Random Forest, GBM & MLP',
-      icon: Cpu,
+      id: 'HONEYPOT',
+      label: lang === 'fr' ? 'Sondes & Pièges Honeypot' : 'Honeypot Decoy Traps',
+      value: stats.honeypotTrapsCount,
+      subtext: lang === 'fr' ? 'Robots Piégés & Bannis Auto' : 'Trapped Bots & Auto-Banned',
+      icon: Zap,
       colorBg: 'bg-emerald-500/10',
       colorText: 'text-emerald-500',
       colorBorder: 'border-emerald-500/20',
-      action: () => setActiveAdminTab('ML'),
+      action: () => setActiveAdminTab('HONEYPOT'),
     },
   ];
 
@@ -234,8 +233,8 @@ export default function AdminDashboard() {
               </h1>
               <p className="text-xs text-slate-500 dark:text-slate-400">
                 {lang === 'fr'
-                  ? 'Supervision en direct des attaques web, pare-feu WAF actif, leurres honeypots et évaluation des performances IA.'
-                  : 'Real-time web attack monitoring, active WAF firewall, honeypot decoy traps, and AI performance evaluation.'}
+                  ? 'Supervision en direct des attaques web, pare-feu WAF actif et gestion des leurres honeypots.'
+                  : 'Real-time web attack monitoring, active WAF firewall, and honeypot decoy trap management.'}
               </p>
             </div>
           </div>
@@ -330,19 +329,6 @@ export default function AdminDashboard() {
         >
           <Zap className="w-4 h-4" />
           <span>{lang === 'fr' ? '3. Superviser les Honeypots (Leurres)' : '3. Honeypots Supervision (Decoys)'}</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveAdminTab('ML')}
-          className={`flex-1 min-w-[200px] flex items-center justify-center gap-2 px-4 py-3 rounded-xl transition cursor-pointer ${
-            activeAdminTab === 'ML'
-              ? 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-md font-extrabold'
-              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-white/50 dark:hover:bg-slate-800/50'
-          }`}
-        >
-          <Cpu className="w-4 h-4" />
-          <span>{lang === 'fr' ? '4. Performances Modèles ML (5-Fold CV)' : '4. ML Models Evaluation (5-Fold CV)'}</span>
         </button>
       </div>
 
@@ -559,23 +545,6 @@ export default function AdminDashboard() {
             </div>
           </div>
           <EnterpriseDefenseSuite lang={lang} mode="SYSTEM_DEFENSE" initialSubTab="HONEYPOT" />
-        </div>
-      )}
-
-      {/* ── TAB 4: SUPERVISER LES PERFORMANCES DES MODÈLES ML ── */}
-      {activeAdminTab === 'ML' && (
-        <div className="space-y-4">
-          <div className="bg-emerald-500/10 border border-emerald-500/30 p-4 rounded-2xl flex items-center justify-between text-xs">
-            <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 font-bold">
-              <Cpu className="w-5 h-5 shrink-0" />
-              <span>
-                {lang === 'fr'
-                  ? "Évaluation Scientifique des Modèles ML : Validation croisée (5-Fold Cross Validation), matrices de confusion, Précision, Rappel, F1-Score et comparaison multi-modèles."
-                  : "Scientific ML Model Evaluation: 5-Fold Cross Validation, confusion matrices, Precision, Recall, F1-Score, and multi-model benchmark."}
-              </span>
-            </div>
-          </div>
-          <MLMetricsPanel lang={lang} />
         </div>
       )}
 
