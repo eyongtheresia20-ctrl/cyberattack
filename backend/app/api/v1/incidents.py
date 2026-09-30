@@ -176,6 +176,31 @@ def create_incident(req: IncidentCreateRequest, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(incident)
 
+    # Sync to MongoDB
+    try:
+        from app.db.mongodb import mongo_collections, log_mongo_audit
+        mongo_collections.incidents.insert_one({
+            "id": str(incident.id),
+            "incident_code": incident.incident_code,
+            "title": incident.title,
+            "category": incident.category,
+            "severity": incident.severity,
+            "status": incident.status,
+            "source_type": incident.source_type,
+            "source_ref_id": incident.source_ref_id,
+            "summary": incident.summary,
+            "evidence_hash": incident.evidence_hash,
+            "created_at": incident.created_at or datetime.now(timezone.utc)
+        })
+        log_mongo_audit(
+            actor="Enquêteur SOC",
+            action="CREATE_INCIDENT",
+            target=incident.incident_code,
+            details=f"Création du dossier incident: {incident.title} ({incident.severity})"
+        )
+    except Exception as _me:
+        print(f"[MongoDB Incident Notice] {_me}")
+
     return incident
 
 @router.post("/{incident_id}/generate-report")
@@ -229,6 +254,28 @@ def generate_incident_report(incident_id: str, reporter_name: str = "Security In
     db.commit()
     db.refresh(report)
 
+    # Sync report to MongoDB
+    try:
+        from app.db.mongodb import mongo_collections, log_mongo_audit
+        mongo_collections.reports.insert_one({
+            "id": str(report.id),
+            "report_code": report.report_code,
+            "incident_id": str(report.incident_id),
+            "reporter": report.reporter,
+            "report_payload": report.report_payload,
+            "integrity_hash": report.integrity_hash,
+            "verified": report.verified,
+            "created_at": report.created_at or datetime.now(timezone.utc)
+        })
+        log_mongo_audit(
+            actor=reporter_name,
+            action="GENERATE_REPORT",
+            target=report.report_code,
+            details=f"Scellement cryptographique du rapport pour le dossier {incident.incident_code}"
+        )
+    except Exception as _me:
+        print(f"[MongoDB Report Notice] {_me}")
+
     return {
         "report": report,
         "integrity_hash": integrity_hash
@@ -253,6 +300,23 @@ def update_incident_status(incident_id: str, req: StatusUpdateRequest, db: Sessi
     
     db.commit()
     db.refresh(incident)
+
+    # Sync to MongoDB
+    try:
+        from app.db.mongodb import mongo_collections, log_mongo_audit
+        mongo_collections.incidents.update_one(
+            {"$or": [{"id": str(incident_id)}, {"incident_code": incident.incident_code}]},
+            {"$set": {"status": incident.status, "summary": incident.summary}}
+        )
+        log_mongo_audit(
+            actor="Enquêteur SOC",
+            action="UPDATE_INCIDENT_STATUS",
+            target=incident.incident_code,
+            details=f"Statut changé en {req.status} pour {incident.title}"
+        )
+    except Exception as _me:
+        print(f"[MongoDB Incident Status Notice] {_me}")
+
     return incident
 
 class UserScanReportRequest(BaseModel):
@@ -341,6 +405,49 @@ def submit_user_report(req: UserScanReportRequest, db: Session = Depends(get_db)
     db.add(audit)
     db.commit()
     db.refresh(report)
+
+    # Sync to MongoDB
+    try:
+        from app.db.mongodb import mongo_collections, log_mongo_audit
+        mongo_collections.incidents.insert_one({
+            "id": str(incident.id),
+            "incident_code": incident.incident_code,
+            "title": incident.title,
+            "category": incident.category,
+            "severity": incident.severity,
+            "status": incident.status,
+            "source_type": incident.source_type,
+            "source_ref_id": incident.source_ref_id,
+            "summary": incident.summary,
+            "evidence_hash": incident.evidence_hash,
+            "created_at": incident.created_at or datetime.now(timezone.utc)
+        })
+        mongo_collections.evidences.insert_one({
+            "id": str(ev.id),
+            "incident_id": str(incident.id),
+            "evidence_type": ev.evidence_type,
+            "content": ev.content,
+            "sha256_checksum": ev.sha256_checksum,
+            "timestamp": ev.timestamp or datetime.now(timezone.utc)
+        })
+        mongo_collections.reports.insert_one({
+            "id": str(report.id),
+            "report_code": report.report_code,
+            "incident_id": str(incident.id),
+            "reporter": report.reporter,
+            "report_payload": report.report_payload,
+            "integrity_hash": report.integrity_hash,
+            "verified": report.verified,
+            "created_at": report.created_at or datetime.now(timezone.utc)
+        })
+        log_mongo_audit(
+            actor=req.reporter_name or "Alice Martin",
+            action="TRANSFERT_RAPPORT",
+            target=req.target,
+            details=f"Transfert du dossier {inc_code} à l'enquêteur (Verdict: {req.verdict}, Risque: {req.risk_score}/100)"
+        )
+    except Exception as _me:
+        print(f"[MongoDB User Report Notice] {_me}")
     
     return {
         "incident": incident,
@@ -385,6 +492,7 @@ def update_incident_full(incident_id: str, req: IncidentUpdateRequest, db: Sessi
 
     # Also update associated sealed report payload if verdict was updated
     report = db.query(IncidentReport).filter(IncidentReport.incident_id == incident.id).first()
+    new_payload = None
     if report and report.report_payload:
         new_payload = dict(report.report_payload)
         if req.title:
@@ -401,6 +509,37 @@ def update_incident_full(incident_id: str, req: IncidentUpdateRequest, db: Sessi
 
     db.commit()
     db.refresh(incident)
+
+    # Sync to MongoDB
+    try:
+        from app.db.mongodb import mongo_collections, log_mongo_audit
+        mongo_collections.incidents.update_one(
+            {"$or": [{"id": str(incident_id)}, {"incident_code": incident.incident_code}]},
+            {"$set": {
+                "title": incident.title,
+                "category": incident.category,
+                "severity": incident.severity,
+                "status": incident.status,
+                "summary": incident.summary
+            }}
+        )
+        if new_payload:
+            mongo_collections.reports.update_one(
+                {"incident_id": str(incident.id)},
+                {"$set": {
+                    "report_payload": new_payload,
+                    "integrity_hash": report.integrity_hash
+                }}
+            )
+        log_mongo_audit(
+            actor="Enquêteur SOC",
+            action="UPDATE_INCIDENT",
+            target=incident.incident_code,
+            details=f"Mise à jour du dossier {incident.incident_code} (Statut: {incident.status})"
+        )
+    except Exception as _me:
+        print(f"[MongoDB Incident Update Notice] {_me}")
+
     return {
         "success": True,
         "message": "Rapport et incident mis à jour avec succès",
@@ -414,15 +553,31 @@ def delete_incident(incident_id: str, db: Session = Depends(get_db)):
     if not incident:
         raise HTTPException(status_code=404, detail="Incident non trouvé")
 
+    inc_code = incident.incident_code
     # Cleanly remove evidences & reports
     db.query(Evidence).filter(Evidence.incident_id == incident.id).delete()
     db.query(IncidentReport).filter(IncidentReport.incident_id == incident.id).delete()
     db.delete(incident)
     db.commit()
 
+    # Sync deletion to MongoDB
+    try:
+        from app.db.mongodb import mongo_collections, log_mongo_audit
+        mongo_collections.incidents.delete_one({"$or": [{"id": str(incident_id)}, {"incident_code": inc_code}]})
+        mongo_collections.evidences.delete_many({"incident_id": str(incident_id)})
+        mongo_collections.reports.delete_many({"incident_id": str(incident_id)})
+        log_mongo_audit(
+            actor="Enquêteur SOC",
+            action="DELETE_INCIDENT",
+            target=inc_code,
+            details=f"Suppression du dossier incident {inc_code}"
+        )
+    except Exception as _me:
+        print(f"[MongoDB Incident Deletion Notice] {_me}")
+
     return {
         "success": True,
-        "message": f"Incident {incident.incident_code} et rapports associés supprimés avec succès",
+        "message": f"Incident {inc_code} et rapports associés supprimés avec succès",
         "id": incident_id
     }
 

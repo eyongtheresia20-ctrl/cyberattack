@@ -99,8 +99,26 @@ export default function HistoryPage() {
             riskScore: score,
             riskLevel: r.riskLevel || r.risk_level || det.risk_level || (isThreat ? 'CRITIQUE' : 'FAIBLE'),
             confidence: r.confidence || r.confidence_level || r.ml_confidence || det.ml_confidence || 98.4,
-            timestamp: r.timestamp || (r.created_at ? new Date(r.created_at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })),
-            fullDate: r.fullDate || (r.created_at ? new Date(r.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' }) : ''),
+            timestamp: (() => {
+              const raw = r.created_at || r.timestamp;
+              if (!raw) return new Date().toLocaleTimeString(lang === 'fr' ? 'fr-FR' : 'en-US');
+              let s = raw;
+              if (typeof s === 'string' && (s.includes('T') || s.includes('-')) && !s.endsWith('Z') && !s.includes('+')) {
+                s += 'Z';
+              }
+              const d = new Date(s);
+              return isNaN(d.getTime()) ? raw : d.toLocaleTimeString(lang === 'fr' ? 'fr-FR' : 'en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: lang !== 'fr' });
+            })(),
+            fullDate: (() => {
+              const raw = r.created_at || r.timestamp;
+              if (!raw) return '';
+              let s = raw;
+              if (typeof s === 'string' && (s.includes('T') || s.includes('-')) && !s.endsWith('Z') && !s.includes('+')) {
+                s += 'Z';
+              }
+              const d = new Date(s);
+              return isNaN(d.getTime()) ? '' : d.toLocaleDateString(lang === 'fr' ? 'fr-FR' : 'en-US', { day: 'numeric', month: 'short', year: 'numeric' });
+            })(),
             details: det,
             integrity_hash: r.integrity_hash || det.integrity_hash
           };
@@ -141,9 +159,20 @@ export default function HistoryPage() {
       const res = await fetch('/api/v1/analyze/history', { method: 'DELETE', headers });
       if (res.ok) {
         setScanHistory([]);
+        const userKey = user?.id ? `_${user.id}` : '';
         localStorage.removeItem('phishguard_cached_history');
         localStorage.removeItem('phishguard_latest_result');
         localStorage.removeItem('phishguard_cached_stats');
+        localStorage.removeItem(`phishguard_cached_history${userKey}`);
+        localStorage.removeItem(`phishguard_latest_result${userKey}`);
+        localStorage.removeItem(`phishguard_cached_stats${userKey}`);
+        try {
+          Object.keys(localStorage).forEach(k => {
+            if (k.startsWith('phishguard_latest_result') || k.startsWith('phishguard_cached_history')) {
+              localStorage.removeItem(k);
+            }
+          });
+        } catch (e) {}
       }
     } catch (e) {
       console.error("Error clearing history:", e);
@@ -156,6 +185,7 @@ export default function HistoryPage() {
   const handleDeleteItem = async () => {
     if (!itemToDelete) return;
     const id = itemToDelete.id;
+    const code = itemToDelete.analysis_code;
     setItemToDelete(null);
 
     try {
@@ -163,13 +193,31 @@ export default function HistoryPage() {
       const headers = token ? { Authorization: `Bearer ${token}` } : {};
       const res = await fetch(`/api/v1/analyze/history/${id}`, { method: 'DELETE', headers });
       if (res.ok) {
+        const userKey = user?.id ? `_${user.id}` : '';
         setScanHistory((prev) => {
           const updated = prev.filter((item) => item.id !== id);
           try {
             localStorage.setItem('phishguard_cached_history', JSON.stringify(updated));
+            localStorage.setItem(`phishguard_cached_history${userKey}`, JSON.stringify(updated));
             if (updated.length === 0) {
               localStorage.removeItem('phishguard_latest_result');
               localStorage.removeItem('phishguard_cached_stats');
+              localStorage.removeItem(`phishguard_latest_result${userKey}`);
+              localStorage.removeItem(`phishguard_cached_stats${userKey}`);
+            } else {
+              const saved = localStorage.getItem(`phishguard_latest_result${userKey}`) || localStorage.getItem('phishguard_latest_result');
+              if (saved) {
+                const parsed = JSON.parse(saved);
+                if (
+                  String(parsed.id) === String(id) || 
+                  String(parsed.id) === String(code) || 
+                  String(parsed.details?.analysis_code) === String(id) || 
+                  String(parsed.details?.analysis_code) === String(code)
+                ) {
+                  localStorage.removeItem(`phishguard_latest_result${userKey}`);
+                  localStorage.removeItem('phishguard_latest_result');
+                }
+              }
             }
           } catch (e) {}
           return updated;

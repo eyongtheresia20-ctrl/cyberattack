@@ -5,13 +5,28 @@ import {
   Upload, Layers, Activity, ArrowRight, Globe
 } from 'lucide-react';
 
-export default function EnterpriseDefenseSuite({ lang = 'fr' }) {
-  const [activeSubTab, setActiveSubTab] = useState('SANDBOX'); // 'SANDBOX' | 'PCAP' | 'FIREWALL' | 'HONEYPOT'
+export default function EnterpriseDefenseSuite({ 
+  lang = 'fr', 
+  mode = 'ALL', 
+  initialSubTab = 'SANDBOX',
+  initialUrl = '' 
+}) {
+  const [activeSubTab, setActiveSubTab] = useState(
+    mode === 'SYSTEM_DEFENSE' 
+      ? (initialSubTab === 'SANDBOX' ? 'PCAP' : initialSubTab) 
+      : (mode === 'SANDBOX_ONLY' ? 'SANDBOX' : initialSubTab)
+  );
 
   // ── 1. SANDBOX STATE ──
-  const [sandboxUrl, setSandboxUrl] = useState('https://portswigger.net');
+  const [sandboxUrl, setSandboxUrl] = useState(initialUrl || 'https://portswigger.net');
   const [isDetonating, setIsDetonating] = useState(false);
   const [sandboxResult, setSandboxResult] = useState(null);
+
+  useEffect(() => {
+    if (initialUrl && initialUrl.trim()) {
+      setSandboxUrl(initialUrl.trim());
+    }
+  }, [initialUrl]);
 
   const runSandbox = async (target) => {
     const urlToTest = target || sandboxUrl;
@@ -163,84 +178,88 @@ export default function EnterpriseDefenseSuite({ lang = 'fr' }) {
   return (
     <div className="bg-white/90 dark:bg-[#111622]/95 backdrop-blur-xl border border-indigo-100 dark:border-indigo-900/40 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6">
       
-      {/* Header Banner */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-200 dark:border-slate-800">
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-indigo-600 via-purple-600 to-pink-500 flex items-center justify-center text-white shadow-lg shadow-indigo-500/30">
-            <Cpu className="w-6 h-6" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-base font-black text-slate-900 dark:text-white uppercase tracking-wider font-mono">
-                {lang === 'fr' ? "Suite de Défense Avancée Enterprise" : "Enterprise Next-Gen Defense Suite"}
-              </h2>
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30 font-mono">
-                MIL-SPEC v3.0
-              </span>
+      {/* Header Banner - hidden in SANDBOX_ONLY mode */}
+      {mode !== 'SANDBOX_ONLY' && (
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-200 dark:border-slate-800">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-indigo-600 via-purple-600 to-pink-500 flex items-center justify-center text-white shadow-lg shadow-indigo-500/30">
+              <Cpu className="w-6 h-6" />
             </div>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              {lang === 'fr' 
-                ? "Bac à sable dynamique (URLScan), inspection paquets Layer 3/4 PCAP, pare-feu WAF actif et leurres honeypot." 
-                : "Dynamic sandbox detonation, Layer 3/4 PCAP packet inspector, active inline WAF firewall, and honeypot traps."}
-            </p>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-base font-black text-slate-900 dark:text-white uppercase tracking-wider font-mono">
+                  {lang === 'fr' ? "Défense Réseau, Pare-feu WAF & Honeypots" : "Network Defense, WAF Firewall & Honeypots"}
+                </h2>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30 font-mono">
+                  ACTIVE DEFENSE
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                {lang === 'fr' 
+                  ? "Inspection paquets Layer 3/4 PCAP, pare-feu WAF actif et leurres honeypot pour votre infrastructure." 
+                  : "Layer 3/4 PCAP packet inspector, active inline WAF firewall, and honeypot traps for your infrastructure."}
+              </p>
+            </div>
+          </div>
+
+          {/* Sub-Tabs for System Defense */}
+          <div className="flex flex-wrap items-center gap-1.5 p-1.5 bg-slate-100 dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 text-xs">
+            {mode === 'ALL' && (
+              <button
+                type="button"
+                onClick={() => setActiveSubTab('SANDBOX')}
+                className={`px-3 py-2 rounded-xl font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                  activeSubTab === 'SANDBOX'
+                    ? 'bg-gradient-to-r from-sky-500 to-blue-600 text-white shadow-md'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                <Eye className="w-4 h-4" />
+                <span>Sandbox URLScan</span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={() => setActiveSubTab('PCAP')}
+              className={`px-3 py-2 rounded-xl font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                activeSubTab === 'PCAP'
+                  ? 'bg-gradient-to-r from-purple-500 to-indigo-600 text-white shadow-md'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              <Radio className="w-4 h-4" />
+              <span>{lang === 'fr' ? '1. Sniffer PCAP (L3/4)' : '1. PCAP Sniffer (L3/4)'}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveSubTab('FIREWALL')}
+              className={`px-3 py-2 rounded-xl font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                activeSubTab === 'FIREWALL'
+                  ? 'bg-gradient-to-r from-rose-500 to-red-600 text-white shadow-md'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              <ShieldAlert className="w-4 h-4" />
+              <span>{lang === 'fr' ? `2. Pare-Feu WAF (${blockedIps.length})` : `2. WAF Firewall (${blockedIps.length})`}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveSubTab('HONEYPOT')}
+              className={`px-3 py-2 rounded-xl font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                activeSubTab === 'HONEYPOT'
+                  ? 'bg-gradient-to-r from-amber-500 to-orange-600 text-white shadow-md'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              <Zap className="w-4 h-4" />
+              <span>{lang === 'fr' ? `3. Leurres Honeypot (${honeypotHits.length})` : `3. Honeypot Traps (${honeypotHits.length})`}</span>
+            </button>
           </div>
         </div>
-
-        {/* 4 Feature Sub-Tabs */}
-        <div className="flex flex-wrap items-center gap-1.5 p-1.5 bg-slate-100 dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 text-xs">
-          <button
-            type="button"
-            onClick={() => setActiveSubTab('SANDBOX')}
-            className={`px-3 py-2 rounded-xl font-bold transition flex items-center gap-1.5 cursor-pointer ${
-              activeSubTab === 'SANDBOX'
-                ? 'bg-gradient-to-r from-sky-500 to-blue-600 text-white shadow-md'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-            }`}
-          >
-            <Eye className="w-4 h-4" />
-            <span>1. Sandbox URLScan</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveSubTab('PCAP')}
-            className={`px-3 py-2 rounded-xl font-bold transition flex items-center gap-1.5 cursor-pointer ${
-              activeSubTab === 'PCAP'
-                ? 'bg-gradient-to-r from-purple-500 to-indigo-600 text-white shadow-md'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-            }`}
-          >
-            <Radio className="w-4 h-4" />
-            <span>2. Sniffer PCAP (L3/4)</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveSubTab('FIREWALL')}
-            className={`px-3 py-2 rounded-xl font-bold transition flex items-center gap-1.5 cursor-pointer ${
-              activeSubTab === 'FIREWALL'
-                ? 'bg-gradient-to-r from-rose-500 to-red-600 text-white shadow-md'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-            }`}
-          >
-            <ShieldAlert className="w-4 h-4" />
-            <span>3. Pare-Feu WAF ({blockedIps.length})</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveSubTab('HONEYPOT')}
-            className={`px-3 py-2 rounded-xl font-bold transition flex items-center gap-1.5 cursor-pointer ${
-              activeSubTab === 'HONEYPOT'
-                ? 'bg-gradient-to-r from-amber-500 to-orange-600 text-white shadow-md'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-            }`}
-          >
-            <Zap className="w-4 h-4" />
-            <span>4. Leurres Honeypot ({honeypotHits.length})</span>
-          </button>
-        </div>
-      </div>
+      )}
 
       {/* ── SUB-TAB 1: HEADLESS SANDBOX ── */}
       {activeSubTab === 'SANDBOX' && (

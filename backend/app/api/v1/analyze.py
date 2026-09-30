@@ -187,7 +187,7 @@ def analyze_url(req: URLAnalysisRequest, db: Session = Depends(get_db), current_
         response_payload["integrity_hash"] = integrity_hash
 
         # Save Analysis Record in DB
-        authenticated_user_id = current_user.id if (current_user and hasattr(current_user, "id")) else None
+        authenticated_user_id = str(current_user.id) if (current_user and hasattr(current_user, "id")) else None
         db_record = AnalysisRecord(
             user_id=authenticated_user_id,
             analysis_code=analysis_code,
@@ -312,7 +312,7 @@ def analyze_text(req: TextAnalysisRequest, db: Session = Depends(get_db), curren
         integrity_hash = generate_sha256_hash(response_payload)
         response_payload["integrity_hash"] = integrity_hash
 
-        authenticated_user_id = current_user.id if (current_user and hasattr(current_user, "id")) else None
+        authenticated_user_id = str(current_user.id) if (current_user and hasattr(current_user, "id")) else None
         db_record = AnalysisRecord(
             user_id=authenticated_user_id,
             analysis_code=analysis_code,
@@ -383,20 +383,21 @@ def analyze_text(req: TextAnalysisRequest, db: Session = Depends(get_db), curren
 def get_analysis_stats(db: Session = Depends(get_db), current_user = Depends(get_optional_user)):
     from sqlalchemy import or_
     user_id = getattr(current_user, "id", None)
-    role = getattr(current_user, "role", "UTILISATEUR_STANDARD")
 
-    if role in ["ENQUETEUR", "ADMINISTRATEUR"]:
-        query = db.query(AnalysisRecord).filter(AnalysisRecord.is_deleted_by_user == False)
-    elif user_id:
-        query = db.query(AnalysisRecord).filter(
-            or_(
-                AnalysisRecord.user_id == user_id,
-                AnalysisRecord.user_id == None
-            ),
-            AnalysisRecord.is_deleted_by_user == False
-        )
-    else:
-        query = db.query(AnalysisRecord).filter(AnalysisRecord.is_deleted_by_user == False)
+    # If unauthenticated or no user, return clean empty stats
+    if not user_id:
+        return {
+            "total_analyses": 0,
+            "phishing_threats": 0,
+            "clean_analyses": 0,
+            "ml_accuracy": 98.4
+        }
+
+    # Strict isolation: Standard User, Investigator, and Admin only see the analyses THEY personally performed
+    query = db.query(AnalysisRecord).filter(
+        AnalysisRecord.user_id == str(user_id),
+        AnalysisRecord.is_deleted_by_user == False
+    )
 
     total = query.count()
     threats = query.filter(
@@ -419,26 +420,17 @@ def get_analysis_stats(db: Session = Depends(get_db), current_user = Depends(get
 
 @router.get("/history")
 def get_analysis_history(db: Session = Depends(get_db), current_user = Depends(get_optional_user)):
-    from sqlalchemy import or_
     user_id = getattr(current_user, "id", None)
-    role = getattr(current_user, "role", "UTILISATEUR_STANDARD")
 
-    if role in ["ENQUETEUR", "ADMINISTRATEUR"]:
-        records = db.query(AnalysisRecord).filter(
-            AnalysisRecord.is_deleted_by_user == False
-        ).order_by(AnalysisRecord.created_at.desc()).all()
-    elif user_id:
-        records = db.query(AnalysisRecord).filter(
-            or_(
-                AnalysisRecord.user_id == user_id,
-                AnalysisRecord.user_id == None
-            ),
-            AnalysisRecord.is_deleted_by_user == False
-        ).order_by(AnalysisRecord.created_at.desc()).all()
-    else:
-        records = db.query(AnalysisRecord).filter(
-            AnalysisRecord.is_deleted_by_user == False
-        ).order_by(AnalysisRecord.created_at.desc()).all()
+    # If unauthenticated or no user, return empty history
+    if not user_id:
+        return {"history": [], "total": 0}
+
+    # Strict isolation: Standard User, Investigator, and Admin only see the analyses THEY personally performed
+    records = db.query(AnalysisRecord).filter(
+        AnalysisRecord.user_id == str(user_id),
+        AnalysisRecord.is_deleted_by_user == False
+    ).order_by(AnalysisRecord.created_at.desc()).all()
     history = []
     
     for r in records:
@@ -483,6 +475,14 @@ def get_analysis_history(db: Session = Depends(get_db), current_user = Depends(g
                 "integrity_hash": r.integrity_hash
             }
 
+        from datetime import timezone
+        dt_rec = r.created_at
+        if dt_rec and dt_rec.tzinfo is None:
+            dt_rec = dt_rec.replace(tzinfo=timezone.utc)
+        elif dt_rec:
+            dt_rec = dt_rec.astimezone(timezone.utc)
+        ts_iso = dt_rec.isoformat() if dt_rec else None
+
         history.append({
             "id": r.id,
             "analysis_code": r.analysis_code,
@@ -492,7 +492,8 @@ def get_analysis_history(db: Session = Depends(get_db), current_user = Depends(g
             "riskScore": round(float(r.risk_score), 1) if r.risk_score is not None else 0.0,
             "riskLevel": r.risk_level,
             "confidence": round(float(r.ml_confidence), 1) if r.ml_confidence is not None else 0.0,
-            "timestamp": r.created_at.strftime("%H:%M:%S") if r.created_at else "12:00:00",
+            "timestamp": ts_iso,
+            "created_at": ts_iso,
             "integrity_hash": r.integrity_hash,
             "details": details
         })
@@ -501,29 +502,70 @@ def get_analysis_history(db: Session = Depends(get_db), current_user = Depends(g
 
 @router.delete("/history")
 def clear_all_history(db: Session = Depends(get_db), current_user = Depends(get_optional_user)):
-    if not current_user or not hasattr(current_user, "id"):
+    user_id = getattr(current_user, "id", None)
+    if not user_id:
         return {"message": "0 enregistrements d'historique masqués", "deleted_count": 0}
     
-    # Preserve records in database for Administrators/SOC audits, but soft-delete (hide) for the user
+    # Soft-delete strictly for the authenticated user
     updated_count = db.query(AnalysisRecord).filter(
-        AnalysisRecord.user_id == current_user.id,
+        AnalysisRecord.user_id == str(user_id),
         AnalysisRecord.is_deleted_by_user == False
     ).update({AnalysisRecord.is_deleted_by_user: True}, synchronize_session=False)
     db.commit()
+
+    # Sync to MongoDB
+    try:
+        from app.db.mongodb import mongo_collections, log_mongo_audit
+        mongo_collections.analyses.update_many(
+            {"user_id": str(user_id)},
+            {"$set": {"is_deleted_by_user": True}}
+        )
+        actor_name = f"{current_user.prenom} {current_user.nom}" if current_user and hasattr(current_user, "prenom") else "Utilisateur"
+        log_mongo_audit(
+            actor=actor_name,
+            action="CLEAR_HISTORY",
+            target="Historique des analyses",
+            details=f"Masquage de {updated_count} enregistrements d'analyse"
+        )
+    except Exception as _me:
+        print(f"[MongoDB Sync Warning] Clear history: {_me}")
+
     return {"message": f"{updated_count} enregistrements d'historique masqués de votre vue", "deleted_count": updated_count}
 
 @router.delete("/history/{record_id}")
 def delete_history_item(record_id: str, db: Session = Depends(get_db), current_user = Depends(get_optional_user)):
-    query = db.query(AnalysisRecord).filter(AnalysisRecord.id == str(record_id))
-    if current_user and hasattr(current_user, "id"):
-        query = query.filter(AnalysisRecord.user_id == current_user.id)
+    user_id = getattr(current_user, "id", None)
+    if not user_id:
+        return {"message": "Utilisateur non authentifié", "id": record_id}
+
+    query = db.query(AnalysisRecord).filter(
+        AnalysisRecord.id == str(record_id),
+        AnalysisRecord.user_id == str(user_id)
+    )
     record = query.first()
     if record:
-        # Soft-delete: retain in database for admin audit and SOC telemetry, hide from user dashboard
         record.is_deleted_by_user = True
         db.commit()
-        return {"message": "Enregistrement masqué de votre tableau de bord (conservé en archive d'audit administrateur)", "id": record_id}
-    return {"message": "Enregistrement supprimé de la vue", "id": record_id}
+
+        # Sync to MongoDB
+        try:
+            from app.db.mongodb import mongo_collections, log_mongo_audit
+            mongo_collections.analyses.update_one(
+                {"id": str(record_id), "user_id": str(user_id)},
+                {"$set": {"is_deleted_by_user": True}}
+            )
+            actor_name = f"{current_user.prenom} {current_user.nom}" if current_user and hasattr(current_user, "prenom") else "Utilisateur"
+            log_mongo_audit(
+                actor=actor_name,
+                action="DELETE_HISTORY_ITEM",
+                target=record.analysis_code or str(record_id),
+                details=f"Suppression de l'enregistrement {record.analysis_code}"
+            )
+        except Exception as _me:
+            print(f"[MongoDB Sync Warning] Delete item: {_me}")
+
+        return {"message": "Enregistrement masqué de votre tableau de bord", "id": record_id}
+    return {"message": "Enregistrement introuvable", "id": record_id}
 
 
 

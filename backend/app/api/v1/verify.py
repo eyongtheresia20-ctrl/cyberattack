@@ -7,18 +7,31 @@ from app.db.database import get_db
 from app.db.models import IncidentReport, AnalysisRecord, Incident, AuditLog
 from app.core.security import generate_sha256_hash
 
+from app.api.v1.auth import get_optional_user
+
 router = APIRouter(prefix="/verify", tags=["Investigator Integrity Verification"])
 
-def _log_verification(db: Session, code: str, valid: bool):
+def _log_verification(db: Session, code: str, valid: bool, actor: str = "Enquêteur SOC"):
     try:
-        audit = AuditLog(
-            actor="Jean Dupont",
+        from app.db.mongodb import log_mongo_audit
+        log_mongo_audit(
+            actor=actor,
             action="VERIF_INTEGRITE",
             target=code,
             details=f"Vérification d'intégrité SHA-256 pour {code} — {'Empreinte Authentique' if valid else 'ALERTE FALSIFICATION'}"
         )
-        db.add(audit)
-        db.commit()
+    except Exception:
+        pass
+    try:
+        if db and hasattr(db, "add"):
+            audit = AuditLog(
+                actor=actor,
+                action="VERIF_INTEGRITE",
+                target=code,
+                details=f"Vérification d'intégrité SHA-256 pour {code} — {'Empreinte Authentique' if valid else 'ALERTE FALSIFICATION'}"
+            )
+            db.add(audit)
+            db.commit()
     except Exception:
         pass
 
@@ -27,7 +40,12 @@ class VerificationRequest(BaseModel):
     provided_hash: Optional[str] = None
 
 @router.post("/check")
-def verify_report_integrity(req: VerificationRequest, db: Session = Depends(get_db)):
+def verify_report_integrity(
+    req: VerificationRequest, 
+    db: Session = Depends(get_db),
+    current_user = Depends(get_optional_user)
+):
+    actor_name = f"{current_user.prenom} {current_user.nom}" if current_user and hasattr(current_user, "prenom") else "Enquêteur SOC"
     code = req.lookup_code.strip().upper()
 
     # 1. Try checking as Incident Report Code
@@ -46,7 +64,7 @@ def verify_report_integrity(req: VerificationRequest, db: Session = Depends(get_
             user_hash_matched = True
 
         valid = hash_matched and user_hash_matched
-        _log_verification(db, code, valid)
+        _log_verification(db, code, valid, actor=actor_name)
 
         return {
             "valid": valid,
@@ -123,7 +141,7 @@ def verify_report_integrity(req: VerificationRequest, db: Session = Depends(get_
             user_hash_matched = True
 
         valid = hash_matched and user_hash_matched
-        _log_verification(db, code, valid)
+        _log_verification(db, code, valid, actor=actor_name)
 
         return {
             "valid": valid,

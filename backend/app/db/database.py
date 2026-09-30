@@ -13,7 +13,7 @@ def get_engine():
         return create_engine(sqlite_url, connect_args={"check_same_thread": False})
     
     try:
-        engine = create_engine(settings.DATABASE_URL, pool_pre_ping=True)
+        engine = create_engine(settings.DATABASE_URL, pool_pre_ping=True, connect_args={"options": "-c timezone=utc"})
         # Test connection
         with engine.connect() as conn:
             pass

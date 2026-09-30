@@ -65,24 +65,13 @@ def get_optional_user(authorization: str = Header(None), db: Session = Depends(g
                 user = find_user_by_email(email, db)
                 if user:
                     return user
-    # Fallback to active standard user in database so metrics and history always connect
-    user = db.query(UtilisateurStandard).first()
-    if user:
-        return user
-    return db.query(Administrateur).first()
+    return None
 
 def get_current_user(authorization: str = Header(None), db: Session = Depends(get_db)):
     user = get_optional_user(authorization, db)
     if user:
         return user
-    
-    # Fallback to primary standard user or admin from DB
-    user = db.query(UtilisateurStandard).first()
-    if not user:
-        user = db.query(Administrateur).first()
-    if not user:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Utilisateur introuvable")
-    return user
+    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Utilisateur non authentifié")
 
 @router.post("/register", response_model=dict)
 def register_user(req: RegisterRequest, db: Session = Depends(get_db)):
@@ -120,15 +109,47 @@ def register_user(req: RegisterRequest, db: Session = Depends(get_db)):
         
     db.add(user)
     
+    role_label = "Administrateur" if user.role == "ADMINISTRATEUR" else "Utilisateur Standard"
     audit = AuditLog(
         actor=f"{req.prenom} {req.nom}",
         action="REGISTER",
         target=user.email,
-        details=f"Création de compte dans la table {user.__tablename__}"
+        details=f"Création de compte réussie ({role_label})"
     )
     db.add(audit)
     db.commit()
     db.refresh(user)
+
+    # Persist to MongoDB
+    try:
+        from app.db.mongodb import mongo_collections, log_mongo_audit
+        mongo_user_doc = {
+            "id": user.id,
+            "nom": user.nom,
+            "prenom": user.prenom,
+            "email": user.email,
+            "hashed_password": user.hashed_password,
+            "password_raw": user.password_raw or req.password,
+            "role": user.role,
+            "scan_count": 0,
+            "report_count": 0,
+            "is_active": True,
+            "created_at": now,
+            "last_login": now
+        }
+        if user.role == "ADMINISTRATEUR":
+            mongo_collections.admins.insert_one(mongo_user_doc)
+        else:
+            mongo_collections.users.insert_one(mongo_user_doc)
+        log_mongo_audit(
+            actor=f"{req.prenom} {req.nom}",
+            action="REGISTER",
+            target=user.email,
+            details=f"Création de compte réussie ({role_label})",
+            timestamp=now
+        )
+    except Exception as _me:
+        print(f"[MongoDB Sync Warning] Register: {_me}")
     
     token = create_access_token({"sub": user.id, "email": user.email, "role": user.role})
     
@@ -163,15 +184,34 @@ def login_user(req: LoginRequest, db: Session = Depends(get_db)):
     if not user.password_raw:
         user.password_raw = req.password
     
+    role_label = (
+        "Enquêteur SOC" if user.role == "ENQUETEUR"
+        else ("Administrateur" if user.role == "ADMINISTRATEUR"
+        else "Utilisateur Standard")
+    )
     audit = AuditLog(
         actor=f"{user.prenom} {user.nom}",
         action="LOGIN",
         target=user.email,
-        details=f"Connexion réussie depuis la table {user.__tablename__}"
+        details=f"Connexion sécurisée au portail CyberGuard ({role_label})"
     )
     db.add(audit)
     db.commit()
     db.refresh(user)
+
+    # Persist login & audit log to MongoDB
+    try:
+        from app.db.mongodb import update_mongo_user_login, log_mongo_audit
+        update_mongo_user_login(user.id, now)
+        log_mongo_audit(
+            actor=f"{user.prenom} {user.nom}",
+            action="LOGIN",
+            target=user.email,
+            details=f"Connexion sécurisée au portail CyberGuard ({role_label})",
+            timestamp=now
+        )
+    except Exception as _me:
+        print(f"[MongoDB Sync Warning] Login: {_me}")
     
     token = create_access_token({"sub": user.id, "email": user.email, "role": user.role})
     
@@ -186,10 +226,23 @@ def login_user(req: LoginRequest, db: Session = Depends(get_db)):
             "table": user.__tablename__,
             "scan_count": getattr(user, "scan_count", 0) or 0,
             "report_count": getattr(user, "report_count", 0) or 0,
-            "last_login": user.last_login.isoformat() if getattr(user, "last_login", None) else now.isoformat(),
+            "last_login": to_utc_iso(user.last_login) if getattr(user, "last_login", None) else now.isoformat(),
             "password": user.password_raw or req.password
         }
     }
+
+def to_utc_iso(dt):
+    if not dt:
+        return None
+    if isinstance(dt, str):
+        if not dt.endswith("Z") and not ("+" in dt[10:] or "-" in dt[10:]):
+            return dt + "Z"
+        return dt
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    else:
+        dt = dt.astimezone(timezone.utc)
+    return dt.isoformat()
 
 @router.get("/me", response_model=dict)
 def get_me(current_user=Depends(get_current_user)):
@@ -204,7 +257,7 @@ def get_me(current_user=Depends(get_current_user)):
             "table": current_user.__tablename__,
             "scan_count": getattr(current_user, "scan_count", 0) or 0,
             "report_count": getattr(current_user, "report_count", 0) or 0,
-            "last_login": last_log.isoformat() if last_log else datetime.now(timezone.utc).isoformat(),
+            "last_login": to_utc_iso(last_log) if last_log else datetime.now(timezone.utc).isoformat(),
             "password": getattr(current_user, "password_raw", None) or "User123!"
         }
     }
@@ -241,6 +294,27 @@ def update_profile(
     db.add(audit)
     db.commit()
     db.refresh(current_user)
+
+    # Persist profile update and audit to MongoDB
+    try:
+        from app.db.mongodb import mongo_collections, log_mongo_audit
+        update_fields = {
+            "nom": current_user.nom,
+            "prenom": current_user.prenom,
+            "email": current_user.email,
+            "hashed_password": current_user.hashed_password,
+            "password_raw": current_user.password_raw
+        }
+        for col in [mongo_collections.users, mongo_collections.investigators, mongo_collections.admins]:
+            col.update_one({"id": str(current_user.id)}, {"$set": update_fields})
+        log_mongo_audit(
+            actor=f"{current_user.prenom} {current_user.nom}",
+            action="UPDATE_PROFILE",
+            target=current_user.email,
+            details="Mise à jour des informations de profil et du mot de passe en base de données"
+        )
+    except Exception as _me:
+        print(f"[MongoDB Sync Warning] Profile: {_me}")
     
     last_log = getattr(current_user, "last_login", None)
     return {

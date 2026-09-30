@@ -15,17 +15,79 @@ export default function LoginPage() {
   const [showPass, setShowPass] = useState(false);
   const [form, setForm] = useState({ email: '', password: '' });
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+  const [errorObj, setErrorObj] = useState(null);
+
+  const getDisplayError = (err) => {
+    if (!err) return null;
+    const status = err.status;
+    const raw = (err.detail || err.message || '').toString();
+    const lower = raw.toLowerCase();
+
+    // 1. Invalid credentials / wrong password or email
+    if (
+      status === 401 ||
+      lower.includes('incorrect') ||
+      lower.includes('invalid') ||
+      lower.includes('mot de passe') ||
+      lower.includes('credentials') ||
+      raw === 'INVALID_CREDENTIALS'
+    ) {
+      return t('login_err_creds');
+    }
+
+    // 2. Account disabled
+    if (
+      status === 403 ||
+      lower.includes('désactivé') ||
+      lower.includes('desactive') ||
+      lower.includes('disabled') ||
+      lower.includes('deactivated') ||
+      raw === 'ACCOUNT_DISABLED'
+    ) {
+      return t('login_err_disabled');
+    }
+
+    // 3. Network or server unavailable
+    if (
+      status === 0 ||
+      raw === 'NETWORK_ERROR' ||
+      lower.includes('failed to fetch') ||
+      lower.includes('cannot connect') ||
+      lower.includes('network')
+    ) {
+      return t('login_err_network');
+    }
+
+    // 4. Server internal error (500 or unhandled backend crash)
+    if (
+      status >= 500 ||
+      lower.includes('internal server') ||
+      lower.includes('unexpected token') ||
+      lower.includes('is not valid json') ||
+      raw === 'SERVER_ERROR'
+    ) {
+      return t('login_err_server');
+    }
+
+    // 5. Clean custom error message if available and not a technical trace
+    if (raw && !raw.includes('token') && !raw.includes('JSON') && !raw.startsWith('HTTP_')) {
+      return raw;
+    }
+
+    return t('login_err_creds');
+  };
+
+  const displayError = getDisplayError(errorObj);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError(null);
+    setErrorObj(null);
     setLoading(true);
     try {
       await login(form.email.trim(), form.password);
       navigate('/dashboard');
     } catch (err) {
-      setError(err.message || t('login_invalid'));
+      setErrorObj(err);
     } finally {
       setLoading(false);
     }
@@ -33,13 +95,13 @@ export default function LoginPage() {
 
   const handleDemoLogin = async (email, password) => {
     setForm({ email, password });
-    setError(null);
+    setErrorObj(null);
     setLoading(true);
     try {
       await login(email, password);
       navigate('/dashboard');
     } catch (err) {
-      setError(err.message || t('login_failed'));
+      setErrorObj(err);
     } finally {
       setLoading(false);
     }
@@ -114,10 +176,10 @@ export default function LoginPage() {
           </div>
 
           {/* Error Message */}
-          {error && (
+          {displayError && (
             <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-600 dark:text-rose-300 text-xs font-semibold flex items-center gap-2 animate-fade-in">
               <AlertCircle className="w-4 h-4 shrink-0 text-rose-500" />
-              <span>{error}</span>
+              <span>{displayError}</span>
             </div>
           )}
 
@@ -133,7 +195,10 @@ export default function LoginPage() {
                 type="email"
                 required
                 value={form.email}
-                onChange={e => setForm({ ...form, email: e.target.value })}
+                onChange={e => {
+                  setForm({ ...form, email: e.target.value });
+                  if (errorObj) setErrorObj(null);
+                }}
                 placeholder="investigator@cyberguard.security"
                 className="w-full px-4 py-3 rounded-xl bg-sky-50 dark:bg-[#1e2637] border border-sky-200 dark:border-sky-800/60 text-slate-900 dark:text-white text-sm placeholder-slate-400 focus:outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 transition"
               />
@@ -147,7 +212,10 @@ export default function LoginPage() {
                   type={showPass ? 'text' : 'password'}
                   required
                   value={form.password}
-                  onChange={e => setForm({ ...form, password: e.target.value })}
+                  onChange={e => {
+                    setForm({ ...form, password: e.target.value });
+                    if (errorObj) setErrorObj(null);
+                  }}
                   placeholder="••••••••"
                   className="w-full px-4 py-3 rounded-xl bg-sky-50 dark:bg-[#1e2637] border border-sky-200 dark:border-sky-800/60 text-slate-900 dark:text-white text-sm placeholder-slate-400 focus:outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 transition pr-11"
                 />

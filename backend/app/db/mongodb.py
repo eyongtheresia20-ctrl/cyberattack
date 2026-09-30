@@ -100,3 +100,61 @@ class MongoDBCollections:
 
 mongo_collections = MongoDBCollections()
 
+def log_mongo_audit(actor: str, action: str, target: str, details: str, timestamp=None):
+    """Save an audit log event into MongoDB cyberguard_db.audit_logs collection."""
+    try:
+        ts = timestamp or datetime.now(timezone.utc)
+        if hasattr(ts, "tzinfo") and ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        doc = {
+            "id": str(uuid.uuid4()),
+            "actor": actor or "Système",
+            "action": action,
+            "target": target or "-",
+            "details": details or "",
+            "timestamp": ts
+        }
+        mongo_collections.audit_logs.insert_one(doc)
+        return doc
+    except Exception as e:
+        print(f"[MongoDB Audit Warning] Could not save audit log: {e}")
+        return None
+
+def find_mongo_user_by_email(email: str):
+    """Find user document across all 3 MongoDB user collections."""
+    if not email:
+        return None
+    for col in [mongo_collections.users, mongo_collections.investigators, mongo_collections.admins]:
+        doc = col.find_one({"email": email})
+        if doc:
+            return doc
+    return None
+
+def find_mongo_user_by_id(user_id: str):
+    """Find user document by id across all 3 MongoDB user collections."""
+    if not user_id:
+        return None
+    for col in [mongo_collections.users, mongo_collections.investigators, mongo_collections.admins]:
+        doc = col.find_one({"id": str(user_id)})
+        if doc:
+            return doc
+    return None
+
+def update_mongo_user_login(user_id: str, last_login_time=None):
+    """Update last_login timestamp in MongoDB."""
+    ts = last_login_time or datetime.now(timezone.utc)
+    for col in [mongo_collections.users, mongo_collections.investigators, mongo_collections.admins]:
+        res = col.update_one({"id": str(user_id)}, {"$set": {"last_login": ts}})
+        if res.matched_count > 0:
+            return True
+    return False
+
+def increment_mongo_user_scans(user_id: str):
+    """Increment user scan counter in MongoDB."""
+    if not user_id:
+        return
+    for col in [mongo_collections.users, mongo_collections.investigators, mongo_collections.admins]:
+        res = col.update_one({"id": str(user_id)}, {"$inc": {"scan_count": 1}})
+        if res.matched_count > 0:
+            return
+

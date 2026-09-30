@@ -328,7 +328,7 @@ def security_assistant_chat(
     # 5. Log AI Consultation in AuditLog
     try:
         actor_name = "Alice Martin"
-        if user_email:
+        if user_email and db and hasattr(db, "query"):
             u_std = db.query(UtilisateurStandard).filter(UtilisateurStandard.email == user_email).first()
             if u_std:
                 actor_name = f"{u_std.prenom} {u_std.nom}"
@@ -341,14 +341,27 @@ def security_assistant_chat(
         if len(clean_question) > 60:
             clean_question = clean_question[:60] + "..."
 
-        audit = AuditLog(
-            actor=actor_name,
-            action="CHAT_IA",
-            target=f"Thème: {req.context_type or 'Conseils Défensifs'}",
-            details=f"Question posée : \"{clean_question}\""
-        )
-        db.add(audit)
-        db.commit()
+        # MongoDB audit log
+        try:
+            from app.db.mongodb import log_mongo_audit
+            log_mongo_audit(
+                actor=actor_name,
+                action="CHAT_IA",
+                target=f"Thème: {req.context_type or 'Conseils Défensifs'}",
+                details=f"Question posée : \"{clean_question}\""
+            )
+        except Exception:
+            pass
+
+        if db and hasattr(db, "add"):
+            audit = AuditLog(
+                actor=actor_name,
+                action="CHAT_IA",
+                target=f"Thème: {req.context_type or 'Conseils Défensifs'}",
+                details=f"Question posée : \"{clean_question}\""
+            )
+            db.add(audit)
+            db.commit()
     except Exception as e:
         print(f"[AuditLog Chat Error] {e}")
 

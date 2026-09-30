@@ -50,16 +50,47 @@ export const AuthProvider = ({ children }) => {
     setUser(null);
   };
 
+  const parseResponseSafe = async (res) => {
+    try {
+      const contentType = res.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        return await res.json();
+      }
+      const text = await res.text();
+      return text ? { detail: text } : null;
+    } catch {
+      return null;
+    }
+  };
+
   const login = async (email, password) => {
-    const res = await fetch(`${API_URL}/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password })
-    });
+    let res;
+    try {
+      res = await fetch(`${API_URL}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+    } catch {
+      const netErr = new Error('NETWORK_ERROR');
+      netErr.status = 0;
+      netErr.detail = 'Cannot connect to backend server';
+      throw netErr;
+    }
     
-    const data = await res.json();
+    const data = await parseResponseSafe(res);
     if (!res.ok) {
-      throw new Error(data.detail || 'Échec de connexion');
+      let detailMsg = (data && typeof data.detail === 'string' && data.detail) ? data.detail : null;
+      if (!detailMsg) {
+        if (res.status === 401) detailMsg = 'Email ou mot de passe incorrect';
+        else if (res.status === 403) detailMsg = 'Compte désactivé';
+        else if (res.status >= 500) detailMsg = 'SERVER_ERROR';
+        else detailMsg = `HTTP_${res.status}`;
+      }
+      const err = new Error(detailMsg);
+      err.status = res.status;
+      err.detail = detailMsg;
+      throw err;
     }
     
     localStorage.setItem('phishguard_token', data.token);
@@ -69,15 +100,27 @@ export const AuthProvider = ({ children }) => {
   };
 
   const register = async (nom, prenom, email, password) => {
-    const res = await fetch(`${API_URL}/auth/register`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ nom, prenom, email, password })
-    });
+    let res;
+    try {
+      res = await fetch(`${API_URL}/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nom, prenom, email, password })
+      });
+    } catch {
+      const netErr = new Error('NETWORK_ERROR');
+      netErr.status = 0;
+      netErr.detail = 'Cannot connect to backend server';
+      throw netErr;
+    }
     
-    const data = await res.json();
+    const data = await parseResponseSafe(res);
     if (!res.ok) {
-      throw new Error(data.detail || "Échec de l'inscription");
+      const detailMsg = (data && typeof data.detail === 'string' && data.detail) ? data.detail : `HTTP_${res.status}`;
+      const err = new Error(detailMsg);
+      err.status = res.status;
+      err.detail = detailMsg;
+      throw err;
     }
     
     localStorage.setItem('phishguard_token', data.token);
@@ -98,25 +141,36 @@ export const AuthProvider = ({ children }) => {
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
     }
-    const res = await fetch(`${API_URL}/auth/profile`, {
-      method: 'PUT',
-      headers,
-      body: JSON.stringify({
-        prenom,
-        nom,
-        email,
-        password: password || newPassword || null,
-        current_password: currentPassword || null,
-        new_password: newPassword || null
-      })
-    });
-
-    const data = await res.json();
-    if (!res.ok) {
-      throw new Error(data.detail || "Échec de la mise à jour du profil");
+    let res;
+    try {
+      res = await fetch(`${API_URL}/auth/profile`, {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify({
+          prenom,
+          nom,
+          email,
+          password: password || newPassword || null,
+          current_password: currentPassword || null,
+          new_password: newPassword || null
+        })
+      });
+    } catch {
+      const netErr = new Error('NETWORK_ERROR');
+      netErr.status = 0;
+      throw netErr;
     }
 
-    if (data.user) {
+    const data = await parseResponseSafe(res);
+    if (!res.ok) {
+      const detailMsg = (data && typeof data.detail === 'string' && data.detail) ? data.detail : `HTTP_${res.status}`;
+      const err = new Error(detailMsg);
+      err.status = res.status;
+      err.detail = detailMsg;
+      throw err;
+    }
+
+    if (data && data.user) {
       setUser(data.user);
     }
     return data;

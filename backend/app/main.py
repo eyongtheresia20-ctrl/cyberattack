@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.db.database import engine, Base
+import app.db.models
 from app.db.mongodb import init_mongo_indexes
 from app.api.v1 import analyze, monitor, incidents, verify, assistant, auth, users, ml_metrics, enterprise_security
 from app.services.firewall_service import is_ip_blocked, get_blocked_ip_info
@@ -24,33 +25,27 @@ except Exception as _e:
 try:
     Base.metadata.create_all(bind=engine)
     from sqlalchemy import text
-    with engine.connect() as conn:
-        for table in ["utilisateurs_standards", "enqueteurs", "administrateurs"]:
+    dialect = getattr(engine.dialect, "name", "sqlite").lower()
+    ts_type = "TIMESTAMP" if dialect == "postgresql" else "DATETIME"
+    if_not_exists = "IF NOT EXISTS " if dialect == "postgresql" else ""
+
+    for table in ["utilisateurs_standards", "enqueteurs", "administrateurs"]:
+        for col, col_type in [
+            ("last_login", ts_type),
+            ("password_raw", "VARCHAR(255)"),
+            ("scan_count", "INTEGER DEFAULT 0"),
+            ("report_count", "INTEGER DEFAULT 0")
+        ]:
             try:
-                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN last_login DATETIME"))
-                conn.commit()
+                with engine.begin() as conn:
+                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {if_not_exists}{col} {col_type}"))
             except Exception:
                 pass
-            try:
-                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN password_raw VARCHAR(255)"))
-                conn.commit()
-            except Exception:
-                pass
-            try:
-                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN scan_count INTEGER DEFAULT 0"))
-                conn.commit()
-            except Exception:
-                pass
-            try:
-                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN report_count INTEGER DEFAULT 0"))
-                conn.commit()
-            except Exception:
-                pass
-        try:
-            conn.execute(text("ALTER TABLE analysis_records ADD COLUMN IF NOT EXISTS user_id VARCHAR(36)"))
-            conn.commit()
-        except Exception:
-            pass
+    try:
+        with engine.begin() as conn:
+            conn.execute(text(f"ALTER TABLE analysis_records ADD COLUMN {if_not_exists}user_id VARCHAR(36)"))
+    except Exception:
+        pass
 except Exception as e:
     print(f"[Warning] Table creation deferred: {e}")
 

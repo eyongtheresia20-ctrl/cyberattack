@@ -57,11 +57,20 @@ export default function ActivityLogsPage() {
   const formatLogDate = (timestamp) => {
     if (!timestamp) return lang === 'fr' ? 'Récemment' : 'Recently';
     let t = timestamp;
-    if (typeof t === 'string' && !t.includes('Z') && !t.includes('+')) {
+    if (typeof t === 'string' && !t.endsWith('Z') && !t.includes('+')) {
       t += 'Z';
     }
     const d = new Date(t);
-    return isNaN(d.getTime()) ? timestamp : d.toLocaleString(lang === 'fr' ? 'fr-FR' : 'en-US');
+    if (isNaN(d.getTime())) return timestamp;
+    return d.toLocaleString(lang === 'fr' ? 'fr-FR' : 'en-US', {
+      month: 'numeric',
+      day: 'numeric',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: lang !== 'fr'
+    });
   };
 
   const getActionBadge = (type, action) => {
@@ -89,18 +98,39 @@ export default function ActivityLogsPage() {
         </span>
       );
     }
-    if (type === 'INCIDENT_REPORT' || action === 'TRANSFERT_RAPPORT') {
+    if (type === 'INCIDENT_REPORT' || action === 'TRANSFERT_RAPPORT' || action === 'RAPPORT_INCIDENT') {
       return (
         <span className="px-2.5 py-0.5 rounded-full font-mono font-bold text-[10px] bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 flex items-center gap-1">
           <FileSearch size={11} className="text-amber-500" />
-          {lang === 'fr' ? 'TRANSFERT RAPPORT' : 'REPORT TRANSFER'}
+          {lang === 'fr' ? 'RAPPORT INCIDENT' : 'INCIDENT REPORT'}
         </span>
       );
     }
-    if (type === 'SCAN_RESEARCH' || action?.startsWith('SCAN')) {
+    if (action === 'SCAN_URL') {
       return (
         <span className="px-2.5 py-0.5 rounded-full font-mono font-bold text-[10px] bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20">
-          {action}
+          {lang === 'fr' ? 'ANALYSE URL' : 'URL SCAN'}
+        </span>
+      );
+    }
+    if (action === 'SCAN_EMAIL') {
+      return (
+        <span className="px-2.5 py-0.5 rounded-full font-mono font-bold text-[10px] bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20">
+          {lang === 'fr' ? 'ANALYSE EMAIL' : 'EMAIL SCAN'}
+        </span>
+      );
+    }
+    if (action === 'SCAN_MESSAGE' || action === 'SCAN_SMS') {
+      return (
+        <span className="px-2.5 py-0.5 rounded-full font-mono font-bold text-[10px] bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20">
+          {lang === 'fr' ? 'ANALYSE SMS' : 'SMS SCAN'}
+        </span>
+      );
+    }
+    if (action === 'AUDIT_DOMAINE' || action === 'SCAN_AUDIT SITE') {
+      return (
+        <span className="px-2.5 py-0.5 rounded-full font-mono font-bold text-[10px] bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
+          {lang === 'fr' ? 'AUDIT WAF' : 'WAF AUDIT'}
         </span>
       );
     }
@@ -119,7 +149,7 @@ export default function ActivityLogsPage() {
       );
     }
     return (
-      <span className="px-2.5 py-0.5 rounded-full font-mono font-bold text-[10px] bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
+      <span className="px-2.5 py-0.5 rounded-full font-mono font-bold text-[10px] bg-slate-500/10 text-slate-600 dark:text-slate-400 border border-slate-500/20">
         {action}
       </span>
     );
@@ -226,7 +256,7 @@ export default function ActivityLogsPage() {
                       <td className="p-3.5">
                         {getActionBadge(log.type, log.action)}
                       </td>
-                      <td className="p-3.5 font-mono text-xs max-w-xs truncate text-slate-800 dark:text-slate-200 font-semibold" title={log.target}>
+                      <td className="p-3.5 font-mono text-xs max-w-xs md:max-w-sm break-all text-slate-800 dark:text-slate-200 font-semibold" title={log.target}>
                         {log.target || '-'}
                       </td>
                       <td className="p-3.5 text-xs">

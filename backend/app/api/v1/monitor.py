@@ -179,7 +179,7 @@ def audit_website_security(req: DomainAuditRequest, db: Session = Depends(get_db
         response_payload["analysis_code"] = analysis_code
         response_payload["integrity_hash"] = integrity_hash
 
-        authenticated_user_id = current_user.id if (current_user and hasattr(current_user, "id")) else None
+        authenticated_user_id = str(current_user.id) if (current_user and hasattr(current_user, "id")) else None
 
         db_rec = AnalysisRecord(
             user_id=authenticated_user_id,

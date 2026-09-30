@@ -47,7 +47,17 @@ export default function RegisterPage() {
       setDone(true);
       setTimeout(() => navigate('/dashboard'), 1500);
     } catch (err) {
-      setError(err.message || (lang === 'en' ? 'Registration failed.' : "Échec de l'inscription."));
+      let msg = err.detail || err.message || '';
+      if (err.status === 400 || msg.includes('déjà') || msg.includes('already exists')) {
+        msg = lang === 'en' ? 'An account already exists with this email address.' : 'Un compte existe déjà avec cette adresse e-mail.';
+      } else if (err.status === 0 || msg === 'NETWORK_ERROR') {
+        msg = lang === 'en' ? 'Unable to reach the server. Please check your backend service.' : 'Impossible de joindre le serveur. Assurez-vous que le backend est en cours d\'exécution.';
+      } else if (err.status >= 500 || msg.includes('token') || msg.includes('JSON')) {
+        msg = lang === 'en' ? 'Internal server error (500). Please try again later.' : 'Erreur interne du serveur (500). Veuillez réessayer ultérieurement.';
+      } else if (!msg || msg.startsWith('HTTP_')) {
+        msg = lang === 'en' ? 'Registration failed. Please check the provided information.' : 'Échec de l\'inscription. Veuillez vérifier les informations saisies.';
+      }
+      setError(msg);
     } finally {
       setLoading(false);
     }

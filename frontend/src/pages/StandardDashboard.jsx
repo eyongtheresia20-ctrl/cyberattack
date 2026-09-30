@@ -37,6 +37,7 @@ export default function StandardDashboard({ isHistoryView = false }) {
 
   // Universal Scanner State
   const [investigationObjective, setInvestigationObjective] = useState('CONTENT'); // 'CONTENT' or 'SYSTEM'
+  const [systemSubTab, setSystemSubTab] = useState('AUDIT'); // 'AUDIT' | 'PCAP' | 'FIREWALL' | 'HONEYPOT'
   const [selectedModel, setSelectedModel] = useState('rf'); // 'rf', 'gbm', 'mlp'
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef(null);
@@ -163,26 +164,31 @@ export default function StandardDashboard({ isHistoryView = false }) {
         setScanHistory(historyList);
         try { localStorage.setItem(`phishguard_cached_history${userKey}`, JSON.stringify(historyList)); } catch(e){}
         
-        // Only set currentResult if no active scan is currently shown
-        setCurrentResult(prev => {
-          if (prev) return prev;
-          if (historyList.length > 0) {
-            const latest = historyList[0];
-            const formattedLatest = {
-              id: latest.id,
-              type: latest.type,
-              target: latest.target,
-              verdict: latest.verdict,
-              riskScore: latest.riskScore,
-              confidence: latest.confidence,
-              details: latest.details || latest,
-              timestamp: latest.timestamp
-            };
-            try { localStorage.setItem(`phishguard_latest_result${userKey}`, JSON.stringify(formattedLatest)); } catch(e){}
-            return formattedLatest;
-          }
-          return null;
-        });
+        // If history is empty, no analysis should be shown presently
+        if (historyList.length === 0) {
+          setCurrentResult(null);
+          try {
+            localStorage.removeItem(`phishguard_latest_result${userKey}`);
+            localStorage.removeItem('phishguard_latest_result');
+          } catch(e){}
+        } else {
+          // If a scan result is currently shown, ensure it hasn't been deleted
+          setCurrentResult(prev => {
+            if (!prev) return null;
+            const exists = historyList.some(item => 
+              String(item.id) === String(prev.id) || 
+              String(item.analysis_code) === String(prev.id) || 
+              (prev.details?.analysis_code && (String(item.id) === String(prev.details.analysis_code) || String(item.analysis_code) === String(prev.details.analysis_code)))
+            );
+            if (exists) return prev;
+            // The displayed scan was deleted from history; clear it
+            try {
+              localStorage.removeItem(`phishguard_latest_result${userKey}`);
+              localStorage.removeItem('phishguard_latest_result');
+            } catch(e){}
+            return null;
+          });
+        }
       }
     } catch (e) {
       console.log('Error fetching DB metrics:', e);
@@ -193,9 +199,35 @@ export default function StandardDashboard({ isHistoryView = false }) {
     const userKey = user?.id ? `_${user.id}` : '';
     try {
       const savedHist = localStorage.getItem(`phishguard_cached_history${userKey}`);
-      setScanHistory(savedHist ? JSON.parse(savedHist) : []);
-      const savedRes = localStorage.getItem(`phishguard_latest_result${userKey}`);
-      setCurrentResult(savedRes ? JSON.parse(savedRes) : null);
+      const parsedHist = savedHist ? JSON.parse(savedHist) : [];
+      setScanHistory(parsedHist);
+      
+      // If history is empty, ensure currentResult is null and remove cached result
+      if (!parsedHist || parsedHist.length === 0) {
+        setCurrentResult(null);
+        localStorage.removeItem(`phishguard_latest_result${userKey}`);
+        localStorage.removeItem('phishguard_latest_result');
+      } else {
+        const savedRes = localStorage.getItem(`phishguard_latest_result${userKey}`) || localStorage.getItem('phishguard_latest_result');
+        if (savedRes) {
+          const parsedRes = JSON.parse(savedRes);
+          const exists = parsedHist.some(item => 
+            String(item.id) === String(parsedRes.id) || 
+            String(item.analysis_code) === String(parsedRes.id) || 
+            (parsedRes.details?.analysis_code && (String(item.id) === String(parsedRes.details.analysis_code) || String(item.analysis_code) === String(parsedRes.details.analysis_code)))
+          );
+          if (exists) {
+            setCurrentResult(parsedRes);
+          } else {
+            setCurrentResult(null);
+            localStorage.removeItem(`phishguard_latest_result${userKey}`);
+            localStorage.removeItem('phishguard_latest_result');
+          }
+        } else {
+          setCurrentResult(null);
+        }
+      }
+      
       const savedStats = localStorage.getItem(`phishguard_cached_stats${userKey}`);
       if (savedStats) setDbStats(JSON.parse(savedStats));
     } catch(e) {}
@@ -282,7 +314,8 @@ export default function StandardDashboard({ isHistoryView = false }) {
         };
 
         setCurrentResult(resObj);
-        try { localStorage.setItem('phishguard_latest_result', JSON.stringify(resObj)); } catch(e){}
+        const userKey = user?.id ? `_${user.id}` : '';
+        try { localStorage.setItem(`phishguard_latest_result${userKey}`, JSON.stringify(resObj)); } catch(e){}
         setScanHistory(prev => [resObj, ...prev]);
         fetchDbMetrics();
         return;
@@ -969,10 +1002,21 @@ export default function StandardDashboard({ isHistoryView = false }) {
       const res = await fetch('/api/v1/analyze/history', { method: 'DELETE', headers });
       if (res.ok) {
         setScanHistory([]);
+        setCurrentResult(null);
         const userKey = user?.id ? `_${user.id}` : '';
         localStorage.removeItem(`phishguard_cached_history${userKey}`);
         localStorage.removeItem(`phishguard_latest_result${userKey}`);
-        setCurrentResult(null);
+        localStorage.removeItem(`phishguard_cached_stats${userKey}`);
+        localStorage.removeItem('phishguard_cached_history');
+        localStorage.removeItem('phishguard_latest_result');
+        localStorage.removeItem('phishguard_cached_stats');
+        try {
+          Object.keys(localStorage).forEach(k => {
+            if (k.startsWith('phishguard_latest_result') || k.startsWith('phishguard_cached_history')) {
+              localStorage.removeItem(k);
+            }
+          });
+        } catch(e){}
         fetchDbMetrics();
       }
     } catch (e) {
@@ -987,6 +1031,7 @@ export default function StandardDashboard({ isHistoryView = false }) {
   const handleDeleteItem = async () => {
     if (!itemToDelete) return;
     const id = itemToDelete.id;
+    const code = itemToDelete.analysis_code;
     setItemToDelete(null);
     try {
       const token = localStorage.getItem('phishguard_token');
@@ -994,6 +1039,21 @@ export default function StandardDashboard({ isHistoryView = false }) {
       const res = await fetch(`/api/v1/analyze/history/${id}`, { method: 'DELETE', headers });
       if (res.ok) {
         setScanHistory((prev) => prev.filter((item) => item.id !== id));
+        setCurrentResult((prev) => {
+          if (prev && (
+            String(prev.id) === String(id) || 
+            String(prev.id) === String(code) || 
+            String(prev.details?.analysis_code) === String(id) || 
+            String(prev.details?.analysis_code) === String(code) || 
+            String(prev.details?.id) === String(id)
+          )) {
+            const userKey = user?.id ? `_${user.id}` : '';
+            localStorage.removeItem(`phishguard_latest_result${userKey}`);
+            localStorage.removeItem('phishguard_latest_result');
+            return null;
+          }
+          return prev;
+        });
         fetchDbMetrics();
       }
     } catch (e) {
@@ -1644,38 +1704,15 @@ export default function StandardDashboard({ isHistoryView = false }) {
               <span className="text-[10px] opacity-80 block font-normal">{lang === 'fr' ? 'Audit de Sécurité Domaine (Attaques WAF, Attaquants Tracés & Renseignement)' : 'Domain Security Audit (WAF Attacks, Attacker Tracing & Intel)'}</span>
             </div>
           </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              setInvestigationObjective('ENTERPRISE');
-              setIsDropdownOpen(false);
-            }}
-            className={`flex-1 flex items-center justify-center gap-2.5 px-4 py-3 rounded-xl font-bold text-xs transition cursor-pointer ${
-              investigationObjective === 'ENTERPRISE'
-                ? 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-md shadow-emerald-500/20'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-white/50 dark:hover:bg-slate-800/50'
-            }`}
-          >
-            <span className="text-base">⚡</span>
-            <div className="text-left">
-              <span className="block font-black leading-tight">{lang === 'fr' ? 'Suite Défense Enterprise (PCAP, Sandbox, WAF)' : 'Enterprise Defense Suite (PCAP, Sandbox, WAF)'}</span>
-              <span className="text-[10px] opacity-80 block font-normal">{lang === 'fr' ? 'Bac à sable headless, Sniffer L3/L4, Pare-feu Actif & Honeypots' : 'Headless Sandbox, L3/L4 Sniffer, Active Firewall & Decoy Honeypots'}</span>
-            </div>
-          </button>
         </div>
-
-        {/* Enterprise Defense Suite View */}
-        {investigationObjective === 'ENTERPRISE' ? (
-          <EnterpriseDefenseSuite lang={lang} />
-        ) : (
-          <>
 
         {/* Content Subtype Selector for CONTENT objective */}
         {investigationObjective === 'CONTENT' && (
           <div className="flex flex-wrap items-center gap-2 pt-1 pb-1">
-            <span className="text-[10px] font-mono uppercase font-bold text-slate-400">Type de contenu :</span>
-            <div className="inline-flex p-1 bg-slate-100 dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 text-xs">
+            <span className="text-[10px] font-mono uppercase font-bold text-slate-400">
+              {lang === 'fr' ? 'Type de contenu :' : 'Content type :'}
+            </span>
+            <div className="inline-flex flex-wrap p-1 bg-slate-100 dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 text-xs">
               <button
                 type="button"
                 onClick={() => setContentSubtype('URL')}
@@ -1960,35 +1997,51 @@ export default function StandardDashboard({ isHistoryView = false }) {
                       </div>
                     </div>
 
-                    <div className={`p-4 sm:p-5 rounded-2xl border flex items-center gap-5 shrink-0 ${hasAttacks ? 'bg-rose-50/50 dark:bg-rose-950/20 border-rose-200 dark:border-rose-900/40' : currentResult.riskScore > 30 ? 'bg-amber-50/50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-900/40' : 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-900/40'}`}>
-                      <div>
-                        <div className="flex items-baseline gap-1.5 font-mono">
-                          <span className={`text-3xl sm:text-4xl font-black ${hasAttacks ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>{attackCount}</span>
-                          <span className="text-[11px] text-slate-400 font-sans font-bold">{lang === 'fr' ? 'attaques' : 'attacks'}</span>
+                    <div className="flex items-center gap-2">
+                      <div className={`p-4 sm:p-5 rounded-2xl border flex items-center gap-5 shrink-0 ${hasAttacks ? 'bg-rose-50/50 dark:bg-rose-950/20 border-rose-200 dark:border-rose-900/40' : currentResult.riskScore > 30 ? 'bg-amber-50/50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-900/40' : 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-900/40'}`}>
+                        <div>
+                          <div className="flex items-baseline gap-1.5 font-mono">
+                            <span className={`text-3xl sm:text-4xl font-black ${hasAttacks ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>{attackCount}</span>
+                            <span className="text-[11px] text-slate-400 font-sans font-bold">{lang === 'fr' ? 'attaques' : 'attacks'}</span>
+                          </div>
+                          <span className="text-[10px] uppercase font-mono font-bold tracking-wider text-slate-500 block mt-0.5">
+                            {lang === 'fr' ? 'Événements Journalisés' : 'Logged Events'}
+                          </span>
                         </div>
-                        <span className="text-[10px] uppercase font-mono font-bold tracking-wider text-slate-500 block mt-0.5">
-                          {lang === 'fr' ? 'Événements Journalisés' : 'Logged Events'}
-                        </span>
+                        <div className="h-10 w-[1px] bg-slate-200 dark:bg-slate-700/60" />
+                        <div>
+                          <span className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wider block text-center ${
+                            hasAttacks 
+                              ? 'bg-rose-600 text-white shadow-sm shadow-rose-600/30' 
+                              : currentResult.riskScore > 30 
+                                ? 'bg-amber-600 text-white shadow-sm shadow-amber-600/30' 
+                                : 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/30'
+                          }`}>
+                            {hasAttacks 
+                              ? (lang === 'fr' ? 'MENACES ACTIVES' : 'ACTIVE THREATS')
+                              : currentResult.riskScore > 30 
+                                ? (lang === 'fr' ? 'RÉPUTATION / HYGIÈNE' : 'REPUTATION / HYGIENE')
+                                : (lang === 'fr' ? 'AUCUNE ATTAQUE ACTIVE DÉTECTÉE' : 'NO ACTIVE ATTACKS DETECTED')}
+                          </span>
+                          <p className="text-[10px] text-slate-400 font-mono text-center mt-1">
+                            {lang === 'fr' ? `Score Risque: ${currentResult.riskScore}%` : `Risk Score: ${currentResult.riskScore}%`}
+                          </p>
+                        </div>
                       </div>
-                      <div className="h-10 w-[1px] bg-slate-200 dark:bg-slate-700/60" />
-                      <div>
-                        <span className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wider block text-center ${
-                          hasAttacks 
-                            ? 'bg-rose-600 text-white shadow-sm shadow-rose-600/30' 
-                            : currentResult.riskScore > 30 
-                              ? 'bg-amber-600 text-white shadow-sm shadow-amber-600/30' 
-                              : 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/30'
-                        }`}>
-                          {hasAttacks 
-                            ? (lang === 'fr' ? 'MENACES ACTIVES' : 'ACTIVE THREATS')
-                            : currentResult.riskScore > 30 
-                              ? (lang === 'fr' ? 'RÉPUTATION / HYGIÈNE' : 'REPUTATION / HYGIENE')
-                              : (lang === 'fr' ? 'AUCUNE ATTAQUE ACTIVE DÉTECTÉE' : 'NO ACTIVE ATTACKS DETECTED')}
-                        </span>
-                        <p className="text-[10px] text-slate-400 font-mono text-center mt-1">
-                          {lang === 'fr' ? `Score Risque: ${currentResult.riskScore}%` : `Risk Score: ${currentResult.riskScore}%`}
-                        </p>
-                      </div>
+                      <button
+                        onClick={() => {
+                          setCurrentResult(null);
+                          const userKey = user?.id ? `_${user.id}` : '';
+                          try {
+                            localStorage.removeItem(`phishguard_latest_result${userKey}`);
+                            localStorage.removeItem('phishguard_latest_result');
+                          } catch(e){}
+                        }}
+                        className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 text-slate-400 hover:text-slate-700 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer self-start"
+                        title={lang === 'fr' ? 'Fermer le résultat' : 'Close result'}
+                      >
+                        <X className="w-5 h-5" />
+                      </button>
                     </div>
                   </div>
 
@@ -2458,6 +2511,22 @@ export default function StandardDashboard({ isHistoryView = false }) {
                     <p className="text-[10px] text-slate-400 font-mono italic px-1">ℹ️ {translateGeoDisclaimer(d.disclaimer)}</p>
                   )}
 
+                  {/* ── BLOCK: INTEGRATED ACTIVE WAF, PCAP & HONEYPOTS DEFENSE ── */}
+                  <div className="pt-6 border-t border-slate-100 dark:border-slate-800/80 space-y-4">
+                    <div>
+                      <h4 className="text-xs font-black uppercase font-mono tracking-wider text-slate-900 dark:text-white flex items-center gap-2">
+                        <ShieldAlert className="w-4 h-4 text-indigo-500" />
+                        <span>{lang === 'fr' ? "Suite de Défense Active & Télémétrie Réseau" : "Active Defense Suite & Network Telemetry"}</span>
+                      </h4>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                        {lang === 'fr'
+                          ? "Inspection approfondie des trames réseau (PCAP L3/4), gestion du pare-feu applicatif (bannissement IP) et sondes pièges honeypot pour ce domaine."
+                          : "Deep network packet inspection (PCAP L3/4), application firewall controls (IP bans), and decoy honeypot traps for this domain."}
+                      </p>
+                    </div>
+                    <EnterpriseDefenseSuite lang={lang} mode="SYSTEM_DEFENSE" initialUrl={currentResult.target} />
+                  </div>
+
                   {/* ── ACTION TOOLBAR ── */}
                   <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3">
                     <button onClick={() => setIsReportModalOpen(true)} className="w-full sm:w-auto px-5 py-3 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold text-xs rounded-2xl flex items-center justify-center gap-2 transition cursor-pointer">
@@ -2518,26 +2587,42 @@ export default function StandardDashboard({ isHistoryView = false }) {
                     </div>
                   </div>
 
-                  <div className={`p-4 sm:p-5 rounded-2xl border flex items-center gap-5 shrink-0 ${isThreat ? 'bg-rose-50/50 dark:bg-rose-950/20 border-rose-200 dark:border-rose-900/40' : 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-900/40'}`}>
-                    <div>
-                      <div className="flex items-baseline gap-1.5 font-mono">
-                        <span className={`text-3xl sm:text-4xl font-black ${isThreat ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>{score.toFixed(1)}%</span>
-                        <span className="text-[11px] text-slate-400 font-sans font-bold">/ 100</span>
+                  <div className="flex items-center gap-2">
+                    <div className={`p-4 sm:p-5 rounded-2xl border flex items-center gap-5 shrink-0 ${isThreat ? 'bg-rose-50/50 dark:bg-rose-950/20 border-rose-200 dark:border-rose-900/40' : 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-900/40'}`}>
+                      <div>
+                        <div className="flex items-baseline gap-1.5 font-mono">
+                          <span className={`text-3xl sm:text-4xl font-black ${isThreat ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>{score.toFixed(1)}%</span>
+                          <span className="text-[11px] text-slate-400 font-sans font-bold">/ 100</span>
+                        </div>
+                        <span className="text-[10px] uppercase font-mono font-bold tracking-wider text-slate-500 block mt-0.5">{lang === 'fr' ? 'Indice de Risque' : 'Risk Index'}</span>
                       </div>
-                      <span className="text-[10px] uppercase font-mono font-bold tracking-wider text-slate-500 block mt-0.5">{lang === 'fr' ? 'Indice de Risque' : 'Risk Index'}</span>
-                    </div>
-                    <div className="h-10 w-[1px] bg-slate-200 dark:bg-slate-700/60" />
-                    <div className="space-y-1.5">
-                      <span className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wider block text-center ${isThreat ? 'bg-rose-600 text-white shadow-sm shadow-rose-600/30' : 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/30'}`}>
-                        {lang === 'fr' ? 'Niveau :' : 'Level:'} {riskTier}
-                      </span>
-                      <div className="flex gap-1 w-24">
-                        <div className={`h-1.5 flex-1 rounded-full ${score >= 10 ? (isThreat ? 'bg-rose-500' : 'bg-emerald-500') : 'bg-slate-200 dark:bg-slate-700'}`} />
-                        <div className={`h-1.5 flex-1 rounded-full ${score >= 35 ? (isThreat ? 'bg-rose-500' : 'bg-emerald-500') : 'bg-slate-200 dark:bg-slate-700'}`} />
-                        <div className={`h-1.5 flex-1 rounded-full ${score >= 60 ? 'bg-rose-500' : 'bg-slate-200 dark:bg-slate-700'}`} />
-                        <div className={`h-1.5 flex-1 rounded-full ${score >= 80 ? 'bg-rose-600' : 'bg-slate-200 dark:bg-slate-700'}`} />
+                      <div className="h-10 w-[1px] bg-slate-200 dark:bg-slate-700/60" />
+                      <div className="space-y-1.5">
+                        <span className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wider block text-center ${isThreat ? 'bg-rose-600 text-white shadow-sm shadow-rose-600/30' : 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/30'}`}>
+                          {lang === 'fr' ? 'Niveau :' : 'Level:'} {riskTier}
+                        </span>
+                        <div className="flex gap-1 w-24">
+                          <div className={`h-1.5 flex-1 rounded-full ${score >= 10 ? (isThreat ? 'bg-rose-500' : 'bg-emerald-500') : 'bg-slate-200 dark:bg-slate-700'}`} />
+                          <div className={`h-1.5 flex-1 rounded-full ${score >= 35 ? (isThreat ? 'bg-rose-500' : 'bg-emerald-500') : 'bg-slate-200 dark:bg-slate-700'}`} />
+                          <div className={`h-1.5 flex-1 rounded-full ${score >= 60 ? 'bg-rose-500' : 'bg-slate-200 dark:bg-slate-700'}`} />
+                          <div className={`h-1.5 flex-1 rounded-full ${score >= 80 ? 'bg-rose-600' : 'bg-slate-200 dark:bg-slate-700'}`} />
+                        </div>
                       </div>
                     </div>
+                    <button
+                      onClick={() => {
+                        setCurrentResult(null);
+                        const userKey = user?.id ? `_${user.id}` : '';
+                        try {
+                          localStorage.removeItem(`phishguard_latest_result${userKey}`);
+                          localStorage.removeItem('phishguard_latest_result');
+                        } catch(e){}
+                      }}
+                      className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 text-slate-400 hover:text-slate-700 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer self-start"
+                      title={lang === 'fr' ? 'Fermer le résultat' : 'Close result'}
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
                   </div>
                 </div>
 
@@ -2795,6 +2880,22 @@ export default function StandardDashboard({ isHistoryView = false }) {
                 {/* ── BLOCK 5: LIVE TECHNICAL INSPECTION (HTTP, SSL, HEADERS, DNS, BRAND) ── */}
                 {currentResult.details?.technical_inspection && renderTechnicalDetails(currentResult.details.technical_inspection, 5)}
 
+                {/* ── BLOCK 6: DYNAMIC HEADLESS SANDBOX & DOM DETONATION ── */}
+                {(currentResult.type === 'URL' || currentResult.target?.startsWith('http')) && (
+                  <div className="pt-4 border-t border-slate-100 dark:border-slate-800/80 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-xs font-black uppercase font-mono tracking-wider text-slate-900 dark:text-white flex items-center gap-2">
+                        <Eye className="w-4 h-4 text-sky-500" />
+                        <span>{lang === 'fr' ? "Bloc 6 : Détonation en Bac à Sable (Headless Sandbox)" : "Block 6: Headless Sandbox Detonation"}</span>
+                      </h4>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20 font-bold">
+                        DOM & REDIRECTS
+                      </span>
+                    </div>
+                    <EnterpriseDefenseSuite lang={lang} mode="SANDBOX_ONLY" initialUrl={currentResult.target} />
+                  </div>
+                )}
+
                 {/* ── DEFENSIVE RECOMMENDATIONS ── */}
                 {advice.length > 0 && (
                   <div className="bg-sky-500/10 border border-sky-500/30 rounded-2xl p-5 space-y-2">
@@ -2841,9 +2942,6 @@ export default function StandardDashboard({ isHistoryView = false }) {
             </div>
           );
         })()}
-
-          </>
-        )}
 
       </div>
 
