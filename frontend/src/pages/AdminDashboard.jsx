@@ -217,7 +217,7 @@ export default function AdminDashboard() {
               </div>
             </div>
             <span className="text-[11px] font-mono font-bold px-3 py-1 rounded-xl bg-cyan-500/10 text-cyan-500 border border-cyan-500/20">
-              {lang === 'fr' ? '98.4% Taux de Détection ML' : '98.4% ML Detection Rate'}
+              {lang === 'fr' ? 'Surveillance Active' : 'Active Monitoring'}
             </span>
           </div>
 

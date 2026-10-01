@@ -241,7 +241,6 @@ export default function StandardDashboard({ isHistoryView = false }) {
   const totalScans = dbStats.total_analyses;
   const phishingBlocked = dbStats.phishing_threats;
   const cleanScans = dbStats.clean_analyses;
-  const mlAccuracy = dbStats.ml_accuracy || 98.4;
 
   // Detect whether content is URL or text
   const detectContentType = (text) => {
@@ -1587,8 +1586,8 @@ export default function StandardDashboard({ isHistoryView = false }) {
   return (
     <div className="space-y-8 max-w-6xl mx-auto pb-24">
       
-      {/* 3 Executive Metrics Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+      {/* Executive Metrics Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         
         {/* Card 1: Total Scans */}
         <div className="bg-white/80 dark:bg-[#111622]/90 backdrop-blur-xl border border-sky-100 dark:border-sky-800/40 rounded-3xl p-6 shadow-xl relative overflow-hidden group hover:border-sky-400/60 transition duration-300">
@@ -1621,26 +1620,6 @@ export default function StandardDashboard({ isHistoryView = false }) {
           <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/60 flex items-center justify-between text-[11px]">
             <span className="text-slate-400 font-medium">{lang === 'fr' ? 'Attaques bloquées' : 'Blocked Attacks'}</span>
             <span className="text-rose-500 font-mono font-bold">{lang === 'fr' ? 'Haute Sécurité' : 'High Security'}</span>
-          </div>
-        </div>
-
-        {/* Card 3: Machine Learning Engine */}
-        <div 
-          className="bg-white/80 dark:bg-[#111622]/90 backdrop-blur-xl border border-sky-100 dark:border-sky-800/40 rounded-3xl p-6 shadow-xl relative overflow-hidden group hover:border-emerald-400/60 transition duration-300"
-          title={lang === 'fr' ? 'Précision globale du moteur de détection ML' : 'Global ML detection engine accuracy'}
-        >
-          <div className="flex items-center justify-between">
-            <div className="space-y-1">
-              <p className="text-[10px] font-mono font-extrabold uppercase tracking-wider text-slate-400">{lang === 'fr' ? 'Précision Moteur ML' : 'ML Engine Accuracy'}</p>
-              <p className="text-3xl font-black text-emerald-500 font-mono">{mlAccuracy}%</p>
-            </div>
-            <div className="p-3.5 bg-emerald-500/10 text-emerald-500 rounded-2xl group-hover:scale-110 transition duration-300">
-              <Cpu className="w-6 h-6" />
-            </div>
-          </div>
-          <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/60 flex items-center justify-between text-[11px]">
-            <span className="text-slate-400 font-medium">Random Forest & NLP</span>
-            <span className="text-emerald-500 font-mono font-bold">{lang === 'fr' ? 'Opérationnel' : 'Operational'}</span>
           </div>
         </div>
 
