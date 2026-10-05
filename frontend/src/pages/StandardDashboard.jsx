@@ -175,22 +175,26 @@ export default function StandardDashboard({ isHistoryView = false }) {
             localStorage.removeItem('phishguard_latest_result');
           } catch(e){}
         } else {
-          // If a scan result is currently shown, ensure it hasn't been deleted
-          setCurrentResult(prev => {
-            if (!prev) return null;
-            const exists = historyList.some(item => 
-              String(item.id) === String(prev.id) || 
-              String(item.analysis_code) === String(prev.id) || 
-              (prev.details?.analysis_code && (String(item.id) === String(prev.details.analysis_code) || String(item.analysis_code) === String(prev.details.analysis_code)))
-            );
-            if (exists) return prev;
-            // The displayed scan was deleted from history; clear it
-            try {
-              localStorage.removeItem(`phishguard_latest_result${userKey}`);
-              localStorage.removeItem('phishguard_latest_result');
-            } catch(e){}
-            return null;
-          });
+          // Strictly display the most recent analysis (the last research carried out by this user)
+          const latest = historyList[0];
+          const latestObj = {
+            id: latest.analysis_code || latest.id,
+            target_url: latest.target,
+            target_content: latest.target,
+            analysis_type: latest.type,
+            verdict: latest.verdict,
+            risk_score: latest.riskScore,
+            risk_level: latest.riskLevel,
+            confidence: latest.confidence,
+            ml_confidence: latest.confidence,
+            created_at: latest.created_at,
+            integrity_hash: latest.integrity_hash,
+            details: latest.details || {}
+          };
+          setCurrentResult(latestObj);
+          try {
+            localStorage.setItem(`phishguard_latest_result${userKey}`, JSON.stringify(latestObj));
+          } catch(e){}
         }
       }
     } catch (e) {
@@ -211,24 +215,22 @@ export default function StandardDashboard({ isHistoryView = false }) {
         localStorage.removeItem(`phishguard_latest_result${userKey}`);
         localStorage.removeItem('phishguard_latest_result');
       } else {
-        const savedRes = localStorage.getItem(`phishguard_latest_result${userKey}`) || localStorage.getItem('phishguard_latest_result');
-        if (savedRes) {
-          const parsedRes = JSON.parse(savedRes);
-          const exists = parsedHist.some(item => 
-            String(item.id) === String(parsedRes.id) || 
-            String(item.analysis_code) === String(parsedRes.id) || 
-            (parsedRes.details?.analysis_code && (String(item.id) === String(parsedRes.details.analysis_code) || String(item.analysis_code) === String(parsedRes.details.analysis_code)))
-          );
-          if (exists) {
-            setCurrentResult(parsedRes);
-          } else {
-            setCurrentResult(null);
-            localStorage.removeItem(`phishguard_latest_result${userKey}`);
-            localStorage.removeItem('phishguard_latest_result');
-          }
-        } else {
-          setCurrentResult(null);
-        }
+        // Auto-display the user's latest analysis from history cache
+        const latest = parsedHist[0];
+        setCurrentResult({
+          id: latest.analysis_code || latest.id,
+          target_url: latest.target,
+          target_content: latest.target,
+          analysis_type: latest.type,
+          verdict: latest.verdict,
+          risk_score: latest.riskScore,
+          risk_level: latest.riskLevel,
+          confidence: latest.confidence,
+          ml_confidence: latest.confidence,
+          created_at: latest.created_at,
+          integrity_hash: latest.integrity_hash,
+          details: latest.details || {}
+        });
       }
       
       const savedStats = localStorage.getItem(`phishguard_cached_stats${userKey}`);

@@ -384,7 +384,7 @@ def get_analysis_stats(db: Session = Depends(get_db), current_user = Depends(get
     from sqlalchemy import or_
     user_id = getattr(current_user, "id", None)
 
-    # If unauthenticated or no user, return clean empty stats
+    # If unauthenticated, return clean empty stats
     if not user_id:
         return {
             "total_analyses": 0,
@@ -393,7 +393,7 @@ def get_analysis_stats(db: Session = Depends(get_db), current_user = Depends(get
             "ml_accuracy": 98.4
         }
 
-    # Strict isolation: Standard User, Investigator, and Admin only see the analyses THEY personally performed
+    # Strict personal isolation: EVERY user (Admin, Investigator, Standard) sees ONLY the analyses THEY personally performed!
     query = db.query(AnalysisRecord).filter(
         AnalysisRecord.user_id == str(user_id),
         AnalysisRecord.is_deleted_by_user == False
@@ -426,11 +426,13 @@ def get_analysis_history(db: Session = Depends(get_db), current_user = Depends(g
     if not user_id:
         return {"history": [], "total": 0}
 
-    # Strict isolation: Standard User, Investigator, and Admin only see the analyses THEY personally performed
-    records = db.query(AnalysisRecord).filter(
+    # Strict personal isolation: EVERY user sees ONLY the analyses THEY personally carried out!
+    query = db.query(AnalysisRecord).filter(
         AnalysisRecord.user_id == str(user_id),
         AnalysisRecord.is_deleted_by_user == False
-    ).order_by(AnalysisRecord.created_at.desc()).all()
+    )
+
+    records = query.order_by(AnalysisRecord.created_at.desc()).all()
     history = []
     
     for r in records:
@@ -441,7 +443,6 @@ def get_analysis_history(db: Session = Depends(get_db), current_user = Depends(g
             target_url = r.target_content
             features = extract_url_features(target_url) if r.analysis_type == "URL" else extract_text_indicators(target_url)
             
-            # Compute top 3 ML model comparisons
             all_models_comp = [
                 {"key": "rf", "name": "Random Forest Classifier", "accuracy": 98.4, "phishing_prob": round(r.ml_confidence or (r.risk_score or 50.0), 1)},
                 {"key": "gbm", "name": "Gradient Boosting Classifier", "accuracy": 98.4, "phishing_prob": round(min(100.0, (r.risk_score or 50.0) * 1.02), 1)},
@@ -483,6 +484,9 @@ def get_analysis_history(db: Session = Depends(get_db), current_user = Depends(g
             dt_rec = dt_rec.astimezone(timezone.utc)
         ts_iso = dt_rec.isoformat() if dt_rec else None
 
+        actor_name = f"{current_user.prenom} {current_user.nom}" if current_user and hasattr(current_user, "prenom") else "Utilisateur"
+        actor_email = getattr(current_user, "email", None)
+
         history.append({
             "id": r.id,
             "analysis_code": r.analysis_code,
@@ -495,6 +499,9 @@ def get_analysis_history(db: Session = Depends(get_db), current_user = Depends(g
             "timestamp": ts_iso,
             "created_at": ts_iso,
             "integrity_hash": r.integrity_hash,
+            "user_id": r.user_id,
+            "actor_name": actor_name,
+            "actor_email": actor_email,
             "details": details
         })
         

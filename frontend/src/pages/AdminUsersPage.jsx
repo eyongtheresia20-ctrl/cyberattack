@@ -4,7 +4,7 @@ import { useLanguage } from '../context/LanguageContext';
 import {
   Users, ShieldCheck, UserCheck,
   AlertOctagon, CheckCircle2, Trash2, Search,
-  Filter, RefreshCw, Ban
+  Filter, RefreshCw, Ban, X
 } from 'lucide-react';
 
 export default function AdminUsersPage() {
@@ -38,6 +38,15 @@ export default function AdminUsersPage() {
 
   useEffect(() => { fetchUsers(); }, []);
 
+  useEffect(() => {
+    if (actionMessage) {
+      const timer = setTimeout(() => {
+        setActionMessage(null);
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [actionMessage]);
+
   const handleToggleBlockStatus = async (targetUser) => {
     setActionMessage(null);
     if (targetUser.role === 'ADMINISTRATEUR') {
@@ -61,6 +70,29 @@ export default function AdminUsersPage() {
         text: lang === 'fr'
           ? `Compte de ${targetUser.prenom} ${targetUser.nom} ${shouldBeActive ? 'débloqué avec succès' : 'bloqué avec succès'}.`
           : `Account for ${targetUser.prenom} ${targetUser.nom} ${shouldBeActive ? 'unblocked successfully' : 'blocked successfully'}.`
+      });
+      fetchUsers();
+    } catch (err) {
+      setActionMessage({ type: 'error', text: err.message });
+    }
+  };
+
+  const handleRoleChange = async (targetUser, newRole) => {
+    if (targetUser.role === newRole) return;
+    setActionMessage(null);
+    try {
+      const res = await fetch(`/api/v1/users/${targetUser.id}/role`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ new_role: newRole })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Echec de modification du rôle");
+      setActionMessage({
+        type: 'success',
+        text: lang === 'fr'
+          ? `Rôle de ${targetUser.prenom} ${targetUser.nom} mis à jour : ${newRole === 'ENQUETEUR' ? 'Enquêteur SOC' : 'Utilisateur Standard'}.`
+          : `Role for ${targetUser.prenom} ${targetUser.nom} updated to ${newRole === 'ENQUETEUR' ? 'SOC Investigator' : 'Standard User'}.`
       });
       fetchUsers();
     } catch (err) {
@@ -105,13 +137,22 @@ export default function AdminUsersPage() {
     <div className="space-y-6 max-w-7xl mx-auto pb-16">
 
       {actionMessage && (
-        <div className={`p-4 rounded-2xl border text-xs font-semibold flex items-center gap-2 shadow-sm ${
+        <div className={`p-4 rounded-2xl border text-xs font-semibold flex items-center justify-between shadow-sm transition-all duration-300 animate-in fade-in ${
           actionMessage.type === 'success'
             ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400'
             : 'bg-rose-500/10 border-rose-500/30 text-rose-600 dark:text-rose-400'
         }`}>
-          {actionMessage.type === 'success' ? <CheckCircle2 size={16} /> : <AlertOctagon size={16} />}
-          <span>{actionMessage.text}</span>
+          <div className="flex items-center gap-2">
+            {actionMessage.type === 'success' ? <CheckCircle2 size={16} /> : <AlertOctagon size={16} />}
+            <span>{actionMessage.text}</span>
+          </div>
+          <button
+            onClick={() => setActionMessage(null)}
+            className="p-1 hover:bg-black/5 dark:hover:bg-white/10 rounded-lg transition cursor-pointer text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+            title={lang === 'fr' ? 'Fermer' : 'Close'}
+          >
+            <X size={15} />
+          </button>
         </div>
       )}
 
@@ -168,13 +209,22 @@ export default function AdminUsersPage() {
                       <td className="p-3.5 font-bold text-slate-900 dark:text-white">{u.prenom} {u.nom}</td>
                       <td className="p-3.5 font-mono text-slate-600 dark:text-slate-400">{u.email}</td>
                       <td className="p-3.5">
-                        <span className={`px-2.5 py-1 rounded-lg font-bold text-[10px] ${
-                          u.role === 'ENQUETEUR'
-                            ? 'bg-indigo-500/20 text-indigo-500 border border-indigo-500/30'
-                            : 'bg-sky-100 dark:bg-sky-950/50 text-sky-600 dark:text-sky-300 border border-sky-200 dark:border-sky-800'
-                        }`}>
-                          {u.role === 'ENQUETEUR' ? (lang === 'fr' ? 'SOC ENQUÊTEUR' : 'SOC INVESTIGATOR') : (lang === 'fr' ? 'UTILISATEUR' : 'STANDARD USER')}
-                        </span>
+                        <select
+                          value={u.role}
+                          onChange={(e) => handleRoleChange(u, e.target.value)}
+                          className={`px-3 py-1.5 rounded-xl font-bold text-[11px] border cursor-pointer focus:outline-none transition shadow-sm ${
+                            u.role === 'ENQUETEUR'
+                              ? 'bg-indigo-500/10 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border-indigo-500/30 hover:border-indigo-500'
+                              : 'bg-sky-50 dark:bg-sky-950/40 text-sky-600 dark:text-sky-300 border-sky-200 dark:border-sky-800 hover:border-sky-500'
+                          }`}
+                        >
+                          <option value="UTILISATEUR_STANDARD" className="bg-white dark:bg-[#0f172a] text-slate-800 dark:text-slate-200">
+                            {lang === 'fr' ? 'UTILISATEUR STANDARD' : 'STANDARD USER'}
+                          </option>
+                          <option value="ENQUETEUR" className="bg-white dark:bg-[#0f172a] text-indigo-600 dark:text-indigo-400">
+                            {lang === 'fr' ? 'SOC ENQUÊTEUR' : 'SOC INVESTIGATOR'}
+                          </option>
+                        </select>
                       </td>
                       <td className="p-3.5">
                         <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold border ${

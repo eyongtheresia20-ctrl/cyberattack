@@ -34,12 +34,40 @@ def get_incident_stats(db: Session = Depends(get_db)):
     waf_events = db.query(Incident).filter(Incident.source_type.like("%LOG_EVENT%")).count()
     other_sources = max(0, total_incidents - (user_reports + waf_events))
 
+    # Calculate real 7-day attack distribution from actual database events & threats
+    days_fr = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"]
+    days_en = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    day_counts = [0] * 7
+    
+    # 1. Real intercepted WAF & Network security events
+    for evt in db.query(SecurityEvent).all():
+        if evt.timestamp:
+            wd = evt.timestamp.weekday()
+            day_counts[wd] += 1
+            
+    # 2. Real malicious / phishing analyses identified by ML
+    for anl in db.query(AnalysisRecord).filter(AnalysisRecord.risk_score >= 50.0).all():
+        if anl.created_at:
+            wd = anl.created_at.weekday()
+            day_counts[wd] += 1
+            
+    # 3. Real incidents
+    for inc in db.query(Incident).all():
+        if inc.created_at:
+            wd = inc.created_at.weekday()
+            day_counts[wd] += 1
+
+    daily_trend_fr = [{"day": days_fr[i], "attacks": day_counts[i]} for i in range(7)]
+    daily_trend_en = [{"day": days_en[i], "attacks": day_counts[i]} for i in range(7)]
+
     return {
         "total_incidents": total_incidents,
         "new_incidents": new_incidents,
         "investigating_incidents": investigating_incidents,
         "resolved_incidents": resolved_incidents,
         "categories_breakdown": categories_breakdown,
+        "daily_trend_fr": daily_trend_fr,
+        "daily_trend_en": daily_trend_en,
         "sources": {
             "user_reports": user_reports,
             "waf_events": waf_events,

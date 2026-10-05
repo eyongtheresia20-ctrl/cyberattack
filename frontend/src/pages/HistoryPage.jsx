@@ -125,10 +125,11 @@ export default function HistoryPage() {
         });
 
         setScanHistory(formatted);
-        const userHistoryKey = user?.id ? `phishguard_cached_history_${user.id}` : 'phishguard_cached_history';
-        try {
-          localStorage.setItem(userHistoryKey, JSON.stringify(formatted));
-        } catch (e) {}
+        if (user?.id) {
+          try {
+            localStorage.setItem(`phishguard_cached_history_${user.id}`, JSON.stringify(formatted));
+          } catch (e) {}
+        }
       }
     } catch (err) {
       console.log('Error loading history:', err);
@@ -138,11 +139,15 @@ export default function HistoryPage() {
   };
 
   useEffect(() => {
-    const userHistoryKey = user?.id ? `phishguard_cached_history_${user.id}` : 'phishguard_cached_history';
-    try {
-      const saved = localStorage.getItem(userHistoryKey);
-      setScanHistory(saved ? JSON.parse(saved) : []);
-    } catch(e) {
+    if (user?.id) {
+      const userHistoryKey = `phishguard_cached_history_${user.id}`;
+      try {
+        const saved = localStorage.getItem(userHistoryKey);
+        setScanHistory(saved ? JSON.parse(saved) : []);
+      } catch(e) {
+        setScanHistory([]);
+      }
+    } else {
       setScanHistory([]);
     }
     fetchHistory();

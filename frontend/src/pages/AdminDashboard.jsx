@@ -103,20 +103,15 @@ export default function AdminDashboard() {
       }));
       setThreatBreakdown(formattedBreakdown);
 
-      // Generate dynamic 7-day trend from live database volume
-      const dayNamesFr = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
-      const dayNamesEn = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-      const days = lang === 'fr' ? dayNamesFr : dayNamesEn;
-      const baseline = Math.max(4, Math.round(totalInc * 0.3));
-      
-      const dynamicDays = days.map((day, idx) => {
-        const factor = [0.8, 1.2, 0.9, 1.6, 1.4, 0.6, 1.1][idx];
-        return {
-          day,
-          attacks: Math.round(baseline * factor + (idx % 2 === 0 ? 3 : 1))
-        };
-      });
-      setDailyData(dynamicDays);
+      // Real 7-day attack distribution directly from live database records
+      if (statsData.daily_trend_fr && statsData.daily_trend_fr.length === 7) {
+        setDailyData(lang === 'fr' ? statsData.daily_trend_fr : statsData.daily_trend_en);
+      } else {
+        const dayNamesFr = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
+        const dayNamesEn = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+        const days = lang === 'fr' ? dayNamesFr : dayNamesEn;
+        setDailyData(days.map(d => ({ day: d, attacks: 0 })));
+      }
 
     } catch (err) {
       console.error('Admin dashboard fetch error', err);

@@ -16,6 +16,28 @@ def list_users(current_user=Depends(get_current_user), db: Session = Depends(get
     if current_user.role != "ADMINISTRATEUR":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Accès réservé aux Administrateurs")
     
+    # Auto-sync with MongoDB
+    try:
+        from app.db.mongodb import mongo_collections
+        mongo_enq_emails = set(u.get("email") for u in mongo_collections.investigators.find({}, {"email": 1}))
+        for std in db.query(UtilisateurStandard).all():
+            if std.email in mongo_enq_emails:
+                new_enq = Enqueteur(
+                    id=std.id,
+                    nom=std.nom,
+                    prenom=std.prenom,
+                    email=std.email,
+                    hashed_password=std.hashed_password,
+                    role="ENQUETEUR",
+                    badge_number=f"SOC-{std.id[:8]}",
+                    is_active=std.is_active
+                )
+                db.delete(std)
+                db.add(new_enq)
+                db.commit()
+    except Exception as _e:
+        pass
+
     stds = db.query(UtilisateurStandard).all()
     enqs = db.query(Enqueteur).all()
     adms = db.query(Administrateur).all()
