@@ -27,7 +27,10 @@ export default function AdminDashboard() {
     totalReports: null,
   });
   const [threatBreakdown, setThreatBreakdown] = useState([]);
-  const [dailyData, setDailyData] = useState([]);
+  const [timeframe, setTimeframe] = useState('weekly'); // 'weekly' or 'monthly'
+  const [weeklyData, setWeeklyData] = useState([]);
+  const [monthlyData, setMonthlyData] = useState([]);
+  const [currentWeekLabel, setCurrentWeekLabel] = useState('');
 
   const fetchData = useCallback(async () => {
     try {
@@ -103,14 +106,20 @@ export default function AdminDashboard() {
       }));
       setThreatBreakdown(formattedBreakdown);
 
-      // Real 7-day attack distribution directly from live database records
-      if (statsData.daily_trend_fr && statsData.daily_trend_fr.length === 7) {
-        setDailyData(lang === 'fr' ? statsData.daily_trend_fr : statsData.daily_trend_en);
+      // Real weekly and monthly attack distributions strictly from live database records
+      if (statsData.daily_trend_fr) {
+        setWeeklyData(lang === 'fr' ? statsData.daily_trend_fr : statsData.daily_trend_en);
       } else {
-        const dayNamesFr = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
-        const dayNamesEn = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-        const days = lang === 'fr' ? dayNamesFr : dayNamesEn;
-        setDailyData(days.map(d => ({ day: d, attacks: 0 })));
+        const dayNames = lang === 'fr' ? ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'] : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+        setWeeklyData(dayNames.map(d => ({ day: d, attacks: 0 })));
+      }
+
+      if (statsData.monthly_trend_fr) {
+        setMonthlyData(lang === 'fr' ? statsData.monthly_trend_fr : statsData.monthly_trend_en);
+      }
+
+      if (statsData.current_week_label) {
+        setCurrentWeekLabel(statsData.current_week_label);
       }
 
     } catch (err) {
@@ -195,38 +204,75 @@ export default function AdminDashboard() {
       {/* === CLEAN & CLEAR THREAT ANALYTICS DASHBOARD === */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
 
-        {/* Left Column: 7-Day Daily Detections Volume Chart */}
+        {/* Left Column: Weekly / Monthly Detections Volume Chart */}
         <div className="lg:col-span-7 bg-white dark:bg-[#161b27] border border-slate-200 dark:border-sky-900/40 rounded-3xl shadow-sm p-6 flex flex-col justify-between">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
             <div className="flex items-center gap-3">
               <div className="p-2.5 bg-cyan-500/10 text-cyan-500 rounded-2xl border border-cyan-500/20">
                 <Activity size={20} />
               </div>
               <div>
                 <h2 className="text-base font-extrabold text-slate-900 dark:text-white">
-                  {lang === 'fr' ? 'Attaques Détectées (7 Derniers Jours)' : 'Detected Attacks (Last 7 Days)'}
+                  {timeframe === 'weekly'
+                    ? (lang === 'fr' ? 'Attaques Détectées (Semaine en Cours)' : 'Detected Attacks (Current Week)')
+                    : (lang === 'fr' ? 'Attaques Détectées (Mois en Cours)' : 'Detected Attacks (Current Month)')}
                 </h2>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
-                  {lang === 'fr' ? 'Nombre total de menaces et attaques interceptées par jour' : 'Total threat volume and attacks intercepted per day'}
+                  {timeframe === 'weekly'
+                    ? (lang === 'fr' 
+                        ? (currentWeekLabel ? `Semaine du ${currentWeekLabel} — Calendrier réel` : 'Volume des menaces réelles cette semaine') 
+                        : 'Real threat volume recorded this current week')
+                    : (lang === 'fr' ? 'Volume des attaques réelles par semaine du mois' : 'Real threat volume grouped by week of the current month')}
                 </p>
               </div>
             </div>
-            <span className="text-[11px] font-mono font-bold px-3 py-1 rounded-xl bg-cyan-500/10 text-cyan-500 border border-cyan-500/20">
-              {lang === 'fr' ? 'Surveillance Active' : 'Active Monitoring'}
-            </span>
+
+            {/* Timeframe Selector: Weekly (Default) vs Monthly */}
+            <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800/80 p-1 rounded-xl border border-slate-200 dark:border-slate-700/60 self-start sm:self-auto shrink-0">
+              <button
+                type="button"
+                onClick={() => setTimeframe('weekly')}
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  timeframe === 'weekly'
+                    ? 'bg-white dark:bg-cyan-500 text-cyan-700 dark:text-white shadow-sm font-black'
+                    : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                }`}
+              >
+                {lang === 'fr' ? '📅 Semaine' : '📅 Week'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setTimeframe('monthly')}
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  timeframe === 'monthly'
+                    ? 'bg-white dark:bg-cyan-500 text-cyan-700 dark:text-white shadow-sm font-black'
+                    : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                }`}
+              >
+                {lang === 'fr' ? '📆 Mois' : '📆 Month'}
+              </button>
+            </div>
           </div>
 
           <div className="h-64 w-full my-2">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={dailyData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+              <AreaChart 
+                data={timeframe === 'weekly' ? weeklyData : monthlyData} 
+                margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
+              >
                 <defs>
                   <linearGradient id="cyberGradient" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.4} />
                     <stop offset="95%" stopColor="#06b6d4" stopOpacity={0.0} />
                   </linearGradient>
                 </defs>
-                <XAxis dataKey="day" stroke="#64748b" fontSize={12} tickLine={false} />
-                <YAxis stroke="#64748b" fontSize={12} tickLine={false} />
+                <XAxis 
+                  dataKey={timeframe === 'weekly' ? 'day' : 'period'} 
+                  stroke="#64748b" 
+                  fontSize={12} 
+                  tickLine={false} 
+                />
+                <YAxis stroke="#64748b" fontSize={12} tickLine={false} allowDecimals={false} />
                 <Tooltip
                   contentStyle={{
                     backgroundColor: '#0f172a',
@@ -249,6 +295,16 @@ export default function AdminDashboard() {
               </AreaChart>
             </ResponsiveContainer>
           </div>
+
+          {timeframe === 'weekly' && weeklyData.length > 0 && weeklyData.every(d => d.attacks === 0) && (
+            <div className="mt-2 text-center py-2 px-3 bg-sky-50/50 dark:bg-sky-950/20 border border-sky-200/50 dark:border-sky-900/30 rounded-xl">
+              <p className="text-[11px] text-sky-700 dark:text-sky-300 font-mono">
+                {lang === 'fr' 
+                  ? `ℹ️ 0 attaque enregistrée pour cette semaine (${currentWeekLabel || 'semaine en cours'}). Ce graphique s'actualisera dès que des menaces réelles seront détectées.`
+                  : `ℹ️ 0 attacks recorded for this week (${currentWeekLabel || 'current week'}). Graph updates in real-time as real threats are detected.`}
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Right Column: Clean Percentage Breakdown of Threat Types */}

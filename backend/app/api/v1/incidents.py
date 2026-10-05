@@ -1,4 +1,5 @@
 import random
+from datetime import datetime, timezone, timedelta
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -34,31 +35,87 @@ def get_incident_stats(db: Session = Depends(get_db)):
     waf_events = db.query(Incident).filter(Incident.source_type.like("%LOG_EVENT%")).count()
     other_sources = max(0, total_incidents - (user_reports + waf_events))
 
-    # Calculate real 7-day attack distribution from actual database events & threats
+    # Strictly calculate real attack distribution for the CURRENT WEEK (Monday 00:00 to Sunday 23:59)
+    # If no analysis or attacks occurred this week, counts remain strictly 0 (empty week)
+    from datetime import timedelta
+    now = datetime.now(timezone.utc)
+    start_of_week = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+    end_of_week = start_of_week + timedelta(days=7)
+
     days_fr = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"]
     days_en = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-    day_counts = [0] * 7
-    
-    # 1. Real intercepted WAF & Network security events
-    for evt in db.query(SecurityEvent).all():
-        if evt.timestamp:
-            wd = evt.timestamp.weekday()
-            day_counts[wd] += 1
-            
-    # 2. Real malicious / phishing analyses identified by ML
-    for anl in db.query(AnalysisRecord).filter(AnalysisRecord.risk_score >= 50.0).all():
-        if anl.created_at:
-            wd = anl.created_at.weekday()
-            day_counts[wd] += 1
-            
-    # 3. Real incidents
-    for inc in db.query(Incident).all():
-        if inc.created_at:
-            wd = inc.created_at.weekday()
-            day_counts[wd] += 1
+    week_counts = [0] * 7
 
-    daily_trend_fr = [{"day": days_fr[i], "attacks": day_counts[i]} for i in range(7)]
-    daily_trend_en = [{"day": days_en[i], "attacks": day_counts[i]} for i in range(7)]
+    def normalize_dt(dt):
+        if not dt:
+            return None
+        if dt.tzinfo is None:
+            return dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+
+    # 1. Real intercepted WAF & Network security events in current week
+    for evt in db.query(SecurityEvent).all():
+        dt = normalize_dt(evt.timestamp)
+        if dt and start_of_week <= dt < end_of_week:
+            week_counts[dt.weekday()] += 1
+
+    # 2. Real malicious / phishing analyses identified in current week
+    for anl in db.query(AnalysisRecord).filter(AnalysisRecord.risk_score >= 50.0).all():
+        dt = normalize_dt(anl.created_at)
+        if dt and start_of_week <= dt < end_of_week:
+            week_counts[dt.weekday()] += 1
+
+    # 3. Real incidents logged in current week
+    for inc in db.query(Incident).all():
+        dt = normalize_dt(inc.created_at)
+        if dt and start_of_week <= dt < end_of_week:
+            week_counts[dt.weekday()] += 1
+
+    daily_trend_fr = [{"day": days_fr[i], "attacks": week_counts[i]} for i in range(7)]
+    daily_trend_en = [{"day": days_en[i], "attacks": week_counts[i]} for i in range(7)]
+
+    # Strictly calculate monthly trend for CURRENT MONTH (Weeks 1 to 4)
+    start_of_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    if now.month == 12:
+        end_of_month = now.replace(year=now.year + 1, month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+    else:
+        end_of_month = now.replace(month=now.month + 1, day=1, hour=0, minute=0, second=0, microsecond=0)
+
+    month_counts = [0, 0, 0, 0]
+    def get_month_bucket(dt):
+        d = dt.day
+        if d <= 7: return 0
+        elif d <= 14: return 1
+        elif d <= 21: return 2
+        return 3
+
+    for evt in db.query(SecurityEvent).all():
+        dt = normalize_dt(evt.timestamp)
+        if dt and start_of_month <= dt < end_of_month:
+            month_counts[get_month_bucket(dt)] += 1
+
+    for anl in db.query(AnalysisRecord).filter(AnalysisRecord.risk_score >= 50.0).all():
+        dt = normalize_dt(anl.created_at)
+        if dt and start_of_month <= dt < end_of_month:
+            month_counts[get_month_bucket(dt)] += 1
+
+    for inc in db.query(Incident).all():
+        dt = normalize_dt(inc.created_at)
+        if dt and start_of_month <= dt < end_of_month:
+            month_counts[get_month_bucket(dt)] += 1
+
+    monthly_trend_fr = [
+        {"period": "Sem 1 (1-7)", "attacks": month_counts[0]},
+        {"period": "Sem 2 (8-14)", "attacks": month_counts[1]},
+        {"period": "Sem 3 (15-21)", "attacks": month_counts[2]},
+        {"period": "Sem 4 (22+)", "attacks": month_counts[3]},
+    ]
+    monthly_trend_en = [
+        {"period": "Wk 1 (1-7)", "attacks": month_counts[0]},
+        {"period": "Wk 2 (8-14)", "attacks": month_counts[1]},
+        {"period": "Wk 3 (15-21)", "attacks": month_counts[2]},
+        {"period": "Wk 4 (22+)", "attacks": month_counts[3]},
+    ]
 
     return {
         "total_incidents": total_incidents,
@@ -68,6 +125,9 @@ def get_incident_stats(db: Session = Depends(get_db)):
         "categories_breakdown": categories_breakdown,
         "daily_trend_fr": daily_trend_fr,
         "daily_trend_en": daily_trend_en,
+        "monthly_trend_fr": monthly_trend_fr,
+        "monthly_trend_en": monthly_trend_en,
+        "current_week_label": f"{start_of_week.strftime('%d/%m')} - {(end_of_week - timedelta(days=1)).strftime('%d/%m/%Y')}",
         "sources": {
             "user_reports": user_reports,
             "waf_events": waf_events,
