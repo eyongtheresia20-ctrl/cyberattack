@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { X, Lock, Mail, User, ShieldCheck, ArrowRight, RefreshCw } from 'lucide-react';
+import { X, Lock, Mail, User, ShieldCheck, ArrowRight, RefreshCw, Sparkles } from 'lucide-react';
 
 export default function AuthModal({ isOpen, onClose }) {
   const { login, register } = useAuth();
@@ -11,6 +11,15 @@ export default function AuthModal({ isOpen, onClose }) {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+
+  const generateStrongPassword = () => {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%&*';
+    let pwd = 'Cg!';
+    for (let i = 0; i < 11; i++) {
+      pwd += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    setPassword(pwd);
+  };
 
   if (!isOpen) return null;
 
@@ -111,12 +120,24 @@ export default function AuthModal({ isOpen, onClose }) {
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-400 mb-1">Mot de passe</label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-xs font-semibold text-slate-400">Mot de passe</label>
+              {isRegister && (
+                <button
+                  type="button"
+                  onClick={generateStrongPassword}
+                  className="text-[10px] text-sky-400 hover:text-sky-300 font-bold transition flex items-center gap-1 cursor-pointer"
+                >
+                  <Sparkles size={11} /> Générer mot de passe sûr
+                </button>
+              )}
+            </div>
             <div className="relative">
               <Lock className="absolute left-3 top-3 text-slate-500" size={16} />
               <input
                 type="password"
                 required
+                autoComplete={isRegister ? "new-password" : "current-password"}
                 placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}

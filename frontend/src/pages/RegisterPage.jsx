@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Shield, UserPlus, Eye, EyeOff, ArrowRight, Sun, Moon, CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
+import { Shield, UserPlus, Eye, EyeOff, ArrowRight, Sun, Moon, CheckCircle2, AlertCircle, RefreshCw, Sparkles } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useLanguage } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
@@ -20,6 +20,17 @@ export default function RegisterPage() {
   const [form, setForm] = useState({
     name: '', email: '', password: '', confirm: '', terms: false,
   });
+
+  const generateStrongPassword = () => {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%&*';
+    let pwd = 'Cg!';
+    for (let i = 0; i < 11; i++) {
+      pwd += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    setForm(prev => ({ ...prev, password: pwd, confirm: pwd }));
+    setShowPass(true);
+    setShowConfirm(true);
+  };
 
   const set = (key) => (e) => setForm({ ...form, [key]: e.target.type === 'checkbox' ? e.target.checked : e.target.value });
 
@@ -146,9 +157,27 @@ export default function RegisterPage() {
 
                 {/* Password */}
                 <div className="space-y-1.5">
-                  <label className={labelClass}>{t('register_password')}</label>
+                  <div className="flex items-center justify-between">
+                    <label className={labelClass}>{t('register_password')}</label>
+                    <button
+                      type="button"
+                      onClick={generateStrongPassword}
+                      className="text-[11px] text-sky-600 dark:text-sky-400 hover:text-sky-500 font-bold transition flex items-center gap-1 cursor-pointer"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      {lang === 'en' ? 'Generate clean password' : 'Générer mot de passe sûr'}
+                    </button>
+                  </div>
                   <div className="relative">
-                    <input type={showPass ? 'text' : 'password'} required value={form.password} onChange={set('password')} placeholder="••••••••" className={inputClass + ' pr-11'} />
+                    <input 
+                      type={showPass ? 'text' : 'password'} 
+                      required 
+                      autoComplete="new-password"
+                      value={form.password} 
+                      onChange={set('password')} 
+                      placeholder="••••••••" 
+                      className={inputClass + ' pr-11'} 
+                    />
                     <button type="button" onClick={() => setShowPass(s => !s)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-sky-500 transition">
                       {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
@@ -159,7 +188,15 @@ export default function RegisterPage() {
                 <div className="space-y-1.5">
                   <label className={labelClass}>{t('register_confirm')}</label>
                   <div className="relative">
-                    <input type={showConfirm ? 'text' : 'password'} required value={form.confirm} onChange={set('confirm')} placeholder="••••••••" className={inputClass + ' pr-11'} />
+                    <input 
+                      type={showConfirm ? 'text' : 'password'} 
+                      required 
+                      autoComplete="new-password"
+                      value={form.confirm} 
+                      onChange={set('confirm')} 
+                      placeholder="••••••••" 
+                      className={inputClass + ' pr-11'} 
+                    />
                     <button type="button" onClick={() => setShowConfirm(s => !s)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-sky-500 transition">
                       {showConfirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
