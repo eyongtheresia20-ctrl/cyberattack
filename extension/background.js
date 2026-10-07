@@ -5,43 +5,38 @@ const REVALIDATION_COOLDOWN_MS = 15 * 60 * 1000; // 15 minutes
 
 // Map of tabId -> { url, lastCheckedAt, openedAt }
 const activeTabs = new Map();
-// Map of normalizedUrl -> lastCheckedAt
+// Map of cleanUrl -> lastCheckedAt
 const urlCheckHistory = new Map();
 
-// Helper to normalize URLs (merges search query updates into single base URL)
-function normalizeUrl(rawUrl) {
+// Helper to normalize URLs (retains distinct page paths & search queries, strips anchors #)
+function getCleanUrl(rawUrl) {
   if (!rawUrl || typeof rawUrl !== 'string') return '';
   try {
     const u = new URL(rawUrl);
-    // For search engines (google, bing, duckduckgo, yahoo), normalize to base host to prevent search typing spam
-    if (u.hostname.includes('google.') || u.hostname.includes('bing.') || u.hostname.includes('duckduckgo.') || u.hostname.includes('yahoo.')) {
-      return u.hostname.toLowerCase();
-    }
-    // For all websites, use origin + pathname (ignores query params like ?q=... ?ref=...)
-    return (u.origin + u.pathname).toLowerCase().replace(/\/+$/, '');
+    u.hash = ''; // Remove #hash fragments
+    return (u.origin + u.pathname + (u.search || '')).toLowerCase().replace(/\/+$/, '');
   } catch {
     return rawUrl.toLowerCase().trim().replace(/\/+$/, '');
   }
 }
 
 // Evaluate URL against CyberGuard Backend (strictly memory-only, no DB writes)
-// Policy: Exactly ONE pop-up per URL. Re-checks only after 15 minutes.
+// Policy: Exactly ONE pop-up per URL. When URL changes (e.g. Claude -> Claude Sign-In), pops up for the new URL.
 async function evaluateUrl(url, reasonLabel = "Navigation en direct", tabId = null) {
   if (!url || typeof url !== 'string') return null;
   if (!url.startsWith('http://') && !url.startsWith('https://')) return null;
-  if (url.includes('localhost:3000') || url.includes('127.0.0.1:3000')) return null;
+  if (url.includes('localhost:3000') || url.includes('127.0.0.1:3000') || url.startsWith('chrome://')) return null;
 
-  const norm = normalizeUrl(url);
+  const clean = getCleanUrl(url);
   const now = Date.now();
-  const lastChecked = urlCheckHistory.get(norm);
+  const lastChecked = urlCheckHistory.get(clean);
 
-  // STRICT RULE: If this URL has already popped up in the last 15 minutes, DO NOT POP UP AGAIN!
-  // Only periodic re-check after 15 minutes can trigger another pop-up.
+  // If this exact URL has already popped up recently and this is not a 15-minute periodic re-check, skip duplicate
   if (lastChecked && (now - lastChecked < REVALIDATION_COOLDOWN_MS) && reasonLabel !== "periodic") {
-    return null; // Suppress duplicate pop-ups for the same URL
+    return null;
   }
 
-  urlCheckHistory.set(norm, now);
+  urlCheckHistory.set(clean, now);
 
   try {
     const res = await fetch(BACKEND_ENDPOINT, {
@@ -185,15 +180,31 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 if (chrome.webNavigation && chrome.webNavigation.onBeforeNavigate) {
   chrome.webNavigation.onBeforeNavigate.addListener((details) => {
     if (details.frameId === 0 && details.url) { // Main frame only
-      const norm = normalizeUrl(details.url);
+      const clean = getCleanUrl(details.url);
       const prev = activeTabs.get(details.tabId);
       
-      if (!prev || normalizeUrl(prev.url) !== norm) {
+      if (!prev || getCleanUrl(prev.url) !== clean) {
         activeTabs.set(details.tabId, {
           url: details.url,
           openedAt: Date.now()
         });
         evaluateUrl(details.url, "Navigation", details.tabId);
+      }
+    }
+  });
+
+  // Track SPA client-side route changes (e.g. clicking "Sign In" on Claude!)
+  chrome.webNavigation.onHistoryStateUpdated.addListener((details) => {
+    if (details.frameId === 0 && details.url) {
+      const clean = getCleanUrl(details.url);
+      const prev = activeTabs.get(details.tabId);
+
+      if (!prev || getCleanUrl(prev.url) !== clean) {
+        activeTabs.set(details.tabId, {
+          url: details.url,
+          openedAt: Date.now()
+        });
+        evaluateUrl(details.url, "Changement de page SPA", details.tabId);
       }
     }
   });
@@ -203,8 +214,8 @@ if (chrome.webNavigation && chrome.webNavigation.onBeforeNavigate) {
 chrome.tabs.onRemoved.addListener((tabId) => {
   const tabInfo = activeTabs.get(tabId);
   if (tabInfo) {
-    const norm = normalizeUrl(tabInfo.url);
-    urlCheckHistory.delete(norm);
+    const clean = getCleanUrl(tabInfo.url);
+    urlCheckHistory.delete(clean);
     activeTabs.delete(tabId);
   }
 });

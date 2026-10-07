@@ -1,24 +1,23 @@
 // CyberGuard Sentinel — Content Script (Injected at document_start)
-// Policy: Exactly ONE pop-up per URL. Never duplicate for search queries or keystrokes.
+// Policy: Exactly ONE pop-up per URL. When URL changes (e.g. Claude -> Claude Sign-In), pops up for the new URL.
 (function() {
-  function normalizeUrl(rawUrl) {
+  function getCleanUrl(rawUrl) {
     if (!rawUrl || typeof rawUrl !== 'string') return '';
     try {
       const u = new URL(rawUrl);
-      if (u.hostname.includes('google.') || u.hostname.includes('bing.') || u.hostname.includes('duckduckgo.') || u.hostname.includes('yahoo.')) {
-        return u.hostname.toLowerCase();
-      }
-      return (u.origin + u.pathname).toLowerCase().replace(/\/+$/, '');
+      u.hash = ''; // Remove hash #anchor
+      return (u.origin + u.pathname + (u.search || '')).toLowerCase().replace(/\/+$/, '');
     } catch {
       return rawUrl.toLowerCase().trim().replace(/\/+$/, '');
     }
   }
 
-  const currentUrl = window.location.href;
-  const currentNorm = normalizeUrl(currentUrl);
+  // Set of URLs that have already received a pop-up on this tab
+  const seenUrlsOnTab = new Set();
+  let currentActiveUrl = window.location.href;
 
   // Don't inject on CyberGuard's own dashboard or internal pages
-  if (currentUrl.includes('localhost:3000') || currentUrl.includes('127.0.0.1:3000') || currentUrl.startsWith('chrome://')) {
+  if (currentActiveUrl.includes('localhost:3000') || currentActiveUrl.includes('127.0.0.1:3000') || currentActiveUrl.startsWith('chrome://')) {
     return;
   }
 
@@ -56,21 +55,21 @@
   // Render individual floating HUD card in the stack
   function renderSentinelHud(data) {
     if (!data || !data.url) return;
-    const norm = normalizeUrl(data.url);
+    const clean = getCleanUrl(data.url);
     const container = getContainer();
     if (!container) return;
 
-    // RULE: EXACTLY ONE POP-UP PER URL / DOMAIN
-    const existingCard = Array.from(container.children).find(card => card.dataset.normUrl === norm);
+    // Check if a card for this exact URL is already in the DOM
+    const existingCard = Array.from(container.children).find(card => card.dataset.cleanUrl === clean);
     if (existingCard) {
-      return; // A pop-up for this URL already exists! Do not create another one.
+      return; // Already showing this pop-up!
     }
 
     const isSafe = data.is_safe;
     const cardId = 'cg-card-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
     const card = document.createElement('div');
     card.id = cardId;
-    card.dataset.normUrl = norm;
+    card.dataset.cleanUrl = clean;
 
     // Styling for card
     card.style.cssText = `
@@ -287,11 +286,39 @@
     }
   });
 
-  // Request evaluation only once upon script initialization
-  chrome.runtime.sendMessage({ type: 'CYBERGUARD_INSPECT_PAGE', url: currentUrl }, (response) => {
-    if (chrome.runtime.lastError || !response || !response.success || !response.data) {
+  // Evaluate URL if it hasn't been evaluated yet on this tab
+  function inspectUrlIfNeeded(rawUrl) {
+    if (!rawUrl || rawUrl.startsWith('chrome://') || rawUrl.includes('localhost:3000')) return;
+    const clean = getCleanUrl(rawUrl);
+
+    // If this exact URL was already evaluated and popped up on this tab, skip!
+    if (seenUrlsOnTab.has(clean)) {
       return;
     }
-    renderSentinelHud(response.data);
-  });
+
+    seenUrlsOnTab.add(clean);
+
+    chrome.runtime.sendMessage({ type: 'CYBERGUARD_INSPECT_PAGE', url: rawUrl }, (response) => {
+      if (chrome.runtime.lastError || !response || !response.success || !response.data) {
+        return;
+      }
+      renderSentinelHud(response.data);
+    });
+  }
+
+  // 1. Initial inspection on page load
+  inspectUrlIfNeeded(window.location.href);
+
+  // 2. Continuous lightweight check for SPA navigation (e.g. clicking "Sign In" on Claude!)
+  window.addEventListener('popstate', () => inspectUrlIfNeeded(window.location.href));
+  window.addEventListener('hashchange', () => inspectUrlIfNeeded(window.location.href));
+
+  // Check every 400ms if URL has changed (catches all client-side router navigation like Claude Sign-In)
+  setInterval(() => {
+    const current = window.location.href;
+    if (getCleanUrl(current) !== getCleanUrl(currentActiveUrl)) {
+      currentActiveUrl = current;
+      inspectUrlIfNeeded(current);
+    }
+  }, 400);
 })();

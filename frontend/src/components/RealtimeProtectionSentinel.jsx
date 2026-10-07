@@ -184,19 +184,18 @@ export default function RealtimeProtectionSentinel() {
     }
   };
 
-  // Helper to normalize URLs (merges search query changes on google into single base URL)
+  // Helper to normalize URLs (keeps distinct subpages and search queries, strips #hash)
   const normalizeUrl = (rawUrl) => {
     if (!rawUrl || typeof rawUrl !== 'string') return '';
     try {
       const u = new URL(rawUrl.startsWith('http') ? rawUrl : `http://${rawUrl}`);
-      if (u.hostname.includes('google.') || u.hostname.includes('bing.') || u.hostname.includes('duckduckgo.') || u.hostname.includes('yahoo.')) {
-        return u.hostname.toLowerCase();
-      }
-      return (u.origin + u.pathname).toLowerCase().replace(/\/+$/, '');
+      u.hash = ''; // Remove #hash fragments
+      return (u.origin + u.pathname + (u.search || '')).toLowerCase().replace(/\/+$/, '');
     } catch {
       return rawUrl.toLowerCase().trim().replace(/\/+$/, '');
     }
   };
+
 
   // Trigger popup HUD card in the stack (Exactly ONE pop-up per URL)
   const triggerHudAlert = (alertData) => {
