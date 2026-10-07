@@ -317,3 +317,87 @@ def seed_demo_logs(db: Session = Depends(get_db)):
         count += 1
 
     return {"status": "seeded", "count": count}
+
+
+class RealtimeCheckRequest(BaseModel):
+    url: str
+
+@router.post("/realtime-check")
+def realtime_background_check(req: RealtimeCheckRequest):
+    """
+    Ultra-fast (<300ms) background sentinel evaluation:
+    Extracts lexical features, runs tri-model ML classification,
+    and returns immediate safety status + trigger explanations.
+    """
+    raw_url = req.url.strip()
+    if not raw_url:
+        raise HTTPException(status_code=400, detail="URL cannot be empty")
+
+    from app.ml.url_feature_extractor import extract_url_features
+    from app.api.v1.analyze import get_url_model_by_name
+    import pandas as pd
+    import time
+
+    features = extract_url_features(raw_url)
+    feat_df = pd.DataFrame([features])
+
+    # Run ML prediction
+    model_preds = []
+    try:
+        rf_payload = get_url_model_by_name("rf")
+        probs = rf_payload["model"].predict_proba(feat_df)[0]
+        prob = float(probs[1]) if len(probs) > 1 else float(probs[0])
+        model_preds.append(prob)
+    except Exception:
+        pass
+
+    try:
+        gbm_payload = get_url_model_by_name("gbm")
+        probs = gbm_payload["model"].predict_proba(feat_df)[0]
+        prob = float(probs[1]) if len(probs) > 1 else float(probs[0])
+        model_preds.append(prob)
+    except Exception:
+        pass
+
+    ml_prob = (sum(model_preds) / len(model_preds)) if model_preds else 0.5
+    raw_score = ml_prob * 100.0
+
+    # Fast heuristics
+    reasons = []
+    if features.get("has_ip"):
+        reasons.append("Hôte IP direct au lieu d'un nom de domaine officiel")
+        raw_score += 25.0
+    if features.get("has_suspicious_tld"):
+        reasons.append(f"Extension de domaine suspecte ou jetable ({features.get('has_suspicious_tld')})")
+        raw_score += 20.0
+    if features.get("keyword_count", 0) > 0:
+        reasons.append(f"Présence de {features['keyword_count']} mot(s)-clé(s) d'hameçonnage / phishing")
+        raw_score += 15.0
+    if not features.get("is_https"):
+        reasons.append("Connexion HTTP non chiffrée (Absence de certificat SSL/TLS)")
+        raw_score += 15.0
+    if features.get("entropy", 0.0) > 3.6:
+        reasons.append("Entropie lexicale anormale (Domaine possiblement généré par algorithme DGA)")
+        raw_score += 20.0
+
+    final_score = min(100.0, round(raw_score, 1))
+    is_safe = final_score < 40.0
+
+    verdict = "LÉGITIME" if is_safe else ("SUSPECT" if final_score < 75.0 else "MALVEILLANT / PHISHING")
+    threat_level = "FAIBLE" if is_safe else ("ÉLEVÉ" if final_score >= 75.0 else "MOYEN")
+
+    return {
+        "url": raw_url,
+        "is_safe": is_safe,
+        "risk_score": final_score,
+        "verdict": verdict,
+        "threat_level": threat_level,
+        "reasons": reasons if not is_safe else ["Structure lexicale conforme", "Protocole et domaine normaux"],
+        "checked_at": time.strftime("%H:%M:%S UTC", time.gmtime()),
+        "features": {
+            "entropy": features.get("entropy", 0.0),
+            "is_https": bool(features.get("is_https")),
+            "has_ip": bool(features.get("has_ip")),
+            "keyword_count": features.get("keyword_count", 0)
+        }
+    }

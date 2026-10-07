@@ -24,6 +24,7 @@ import AdminUsersPage from './pages/AdminUsersPage';
 import ActivityLogsPage from './pages/ActivityLogsPage';
 
 import FloatingAiAssistant from './components/FloatingAiAssistant';
+import RealtimeProtectionSentinel from './components/RealtimeProtectionSentinel';
 
 const PUBLIC_ROUTES = ['/', '/login', '/register'];
 
@@ -82,6 +83,7 @@ function AppLayout() {
         </main>
       </div>
       <FloatingAiAssistant />
+      <RealtimeProtectionSentinel />
       <AuthModal isOpen={authModalOpen} onClose={() => setAuthModalOpen(false)} />
     </div>
   );

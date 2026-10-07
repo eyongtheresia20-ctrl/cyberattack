@@ -182,6 +182,24 @@ export default function Navbar({ onOpenAuth, onOpenHistory }) {
                 <span className="text-slate-300 dark:text-slate-700">|</span>
                 <span>{lang === 'fr' ? 'Actif :' : 'Active :'} <strong className="text-cyan-600 dark:text-cyan-400 font-bold">{formatDuration(sessionSeconds)}</strong></span>
               </div>
+
+              {/* Real-time Sentinel Active Pill */}
+              <button
+                onClick={() => {
+                  window.dispatchEvent(new CustomEvent('cyberguard:inspect-url', { 
+                    detail: { url: 'http://192.168.1.100/paypal-login.xyz' } 
+                  }));
+                }}
+                className="hidden lg:flex items-center gap-1.5 bg-emerald-500/10 dark:bg-emerald-500/15 border border-emerald-500/30 hover:border-emerald-500/60 px-3 py-1 rounded-full text-[11px] font-mono text-emerald-600 dark:text-emerald-400 hover:scale-105 transition cursor-pointer"
+                title={lang === 'fr' ? 'Sentinelle CyberGuard Active — Cliquer pour tester l\'interception' : 'CyberGuard Sentinel Active — Click to test interception'}
+              >
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                </span>
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
+                <span className="font-bold">{lang === 'fr' ? 'Protection Active' : 'Sentinel Active'}</span>
+              </button>
             </div>
           )}
         </div>
