@@ -19,9 +19,9 @@ function normalizeUrl(rawUrl) {
 
 // Evaluate URL against CyberGuard Backend
 async function evaluateUrl(url, reasonLabel = "Navigation en direct") {
-  if (!url || typeof url !== 'string') return;
-  if (!url.startsWith('http://') && !url.startsWith('https://')) return;
-  if (url.includes('localhost:3000') || url.includes('127.0.0.1:3000')) return;
+  if (!url || typeof url !== 'string') return null;
+  if (!url.startsWith('http://') && !url.startsWith('https://')) return null;
+  if (url.includes('localhost:3000') || url.includes('127.0.0.1:3000')) return null;
 
   const norm = normalizeUrl(url);
   const now = Date.now();
@@ -29,7 +29,7 @@ async function evaluateUrl(url, reasonLabel = "Navigation en direct") {
 
   // If already tested within 30 minutes, skip repeated notification unless re-opened
   if (lastChecked && (now - lastChecked < REVALIDATION_COOLDOWN_MS) && reasonLabel === "periodic") {
-    return;
+    return null;
   }
 
   urlCheckHistory.set(norm, now);
@@ -45,14 +45,17 @@ async function evaluateUrl(url, reasonLabel = "Navigation en direct") {
       const data = await res.json();
       displayNotification(data);
       broadcastToCyberguardTab(data);
+      return data;
     }
   } catch (err) {
     console.warn('[CyberGuard Sentinel] Backend unreachable:', err);
   }
+  return null;
 }
 
 // Display real desktop notification (Windows Toast / Chrome Notification)
 function displayNotification(data) {
+  if (!data) return;
   const isSafe = data.is_safe;
   const notifId = 'cyberguard-' + Date.now();
 
@@ -64,22 +67,26 @@ function displayNotification(data) {
     ? `Site vérifié et conforme : ${data.url}\nRisque: ${Math.round(data.risk_score)}% (Faible)`
     : `ATTENTION : ${data.url}\nRisque: ${Math.round(data.risk_score)}% — Phishing intercepté !`;
 
-  chrome.notifications.create(notifId, {
-    type: 'basic',
-    iconUrl: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%230ea5e9"><path d="M12 2L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-3z"/></svg>',
-    title: title,
-    message: message,
-    priority: isSafe ? 0 : 2
-  });
+  try {
+    chrome.notifications.create(notifId, {
+      type: 'basic',
+      iconUrl: chrome.runtime.getURL('icon.png'),
+      title: title,
+      message: message,
+      priority: isSafe ? 0 : 2
+    });
 
-  // Auto clear notification after 8 seconds
-  setTimeout(() => {
-    chrome.notifications.clear(notifId);
-  }, 8000);
+    setTimeout(() => {
+      chrome.notifications.clear(notifId);
+    }, 8000);
+  } catch (e) {
+    console.warn('Notification error:', e);
+  }
 }
 
 // Send event to open CyberGuard web dashboard (localhost:3000)
 async function broadcastToCyberguardTab(data) {
+  if (!data) return;
   try {
     const tabs = await chrome.tabs.query({ url: "*://localhost:3000/*" });
     tabs.forEach(tab => {
@@ -99,6 +106,18 @@ async function broadcastToCyberguardTab(data) {
     });
   } catch (e) {}
 }
+
+// Handle message from content script injected on web pages
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.type === 'CYBERGUARD_INSPECT_PAGE' && message.url) {
+    evaluateUrl(message.url, "Chargement de page").then(data => {
+      sendResponse({ success: true, data });
+    }).catch(err => {
+      sendResponse({ success: false, error: err.message });
+    });
+    return true; // Keep channel open for async response
+  }
+});
 
 // 1. Listen for new or updated tabs (user opened a URL in Chrome)
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
@@ -121,20 +140,19 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 chrome.tabs.onRemoved.addListener((tabId) => {
   const tabInfo = activeTabs.get(tabId);
   if (tabInfo) {
-    // URL was closed. Allow immediate re-testing if opened again.
     const norm = normalizeUrl(tabInfo.url);
     urlCheckHistory.delete(norm);
     activeTabs.delete(tabId);
   }
 });
 
-// 3. Periodic re-check every 5 minutes: if a tab has been open for > 30 minutes, re-test it
+// 3. Periodic re-check: if a tab has been open for > 30 minutes, re-test it
 setInterval(() => {
   const now = Date.now();
   for (const [tabId, info] of activeTabs.entries()) {
     if (now - info.openedAt >= REVALIDATION_COOLDOWN_MS) {
-      info.openedAt = now; // reset
+      info.openedAt = now;
       evaluateUrl(info.url, "periodic");
     }
   }
-}, 300000); // Check every 5 minutes
+}, 300000); // 5 min interval
