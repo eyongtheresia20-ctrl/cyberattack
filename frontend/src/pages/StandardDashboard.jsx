@@ -259,6 +259,14 @@ export default function StandardDashboard({ isHistoryView = false }) {
     if (e && typeof e.preventDefault === 'function') e.preventDefault();
     if (!targetContent.trim()) return;
     
+    // ⚡ INSTANT DISPATCH: Trigger Sentinel popup immediately upon opening URL (<20ms)
+    const cleanedTarget = targetContent.trim();
+    if (detectContentType(cleanedTarget) === 'URL') {
+      window.dispatchEvent(new CustomEvent('cyberguard:inspect-url', { 
+        detail: { url: cleanedTarget, context: 'URL ouverte par l\'utilisateur' } 
+      }));
+    }
+
     const activeObjective = overrideObjective || investigationObjective;
     setIsScanning(true);
     setCurrentResult(null);
@@ -359,11 +367,6 @@ export default function StandardDashboard({ isHistoryView = false }) {
       };
 
       setCurrentResult(resObj);
-      if (actualType === 'URL') {
-        window.dispatchEvent(new CustomEvent('cyberguard:inspect-url', { 
-          detail: { url: targetContent, context: 'URL ouverte par l\'utilisateur' } 
-        }));
-      }
       const userKey = user?.id ? `_${user.id}` : '';
       try { localStorage.setItem(`phishguard_latest_result${userKey}`, JSON.stringify(resObj)); } catch(e){}
       setScanHistory(prev => [resObj, ...prev]);

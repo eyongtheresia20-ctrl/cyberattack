@@ -20,15 +20,18 @@ export default function UrlAnalysis() {
   const handleAnalyze = async (e) => {
     e?.preventDefault();
     if (!urlInput.trim()) return;
+    
+    // ⚡ INSTANT DISPATCH: Trigger Sentinel popup immediately (<20ms)
+    window.dispatchEvent(new CustomEvent('cyberguard:inspect-url', { 
+      detail: { url: urlInput.trim(), context: 'URL analysée par l\'utilisateur' } 
+    }));
+
     setLoading(true);
     setResult(null);
 
     try {
       const res = await api.analyzeUrl(urlInput.trim());
       setResult(res.data);
-      window.dispatchEvent(new CustomEvent('cyberguard:inspect-url', { 
-        detail: { url: urlInput.trim(), context: 'URL analysée par l\'utilisateur' } 
-      }));
     } catch (err) {
       console.error(err);
     } finally {
