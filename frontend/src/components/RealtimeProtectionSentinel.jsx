@@ -65,14 +65,11 @@ export default function RealtimeProtectionSentinel() {
     return saved !== null ? JSON.parse(saved) : true;
   });
 
-  // State
-  const [activeAlert, setActiveAlert] = useState(null);
-  const [countdown, setCountdown] = useState(10);
-  const [isPaused, setIsPaused] = useState(false);
+  // State: Stack of concurrent active alerts (allows multiple pop-ups simultaneously)
+  const [activeAlerts, setActiveAlerts] = useState([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isSentinelDrawerOpen, setIsSentinelDrawerOpen] = useState(false);
   const [testUrlInput, setTestUrlInput] = useState('');
-  const [actionFeedback, setActionFeedback] = useState(null);
   const [clipboardStatus, setClipboardStatus] = useState(null);
 
   const [history, setHistory] = useState(() => {
@@ -96,8 +93,6 @@ export default function RealtimeProtectionSentinel() {
       return {};
     }
   });
-
-  const countdownIntervalRef = useRef(null);
 
   // Save settings
   useEffect(() => {
@@ -135,29 +130,16 @@ export default function RealtimeProtectionSentinel() {
   }, [isEnabled, seenUrlsMap]);
 
   // Main URL inspection function:
-  // 1. Tests immediately whenever a URL is opened (< 20ms)
-  // 2. If it was closed and opened again, tests it immediately as a new open
-  // 3. If it remains open for > 15 minutes, automatically re-tests it
+  // 1. Tests immediately whenever ANY URL is opened (< 20ms)
+  // 2. Does NOT block rapid successive openings (each pops up simultaneously!)
+  // 3. If a URL remains open for > 15 minutes, automatically re-tests it
   // 4. Memory-only check: DOES NOT write to database
-
   const handleInspectUrl = async (rawUrl, contextLabel = null, isNewOpen = true) => {
     if (!rawUrl || typeof rawUrl !== 'string' || !rawUrl.trim()) return;
     const url = rawUrl.trim();
 
     const normalizedUrl = url.toLowerCase().replace(/\/+$/, '');
     const now = Date.now();
-    const lastSeenTime = seenUrlsMap[normalizedUrl];
-    const isWithin30Min = lastSeenTime && (now - lastSeenTime < REVALIDATION_COOLDOWN_MS);
-
-    // If this exact URL is ALREADY actively showing on the screen right now, avoid double flash
-    if (activeAlert && activeAlert.url.toLowerCase().replace(/\/+$/, '') === normalizedUrl) {
-      return;
-    }
-
-    // If it's not a fresh opening and still within 30-minute window, don't spam
-    if (!isNewOpen && isWithin30Min) {
-      return;
-    }
 
     // Record open timestamp
     setSeenUrlsMap(prev => ({ ...prev, [normalizedUrl]: now }));
@@ -190,7 +172,7 @@ export default function RealtimeProtectionSentinel() {
         // Add to history
         setHistory(prev => [alertData, ...prev.filter(h => h.url !== alertData.url)].slice(0, 15));
 
-        // Trigger interactive HUD Toast if Sentinel is enabled
+        // Trigger interactive HUD Toast (stacks with any existing pop-ups!)
         if (isEnabled) {
           triggerHudAlert(alertData);
         }
@@ -202,44 +184,50 @@ export default function RealtimeProtectionSentinel() {
     }
   };
 
-  // Trigger popup HUD
+  // Trigger popup HUD card in the stack
   const triggerHudAlert = (alertData) => {
-    setActiveAlert(alertData);
-    setActionFeedback(null);
-    playNotificationChime(alertData.is_safe);
-    // Unsafe gets 10s, safe gets 8s
     const initialTime = alertData.is_safe ? 8 : 10;
-    setCountdown(initialTime);
-    setIsPaused(false);
+    const newCard = {
+      id: 'alert-' + Date.now() + '-' + Math.floor(Math.random() * 1000),
+      ...alertData,
+      countdown: initialTime,
+      initialTime: initialTime,
+      isPaused: false,
+      actionFeedback: null
+    };
+
+    // Prepend new card, limit stack to 4 simultaneous pop-ups
+    setActiveAlerts(prev => [newCard, ...prev.slice(0, 3)]);
+    playNotificationChime(alertData.is_safe);
   };
 
-  // Countdown timer with pause on hover
+  // Stack Countdown interval with per-alert pause checking
   useEffect(() => {
-    if (!activeAlert) {
-      if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
-      return;
-    }
+    if (activeAlerts.length === 0) return;
 
-    if (isPaused) {
-      if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
-      return;
-    }
-
-    countdownIntervalRef.current = setInterval(() => {
-      setCountdown(prev => {
-        if (prev <= 1) {
-          clearInterval(countdownIntervalRef.current);
-          setActiveAlert(null); // Closes popup when timer hits 0
-          return 0;
-        }
-        return prev - 1;
+    const interval = setInterval(() => {
+      setActiveAlerts(prev => {
+        return prev
+          .map(alert => {
+            if (alert.isPaused) return alert;
+            return { ...alert, countdown: alert.countdown - 1 };
+          })
+          .filter(alert => alert.countdown > 0);
       });
     }, 1000);
 
-    return () => {
-      if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
-    };
-  }, [activeAlert, isPaused]);
+    return () => clearInterval(interval);
+  }, [activeAlerts.length]);
+
+  // Set pause on specific alert card
+  const setAlertPaused = (alertId, paused) => {
+    setActiveAlerts(prev => prev.map(a => a.id === alertId ? { ...a, isPaused: paused } : a));
+  };
+
+  // Dismiss specific alert card
+  const dismissAlert = (alertId) => {
+    setActiveAlerts(prev => prev.filter(a => a.id !== alertId));
+  };
 
   useEffect(() => {
     const onInspect = (e) => {
@@ -253,7 +241,8 @@ export default function RealtimeProtectionSentinel() {
     };
     window.addEventListener('cyberguard:inspect-url', onInspect);
     return () => window.removeEventListener('cyberguard:inspect-url', onInspect);
-  }, [isEnabled, activeAlert]);
+  }, [isEnabled]);
+
 
   // Read URL from Windows Clipboard (upon user request)
   const handleInspectClipboard = async () => {
@@ -279,16 +268,16 @@ export default function RealtimeProtectionSentinel() {
   };
 
   // Action: Block host / IP in Dynamic Firewall
-  const handleBlockUrl = async () => {
-    if (!activeAlert) return;
+  const handleBlockUrl = async (alertItem) => {
+    if (!alertItem) return;
     try {
       const token = localStorage.getItem('phishguard_token');
       const headers = { 'Content-Type': 'application/json' };
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
-      let hostToBlock = activeAlert.domain || activeAlert.url;
+      let hostToBlock = alertItem.domain || alertItem.url;
       try {
-        const parsed = new URL(activeAlert.url.startsWith('http') ? activeAlert.url : `http://${activeAlert.url}`);
+        const parsed = new URL(alertItem.url.startsWith('http') ? alertItem.url : `http://${alertItem.url}`);
         hostToBlock = parsed.hostname;
       } catch {}
 
@@ -297,36 +286,33 @@ export default function RealtimeProtectionSentinel() {
         headers,
         body: JSON.stringify({
           ip: hostToBlock,
-          reason: `Bloqué via Sentinelle Active (Risque ${activeAlert.risk_score}% - ${activeAlert.verdict})`,
-          severity: activeAlert.risk_score >= 80 ? 'CRITICAL' : 'HIGH'
+          reason: `Bloqué via Sentinelle Active (Risque ${alertItem.risk_score}% - ${alertItem.verdict})`,
+          severity: alertItem.risk_score >= 80 ? 'CRITICAL' : 'HIGH'
         })
       });
 
-      if (res.ok) {
-        setActionFeedback({
-          type: 'success',
-          text: lang === 'fr' 
-            ? `Hôte ${hostToBlock} banni dans le Pare-feu dynamique !` 
-            : `Host ${hostToBlock} blacklisted in Dynamic Firewall!`
-        });
-      } else {
-        setActionFeedback({
-          type: 'info',
-          text: lang === 'fr' ? `Règle de blocage enregistrée pour ${hostToBlock}.` : `Block rule logged for ${hostToBlock}.`
-        });
-      }
+      const feedback = res.ok
+        ? {
+            type: 'success',
+            text: lang === 'fr' 
+              ? `Hôte ${hostToBlock} banni dans le Pare-feu dynamique !` 
+              : `Host ${hostToBlock} blacklisted in Dynamic Firewall!`
+          }
+        : {
+            type: 'info',
+            text: lang === 'fr' ? `Règle de blocage enregistrée pour ${hostToBlock}.` : `Block rule logged for ${hostToBlock}.`
+          };
+
+      setActiveAlerts(prev => prev.map(a => a.id === alertItem.id ? { ...a, actionFeedback: feedback } : a));
     } catch {
-      setActionFeedback({
-        type: 'info',
-        text: lang === 'fr' ? 'Règle de blocage enregistrée en local.' : 'Block rule recorded locally.'
-      });
+      setActiveAlerts(prev => prev.map(a => a.id === alertItem.id ? { ...a, actionFeedback: { type: 'info', text: lang === 'fr' ? 'Règle de blocage enregistrée en local.' : 'Block rule recorded locally.' } } : a));
     }
   };
 
   // Action: Transfer report directly to SOC / Investigator
   // Transmits the incident exactly like a user reporting an analyzed URL in CyberGuard
-  const handleTransferToSoc = async () => {
-    if (!activeAlert) return;
+  const handleTransferToSoc = async (alertItem) => {
+    if (!alertItem) return;
     try {
       const token = localStorage.getItem('phishguard_token');
       const headers = { 'Content-Type': 'application/json' };
@@ -337,17 +323,17 @@ export default function RealtimeProtectionSentinel() {
         : 'Alice Martin';
 
       const payload = {
-        title: `[Signalement URL] ${activeAlert.url}`,
-        target: activeAlert.url,
+        title: `[Signalement URL] ${alertItem.url}`,
+        target: alertItem.url,
         scan_type: 'URL',
-        verdict: activeAlert.verdict || (activeAlert.is_safe ? 'LÉGITIME' : 'SUSPECT'),
-        risk_score: activeAlert.risk_score || 0,
+        verdict: alertItem.verdict || (alertItem.is_safe ? 'LÉGITIME' : 'SUSPECT'),
+        risk_score: alertItem.risk_score || 0,
         details: {
           report_category: 'Signalement URL',
           user_observations: "Rapport généré par l'utilisateur pour étude approfondie par l'enquêteur SOC.",
-          features: activeAlert.features || {},
-          ml_ensemble: activeAlert.ml_ensemble || {},
-          reasons: activeAlert.reasons || [],
+          features: alertItem.features || {},
+          ml_ensemble: alertItem.ml_ensemble || {},
+          reasons: alertItem.reasons || [],
           intercepted_by: 'Sentinelle de Protection Temps Réel CyberGuard'
         },
         reporter_name: reporterName,
@@ -363,224 +349,239 @@ export default function RealtimeProtectionSentinel() {
       if (res.ok) {
         const data = await res.json();
         const code = data?.report?.report_code || data?.incident?.incident_code || 'INC-OK';
-        setActionFeedback({
-          type: 'success',
-          text: lang === 'fr' 
-            ? `Dossier ${code} scellé SHA-256 et transmis à l’Enquêteur !` 
-            : `Dossier ${code} SHA-256 sealed and transferred to Investigator!`
-        });
+        setActiveAlerts(prev => prev.map(a => a.id === alertItem.id ? {
+          ...a,
+          countdown: Math.max(a.countdown, 20),
+          actionFeedback: {
+            type: 'success',
+            text: lang === 'fr' 
+              ? `Dossier ${code} scellé SHA-256 et transmis à l’Enquêteur !` 
+              : `Dossier ${code} SHA-256 sealed and transferred to Investigator!`
+          }
+        } : a));
       } else {
-        setActionFeedback({
-          type: 'info',
-          text: lang === 'fr' ? 'Dossier transmis au centre d\'investigation.' : 'Incident reported to SOC center.'
-        });
+        setActiveAlerts(prev => prev.map(a => a.id === alertItem.id ? {
+          ...a,
+          actionFeedback: {
+            type: 'info',
+            text: lang === 'fr' ? 'Dossier transmis au centre d\'investigation.' : 'Incident reported to SOC center.'
+          }
+        } : a));
       }
     } catch {
-      setActionFeedback({
-        type: 'info',
-        text: lang === 'fr' ? 'Dossier transmis au centre d\'investigation.' : 'Incident reported to SOC center.'
-      });
+      setActiveAlerts(prev => prev.map(a => a.id === alertItem.id ? {
+        ...a,
+        actionFeedback: {
+          type: 'info',
+          text: lang === 'fr' ? 'Dossier transmis au centre d\'investigation.' : 'Incident reported to SOC center.'
+        }
+      } : a));
     }
   };
 
-
   return (
     <>
-      {/* 1. NOTIFICATION POP-UP (Appears ONLY for the URL the user opened / scanned) */}
-      {activeAlert && (
-        <div 
-          className="fixed top-20 right-6 z-50 max-w-md w-full animate-in slide-in-from-top-4 duration-300 pointer-events-auto shadow-2xl"
-          onMouseEnter={() => setIsPaused(true)}
-          onMouseLeave={() => setIsPaused(false)}
-        >
-          <div className={`rounded-3xl border shadow-2xl backdrop-blur-2xl overflow-hidden transition-all duration-300 ${
-            !activeAlert.is_safe
-              ? 'bg-slate-950/95 border-rose-500/50 shadow-rose-950/50 text-white ring-1 ring-rose-500/30'
-              : 'bg-slate-950/95 border-emerald-500/50 shadow-emerald-950/50 text-white ring-1 ring-emerald-500/30'
-          }`}>
-            
-            {/* Top Indicator Header (Notification Banner) */}
-            <div className={`px-4 py-2.5 flex items-center justify-between text-xs font-mono font-bold border-b ${
-              !activeAlert.is_safe 
-                ? 'bg-rose-500/15 border-rose-500/30 text-rose-300' 
-                : 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300'
-            }`}>
-              <div className="flex items-center gap-2">
-                <span className="relative flex h-2.5 w-2.5">
-                  <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
-                    !activeAlert.is_safe ? 'bg-rose-400' : 'bg-emerald-400'
-                  }`}></span>
-                  <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${
-                    !activeAlert.is_safe ? 'bg-rose-500' : 'bg-emerald-500'
-                  }`}></span>
-                </span>
-                <span className="tracking-wider uppercase font-extrabold flex items-center gap-1.5">
-                  <BellRing className="w-3.5 h-3.5" />
-                  {!activeAlert.is_safe 
-                    ? (lang === 'fr' ? 'Menace Détectée en Temps Réel' : 'Real-Time Threat Detected')
-                    : (lang === 'fr' ? 'Ressource Saine & Sécurisée' : 'Safe & Verified Resource')
-                  }
-                </span>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] bg-slate-900/80 px-2 py-0.5 rounded-full border border-slate-700/60 flex items-center gap-1 font-mono text-cyan-400 font-bold">
-                  <Zap className="w-3 h-3 text-amber-400" />
-                  {activeAlert.latency_ms}ms
-                </span>
-                <button 
-                  onClick={() => setActiveAlert(null)}
-                  className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition cursor-pointer"
-                  title={lang === 'fr' ? 'Fermer la notification' : 'Dismiss notification'}
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-
-            {/* Content Body */}
-            <div className="p-4 space-y-3">
-              {/* Context label */}
-              {activeAlert.context && (
-                <div className="text-[10px] font-mono text-cyan-400/90 font-bold uppercase tracking-wider flex items-center gap-1">
-                  <Radio className="w-3 h-3 text-cyan-400 animate-pulse" />
-                  <span>{activeAlert.context}</span>
-                </div>
-              )}
-
-              {/* URL & Verdict Banner */}
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <div className="text-xs text-slate-300 font-mono truncate mb-1">
-                    {activeAlert.url}
+      {/* 1. NOTIFICATION POP-UPS: Stacked concurrent alerts (multiple can appear at the same time) */}
+      {activeAlerts.length > 0 && (
+        <div className="fixed top-20 right-6 z-50 max-w-md w-full flex flex-col gap-3 pointer-events-none">
+          {activeAlerts.map(alert => (
+            <div 
+              key={alert.id}
+              className="w-full animate-in slide-in-from-top-4 duration-300 pointer-events-auto shadow-2xl"
+              onMouseEnter={() => setAlertPaused(alert.id, true)}
+              onMouseLeave={() => setAlertPaused(alert.id, false)}
+            >
+              <div className={`rounded-3xl border shadow-2xl backdrop-blur-2xl overflow-hidden transition-all duration-300 ${
+                !alert.is_safe
+                  ? 'bg-slate-950/95 border-rose-500/50 shadow-rose-950/50 text-white ring-1 ring-rose-500/30'
+                  : 'bg-slate-950/95 border-emerald-500/50 shadow-emerald-950/50 text-white ring-1 ring-emerald-500/30'
+              }`}>
+                
+                {/* Top Indicator Header (Notification Banner) */}
+                <div className={`px-4 py-2 flex items-center justify-between text-xs font-mono font-bold border-b ${
+                  !alert.is_safe 
+                    ? 'bg-rose-500/15 border-rose-500/30 text-rose-300' 
+                    : 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300'
+                }`}>
+                  <div className="flex items-center gap-2">
+                    <span className="relative flex h-2.5 w-2.5">
+                      <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
+                        !alert.is_safe ? 'bg-rose-400' : 'bg-emerald-400'
+                      }`}></span>
+                      <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${
+                        !alert.is_safe ? 'bg-rose-500' : 'bg-emerald-500'
+                      }`}></span>
+                    </span>
+                    <span className="tracking-wider uppercase font-extrabold flex items-center gap-1.5">
+                      <BellRing className="w-3.5 h-3.5" />
+                      {!alert.is_safe 
+                        ? (lang === 'fr' ? 'Alerte Menace' : 'Threat Alert')
+                        : (lang === 'fr' ? 'Ressource Saine' : 'Safe Resource')
+                      }
+                    </span>
                   </div>
-                  <h4 className={`text-base font-extrabold tracking-tight flex items-center gap-2 ${
-                    !activeAlert.is_safe ? 'text-rose-400' : 'text-emerald-400'
-                  }`}>
-                    {!activeAlert.is_safe ? (
+
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] bg-slate-900/80 px-2 py-0.5 rounded-full border border-slate-700/60 flex items-center gap-1 font-mono text-cyan-400 font-bold">
+                      <Zap className="w-3 h-3 text-amber-400" />
+                      {alert.latency_ms}ms
+                    </span>
+                    <button 
+                      onClick={() => dismissAlert(alert.id)}
+                      className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition cursor-pointer"
+                      title={lang === 'fr' ? 'Fermer la notification' : 'Dismiss notification'}
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Content Body */}
+                <div className="p-3.5 space-y-2.5">
+                  {/* Context label */}
+                  {alert.context && (
+                    <div className="text-[10px] font-mono text-cyan-400/90 font-bold uppercase tracking-wider flex items-center gap-1">
+                      <Radio className="w-3 h-3 text-cyan-400 animate-pulse" />
+                      <span>{alert.context}</span>
+                    </div>
+                  )}
+
+                  {/* URL & Verdict Banner */}
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="text-xs text-slate-300 font-mono truncate mb-1">
+                        {alert.url}
+                      </div>
+                      <h4 className={`text-sm font-extrabold tracking-tight flex items-center gap-1.5 ${
+                        !alert.is_safe ? 'text-rose-400' : 'text-emerald-400'
+                      }`}>
+                        {!alert.is_safe ? (
+                          <>
+                            <ShieldAlert className="w-4 h-4 text-rose-500 shrink-0" />
+                            <span>{alert.verdict}</span>
+                          </>
+                        ) : (
+                          <>
+                            <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+                            <span>{lang === 'fr' ? 'LÉGITIME & CONFORME' : 'LEGITIMATE & SAFE'}</span>
+                          </>
+                        )}
+                      </h4>
+                    </div>
+
+                    <div className={`text-right px-2.5 py-1 rounded-xl border font-mono shrink-0 ${
+                      !alert.is_safe
+                        ? 'bg-rose-500/20 border-rose-500/40 text-rose-300'
+                        : 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300'
+                    }`}>
+                      <div className="text-[8px] uppercase tracking-wider text-slate-400 font-bold">Risque</div>
+                      <div className="text-base font-black leading-none">{Math.round(alert.risk_score)}%</div>
+                    </div>
+                  </div>
+
+                  {/* Reasons / Flags Tags */}
+                  <div className="space-y-1">
+                    <div className="flex flex-wrap gap-1">
+                      {alert.reasons && alert.reasons.length > 0 ? (
+                        alert.reasons.slice(0, 3).map((reason, idx) => (
+                          <span 
+                            key={idx} 
+                            className={`text-[9px] px-1.5 py-0.5 rounded font-mono border ${
+                              !alert.is_safe 
+                                ? 'bg-rose-500/15 text-rose-300 border-rose-500/30' 
+                                : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                            }`}
+                          >
+                            {reason}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="text-[9px] px-1.5 py-0.5 rounded font-mono bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                          Structure saine • HTTPS vérifié
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Action feedback */}
+                  {alert.actionFeedback && (
+                    <div className={`p-2 rounded-xl text-xs font-semibold flex items-center gap-2 border ${
+                      alert.actionFeedback.type === 'success' 
+                        ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300' 
+                        : 'bg-cyan-500/15 border-cyan-500/40 text-cyan-300'
+                    }`}>
+                      <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                      <span>{alert.actionFeedback.text}</span>
+                    </div>
+                  )}
+
+                  {/* Action Buttons */}
+                  <div className="grid grid-cols-2 gap-2 pt-1">
+                    {!alert.is_safe ? (
                       <>
-                        <ShieldAlert className="w-5 h-5 text-rose-500 shrink-0" />
-                        <span>{activeAlert.verdict}</span>
+                        <button
+                          onClick={() => handleBlockUrl(alert)}
+                          className="flex items-center justify-center gap-1.5 px-2.5 py-1.5 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white rounded-xl text-xs font-bold transition shadow-lg shadow-rose-950/50 cursor-pointer"
+                        >
+                          <Ban className="w-3.5 h-3.5" />
+                          <span>{lang === 'fr' ? 'Bloquer l\'accès' : 'Block Access'}</span>
+                        </button>
+
+                        <button
+                          onClick={() => handleTransferToSoc(alert)}
+                          className="flex items-center justify-center gap-1.5 px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white rounded-xl text-xs font-bold transition shadow-lg shadow-indigo-950/50 cursor-pointer"
+                        >
+                          <Send className="w-3.5 h-3.5" />
+                          <span>{lang === 'fr' ? 'Transférer à l\'Enquêteur' : 'Transfer'}</span>
+                        </button>
                       </>
                     ) : (
-                      <>
-                        <ShieldCheck className="w-5 h-5 text-emerald-400 shrink-0" />
-                        <span>{lang === 'fr' ? 'LÉGITIME & CONFORME' : 'LEGITIMATE & SAFE'}</span>
-                      </>
-                    )}
-                  </h4>
-                </div>
-
-                <div className={`text-right px-3 py-1.5 rounded-2xl border font-mono shrink-0 ${
-                  !activeAlert.is_safe
-                    ? 'bg-rose-500/20 border-rose-500/40 text-rose-300'
-                    : 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300'
-                }`}>
-                  <div className="text-[9px] uppercase tracking-wider text-slate-400 font-bold">Risque</div>
-                  <div className="text-lg font-black leading-none">{Math.round(activeAlert.risk_score)}%</div>
-                </div>
-              </div>
-
-              {/* Reasons / Flags Tags */}
-              <div className="space-y-1 pt-1">
-                <div className="flex flex-wrap gap-1.5">
-                  {activeAlert.reasons && activeAlert.reasons.length > 0 ? (
-                    activeAlert.reasons.map((reason, idx) => (
-                      <span 
-                        key={idx} 
-                        className={`text-[10px] px-2 py-0.5 rounded-md font-mono border ${
-                          !activeAlert.is_safe 
-                            ? 'bg-rose-500/15 text-rose-300 border-rose-500/30' 
-                            : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
-                        }`}
+                      <button
+                        onClick={() => handleTransferToSoc(alert)}
+                        className="col-span-2 flex items-center justify-center gap-2 px-3 py-1.5 bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 active:scale-95 text-white rounded-xl text-xs font-bold transition shadow-lg shadow-indigo-950/50 cursor-pointer"
                       >
-                        {reason}
-                      </span>
-                    ))
-                  ) : (
-                    <span className="text-[10px] px-2 py-0.5 rounded-md font-mono bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
-                      Structure saine • Chiffrement vérifié
-                    </span>
-                  )}
+                        <Send className="w-3.5 h-3.5" />
+                        <span>{lang === 'fr' ? 'Transférer à l\'Enquêteur (Dossier)' : 'Transfer to Investigator'}</span>
+                      </button>
+                    )}
+                  </div>
+
                 </div>
-              </div>
 
-              {/* Action feedback */}
-              {actionFeedback && (
-                <div className={`p-2 rounded-xl text-xs font-semibold flex items-center gap-2 border ${
-                  actionFeedback.type === 'success' 
-                    ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300' 
-                    : 'bg-cyan-500/15 border-cyan-500/40 text-cyan-300'
-                }`}>
-                  <CheckCircle2 className="w-4 h-4 shrink-0" />
-                  <span>{actionFeedback.text}</span>
+                {/* Countdown Auto-Dismiss Progress Bar */}
+                <div className="bg-slate-900 h-1.5 w-full overflow-hidden">
+                  <div 
+                    className={`h-full transition-all duration-1000 ease-linear ${
+                      !alert.is_safe ? 'bg-rose-500' : 'bg-emerald-400'
+                    }`}
+                    style={{ 
+                      width: `${(alert.countdown / alert.initialTime) * 100}%` 
+                    }}
+                  />
                 </div>
-              )}
-
-              {/* Action Buttons */}
-              <div className="grid grid-cols-2 gap-2 pt-1">
-                {!activeAlert.is_safe ? (
-                  <>
-                    <button
-                      onClick={handleBlockUrl}
-                      className="flex items-center justify-center gap-1.5 px-3 py-2 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white rounded-xl text-xs font-bold transition shadow-lg shadow-rose-950/50 cursor-pointer"
-                    >
-                      <Ban className="w-3.5 h-3.5" />
-                      <span>{lang === 'fr' ? 'Bloquer l\'accès' : 'Block Access'}</span>
-                    </button>
-
-                    <button
-                      onClick={handleTransferToSoc}
-                      className="flex items-center justify-center gap-1.5 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white rounded-xl text-xs font-bold transition shadow-lg shadow-indigo-950/50 cursor-pointer"
-                    >
-                      <Send className="w-3.5 h-3.5" />
-                      <span>{lang === 'fr' ? 'Transférer à l\'Enquêteur' : 'Transfer to Investigator'}</span>
-                    </button>
-                  </>
-                ) : (
-                  <button
-                    onClick={handleTransferToSoc}
-                    className="col-span-2 flex items-center justify-center gap-2 px-3 py-2 bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 active:scale-95 text-white rounded-xl text-xs font-bold transition shadow-lg shadow-indigo-950/50 cursor-pointer"
+                
+                {/* Auto-dismiss timer text */}
+                <div className="px-3.5 py-1 bg-slate-900/90 flex items-center justify-between text-[10px] text-slate-400 font-mono">
+                  <span className="flex items-center gap-1">
+                    <Clock className="w-3 h-3 text-cyan-400" />
+                    {alert.isPaused 
+                      ? (lang === 'fr' ? 'En pause (survol)' : 'Paused (hover)')
+                      : (lang === 'fr' ? `Disparaît dans ${alert.countdown}s` : `Disappears in ${alert.countdown}s`)
+                    }
+                  </span>
+                  <button 
+                    onClick={() => dismissAlert(alert.id)}
+                    className="hover:text-white transition cursor-pointer text-[10px]"
                   >
-                    <Send className="w-3.5 h-3.5" />
-                    <span>{lang === 'fr' ? 'Transférer à l\'Enquêteur (Dossier d\'archive)' : 'Transfer to Investigator (Archive)'}</span>
+                    {lang === 'fr' ? 'Fermer' : 'Dismiss'}
                   </button>
-                )}
+                </div>
               </div>
-
             </div>
-
-            {/* Countdown Auto-Dismiss Progress Bar */}
-            <div className="bg-slate-900 h-1.5 w-full overflow-hidden">
-              <div 
-                className={`h-full transition-all duration-1000 ease-linear ${
-                  !activeAlert.is_safe ? 'bg-rose-500' : 'bg-emerald-400'
-                }`}
-                style={{ 
-                  width: `${(countdown / (activeAlert.is_safe ? 8 : 10)) * 100}%` 
-                }}
-              />
-            </div>
-            
-            {/* Auto-dismiss timer text */}
-            <div className="px-4 py-1.5 bg-slate-900/90 flex items-center justify-between text-[10px] text-slate-400 font-mono">
-              <span className="flex items-center gap-1">
-                <Clock className="w-3 h-3 text-cyan-400" />
-                {isPaused 
-                  ? (lang === 'fr' ? 'En pause (survol actif)' : 'Paused (hovering)')
-                  : (lang === 'fr' ? `Disparaît dans ${countdown}s` : `Disappears in ${countdown}s`)
-                }
-              </span>
-              <button 
-                onClick={() => setActiveAlert(null)}
-                className="hover:text-white transition cursor-pointer text-[10px]"
-              >
-                {lang === 'fr' ? 'Fermer' : 'Dismiss'}
-              </button>
-            </div>
-          </div>
+          ))}
         </div>
       )}
+
 
       {/* 2. FLOATING SENTINEL CONTROLLER & STATUS DOCK (Bottom Left) */}
       <div className="fixed bottom-6 left-6 z-40">

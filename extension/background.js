@@ -19,7 +19,7 @@ function normalizeUrl(rawUrl) {
 }
 
 // Evaluate URL against CyberGuard Backend (strictly memory-only, no DB writes)
-async function evaluateUrl(url, reasonLabel = "Navigation en direct") {
+async function evaluateUrl(url, reasonLabel = "Navigation en direct", tabId = null) {
   if (!url || typeof url !== 'string') return null;
   if (!url.startsWith('http://') && !url.startsWith('https://')) return null;
   if (url.includes('localhost:3000') || url.includes('127.0.0.1:3000')) return null;
@@ -28,13 +28,12 @@ async function evaluateUrl(url, reasonLabel = "Navigation en direct") {
   const now = Date.now();
   const lastChecked = urlCheckHistory.get(norm);
 
-  // If already tested within 15 minutes, skip repeated notification unless re-opened or periodic re-check
+  // If already tested within 15 minutes, skip only for background periodic re-check
   if (lastChecked && (now - lastChecked < REVALIDATION_COOLDOWN_MS) && reasonLabel === "periodic") {
     return null;
   }
 
   urlCheckHistory.set(norm, now);
-
 
   try {
     const res = await fetch(BACKEND_ENDPOINT, {
@@ -47,6 +46,11 @@ async function evaluateUrl(url, reasonLabel = "Navigation en direct") {
       const data = await res.json();
       displayNotification(data);
       broadcastToCyberguardTab(data);
+
+      // Also deliver directly to the specific tab if tabId is provided
+      if (tabId) {
+        chrome.tabs.sendMessage(tabId, { type: 'CYBERGUARD_SHOW_ALERT', data }).catch(() => {});
+      }
       return data;
     }
   } catch (err) {
@@ -150,7 +154,7 @@ async function transferToInvestigator(alertData) {
 // Handle message from content script injected on web pages
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'CYBERGUARD_INSPECT_PAGE' && message.url) {
-    evaluateUrl(message.url, "Chargement de page").then(data => {
+    evaluateUrl(message.url, "Chargement de page", sender.tab?.id).then(data => {
       sendResponse({ success: true, data });
     }).catch(err => {
       sendResponse({ success: false, error: err.message });
@@ -168,25 +172,52 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 });
 
+// ULTRA-FAST INSTANT NAVIGATION DETECTION:
+// 1. webNavigation.onBeforeNavigate (fires before any HTML/CSS loads)
+if (chrome.webNavigation && chrome.webNavigation.onBeforeNavigate) {
+  chrome.webNavigation.onBeforeNavigate.addListener((details) => {
+    if (details.frameId === 0 && details.url) { // Main frame only
+      const prev = activeTabs.get(details.tabId);
+      if (!prev || prev.url !== details.url) {
+        activeTabs.set(details.tabId, {
+          url: details.url,
+          openedAt: Date.now()
+        });
+        evaluateUrl(details.url, "Navigation immédiate", details.tabId);
+      }
+    }
+  });
 
-// 1. Listen for new or updated tabs (user opened a URL in Chrome)
+  // Also catch fast client-side SPA route switches (options clicked within the same page)
+  chrome.webNavigation.onHistoryStateUpdated.addListener((details) => {
+    if (details.frameId === 0 && details.url) {
+      activeTabs.set(details.tabId, {
+        url: details.url,
+        openedAt: Date.now()
+      });
+      evaluateUrl(details.url, "Navigation SPA", details.tabId);
+    }
+  });
+}
+
+// 2. tabs.onUpdated (fires instantly when URL changes, WITHOUT waiting for complete status)
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  if (changeInfo.status === 'complete' && tab.url) {
+  const targetUrl = changeInfo.url || (changeInfo.status === 'loading' ? tab.url : null);
+  if (targetUrl) {
     const prevTabInfo = activeTabs.get(tabId);
-    const isNewOpening = !prevTabInfo || prevTabInfo.url !== tab.url;
-
-    activeTabs.set(tabId, {
-      url: tab.url,
-      openedAt: Date.now()
-    });
+    const isNewOpening = !prevTabInfo || prevTabInfo.url !== targetUrl;
 
     if (isNewOpening) {
-      evaluateUrl(tab.url, "Ouverture d'onglet");
+      activeTabs.set(tabId, {
+        url: targetUrl,
+        openedAt: Date.now()
+      });
+      evaluateUrl(targetUrl, "Changement d'URL", tabId);
     }
   }
 });
 
-// 2. Listen for tab closed (user closed a URL in Chrome)
+// 3. Tab closed tracking
 chrome.tabs.onRemoved.addListener((tabId) => {
   const tabInfo = activeTabs.get(tabId);
   if (tabInfo) {
@@ -196,14 +227,13 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   }
 });
 
-// 3. Periodic re-check: every minute, check if any tab has been open for > 15 minutes
+// 4. Periodic re-check: every minute, check if any tab has been open for > 15 minutes
 setInterval(() => {
   const now = Date.now();
   for (const [tabId, info] of activeTabs.entries()) {
     if (now - info.openedAt >= REVALIDATION_COOLDOWN_MS) {
       info.openedAt = now; // reset 15min window
-      evaluateUrl(info.url, "periodic");
+      evaluateUrl(info.url, "periodic", tabId);
     }
   }
-}, 60000); // Check every 60s
-
+}, 60000);
