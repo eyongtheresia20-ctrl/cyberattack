@@ -8,17 +8,24 @@ const activeTabs = new Map();
 // Map of normalizedUrl -> lastCheckedAt
 const urlCheckHistory = new Map();
 
-// Helper to normalize URLs
+// Helper to normalize URLs (merges search query updates into single base URL)
 function normalizeUrl(rawUrl) {
+  if (!rawUrl || typeof rawUrl !== 'string') return '';
   try {
     const u = new URL(rawUrl);
+    // For search engines (google, bing, duckduckgo, yahoo), normalize to base host to prevent search typing spam
+    if (u.hostname.includes('google.') || u.hostname.includes('bing.') || u.hostname.includes('duckduckgo.') || u.hostname.includes('yahoo.')) {
+      return u.hostname.toLowerCase();
+    }
+    // For all websites, use origin + pathname (ignores query params like ?q=... ?ref=...)
     return (u.origin + u.pathname).toLowerCase().replace(/\/+$/, '');
   } catch {
-    return (rawUrl || '').toLowerCase().trim().replace(/\/+$/, '');
+    return rawUrl.toLowerCase().trim().replace(/\/+$/, '');
   }
 }
 
 // Evaluate URL against CyberGuard Backend (strictly memory-only, no DB writes)
+// Policy: Exactly ONE pop-up per URL. Re-checks only after 15 minutes.
 async function evaluateUrl(url, reasonLabel = "Navigation en direct", tabId = null) {
   if (!url || typeof url !== 'string') return null;
   if (!url.startsWith('http://') && !url.startsWith('https://')) return null;
@@ -28,9 +35,10 @@ async function evaluateUrl(url, reasonLabel = "Navigation en direct", tabId = nu
   const now = Date.now();
   const lastChecked = urlCheckHistory.get(norm);
 
-  // If already tested within 15 minutes, skip only for background periodic re-check
-  if (lastChecked && (now - lastChecked < REVALIDATION_COOLDOWN_MS) && reasonLabel === "periodic") {
-    return null;
+  // STRICT RULE: If this URL has already popped up in the last 15 minutes, DO NOT POP UP AGAIN!
+  // Only periodic re-check after 15 minutes can trigger another pop-up.
+  if (lastChecked && (now - lastChecked < REVALIDATION_COOLDOWN_MS) && reasonLabel !== "periodic") {
+    return null; // Suppress duplicate pop-ups for the same URL
   }
 
   urlCheckHistory.set(norm, now);
@@ -47,7 +55,7 @@ async function evaluateUrl(url, reasonLabel = "Navigation en direct", tabId = nu
       displayNotification(data);
       broadcastToCyberguardTab(data);
 
-      // Also deliver directly to the specific tab if tabId is provided
+      // Deliver directly to the specific tab
       if (tabId) {
         chrome.tabs.sendMessage(tabId, { type: 'CYBERGUARD_SHOW_ALERT', data }).catch(() => {});
       }
@@ -173,51 +181,25 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 // ULTRA-FAST INSTANT NAVIGATION DETECTION:
-// 1. webNavigation.onBeforeNavigate (fires before any HTML/CSS loads)
+// Fires immediately when a new URL starts navigating
 if (chrome.webNavigation && chrome.webNavigation.onBeforeNavigate) {
   chrome.webNavigation.onBeforeNavigate.addListener((details) => {
     if (details.frameId === 0 && details.url) { // Main frame only
+      const norm = normalizeUrl(details.url);
       const prev = activeTabs.get(details.tabId);
-      if (!prev || prev.url !== details.url) {
+      
+      if (!prev || normalizeUrl(prev.url) !== norm) {
         activeTabs.set(details.tabId, {
           url: details.url,
           openedAt: Date.now()
         });
-        evaluateUrl(details.url, "Navigation immédiate", details.tabId);
+        evaluateUrl(details.url, "Navigation", details.tabId);
       }
-    }
-  });
-
-  // Also catch fast client-side SPA route switches (options clicked within the same page)
-  chrome.webNavigation.onHistoryStateUpdated.addListener((details) => {
-    if (details.frameId === 0 && details.url) {
-      activeTabs.set(details.tabId, {
-        url: details.url,
-        openedAt: Date.now()
-      });
-      evaluateUrl(details.url, "Navigation SPA", details.tabId);
     }
   });
 }
 
-// 2. tabs.onUpdated (fires instantly when URL changes, WITHOUT waiting for complete status)
-chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  const targetUrl = changeInfo.url || (changeInfo.status === 'loading' ? tab.url : null);
-  if (targetUrl) {
-    const prevTabInfo = activeTabs.get(tabId);
-    const isNewOpening = !prevTabInfo || prevTabInfo.url !== targetUrl;
-
-    if (isNewOpening) {
-      activeTabs.set(tabId, {
-        url: targetUrl,
-        openedAt: Date.now()
-      });
-      evaluateUrl(targetUrl, "Changement d'URL", tabId);
-    }
-  }
-});
-
-// 3. Tab closed tracking
+// Tab closed tracking
 chrome.tabs.onRemoved.addListener((tabId) => {
   const tabInfo = activeTabs.get(tabId);
   if (tabInfo) {
@@ -227,7 +209,7 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   }
 });
 
-// 4. Periodic re-check: every minute, check if any tab has been open for > 15 minutes
+// Periodic re-check: every minute, check if any tab has been open for > 15 minutes
 setInterval(() => {
   const now = Date.now();
   for (const [tabId, info] of activeTabs.entries()) {

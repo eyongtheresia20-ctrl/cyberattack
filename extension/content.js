@@ -1,21 +1,28 @@
-// CyberGuard Sentinel — Content Script (Injected at document_start for instant HUD display)
+// CyberGuard Sentinel — Content Script (Injected at document_start)
+// Policy: Exactly ONE pop-up per URL. Never duplicate for search queries or keystrokes.
 (function() {
-  let lastEvaluatedUrl = '';
-
-  function requestEvaluation(targetUrl) {
-    if (!targetUrl || targetUrl.includes('localhost:3000') || targetUrl.includes('127.0.0.1:3000') || targetUrl.startsWith('chrome://')) {
-      return;
-    }
-
-    chrome.runtime.sendMessage({ type: 'CYBERGUARD_INSPECT_PAGE', url: targetUrl }, (response) => {
-      if (chrome.runtime.lastError || !response || !response.success || !response.data) {
-        return;
+  function normalizeUrl(rawUrl) {
+    if (!rawUrl || typeof rawUrl !== 'string') return '';
+    try {
+      const u = new URL(rawUrl);
+      if (u.hostname.includes('google.') || u.hostname.includes('bing.') || u.hostname.includes('duckduckgo.') || u.hostname.includes('yahoo.')) {
+        return u.hostname.toLowerCase();
       }
-      renderSentinelHud(response.data);
-    });
+      return (u.origin + u.pathname).toLowerCase().replace(/\/+$/, '');
+    } catch {
+      return rawUrl.toLowerCase().trim().replace(/\/+$/, '');
+    }
   }
 
-  // Get or create floating container for stacking multiple simultaneous pop-ups
+  const currentUrl = window.location.href;
+  const currentNorm = normalizeUrl(currentUrl);
+
+  // Don't inject on CyberGuard's own dashboard or internal pages
+  if (currentUrl.includes('localhost:3000') || currentUrl.includes('127.0.0.1:3000') || currentUrl.startsWith('chrome://')) {
+    return;
+  }
+
+  // Get or create floating container for pop-ups
   function getContainer() {
     let container = document.getElementById('cyberguard-sentinel-container');
     if (!container) {
@@ -48,13 +55,22 @@
 
   // Render individual floating HUD card in the stack
   function renderSentinelHud(data) {
+    if (!data || !data.url) return;
+    const norm = normalizeUrl(data.url);
     const container = getContainer();
     if (!container) return;
+
+    // RULE: EXACTLY ONE POP-UP PER URL / DOMAIN
+    const existingCard = Array.from(container.children).find(card => card.dataset.normUrl === norm);
+    if (existingCard) {
+      return; // A pop-up for this URL already exists! Do not create another one.
+    }
 
     const isSafe = data.is_safe;
     const cardId = 'cg-card-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
     const card = document.createElement('div');
     card.id = cardId;
+    card.dataset.normUrl = norm;
 
     // Styling for card
     card.style.cssText = `
@@ -239,7 +255,7 @@
           feedbackBox.style.display = 'block';
           feedbackBox.style.background = 'rgba(217, 119, 6, 0.15)';
           feedbackBox.style.border = '1px solid rgba(217, 119, 6, 0.4)';
-          feedbackBox.style.color = '#fbbf24';
+          feedbackBox.color = '#fbbf24';
           feedbackBox.innerHTML = `Signalement enregistré dans le journal du SOC.`;
         }
 
@@ -271,35 +287,11 @@
     }
   });
 
-  // Track instantaneous navigation & SPA clicks (hash/pushState)
-  function handleUrlInspection() {
-    const current = window.location.href;
-    if (current && current !== lastEvaluatedUrl) {
-      lastEvaluatedUrl = current;
-      requestEvaluation(current);
+  // Request evaluation only once upon script initialization
+  chrome.runtime.sendMessage({ type: 'CYBERGUARD_INSPECT_PAGE', url: currentUrl }, (response) => {
+    if (chrome.runtime.lastError || !response || !response.success || !response.data) {
+      return;
     }
-  }
-
-  // Trigger immediately at start
-  handleUrlInspection();
-
-  // Listen to rapid client-side routing changes
-  window.addEventListener('popstate', handleUrlInspection);
-  window.addEventListener('hashchange', handleUrlInspection);
-
-  // Monkeypatch history for instant reaction on option clicks
-  const origPushState = history.pushState;
-  if (origPushState) {
-    history.pushState = function() {
-      origPushState.apply(this, arguments);
-      setTimeout(handleUrlInspection, 10);
-    };
-  }
-  const origReplaceState = history.replaceState;
-  if (origReplaceState) {
-    history.replaceState = function() {
-      origReplaceState.apply(this, arguments);
-      setTimeout(handleUrlInspection, 10);
-    };
-  }
+    renderSentinelHud(response.data);
+  });
 })();

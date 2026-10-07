@@ -184,22 +184,47 @@ export default function RealtimeProtectionSentinel() {
     }
   };
 
-  // Trigger popup HUD card in the stack
-  const triggerHudAlert = (alertData) => {
-    const initialTime = alertData.is_safe ? 8 : 10;
-    const newCard = {
-      id: 'alert-' + Date.now() + '-' + Math.floor(Math.random() * 1000),
-      ...alertData,
-      countdown: initialTime,
-      initialTime: initialTime,
-      isPaused: false,
-      actionFeedback: null
-    };
-
-    // Prepend new card, limit stack to 4 simultaneous pop-ups
-    setActiveAlerts(prev => [newCard, ...prev.slice(0, 3)]);
-    playNotificationChime(alertData.is_safe);
+  // Helper to normalize URLs (merges search query changes on google into single base URL)
+  const normalizeUrl = (rawUrl) => {
+    if (!rawUrl || typeof rawUrl !== 'string') return '';
+    try {
+      const u = new URL(rawUrl.startsWith('http') ? rawUrl : `http://${rawUrl}`);
+      if (u.hostname.includes('google.') || u.hostname.includes('bing.') || u.hostname.includes('duckduckgo.') || u.hostname.includes('yahoo.')) {
+        return u.hostname.toLowerCase();
+      }
+      return (u.origin + u.pathname).toLowerCase().replace(/\/+$/, '');
+    } catch {
+      return rawUrl.toLowerCase().trim().replace(/\/+$/, '');
+    }
   };
+
+  // Trigger popup HUD card in the stack (Exactly ONE pop-up per URL)
+  const triggerHudAlert = (alertData) => {
+    const norm = normalizeUrl(alertData.url);
+
+    setActiveAlerts(prev => {
+      // RULE: EXACTLY ONE POP-UP PER URL (e.g. searching on Google only pops once)
+      const alreadyShowing = prev.some(a => normalizeUrl(a.url) === norm);
+      if (alreadyShowing) {
+        return prev; // Do not duplicate pop-up for the same URL
+      }
+
+      const initialTime = alertData.is_safe ? 8 : 10;
+      const newCard = {
+        id: 'alert-' + Date.now() + '-' + Math.floor(Math.random() * 1000),
+        ...alertData,
+        normUrl: norm,
+        countdown: initialTime,
+        initialTime: initialTime,
+        isPaused: false,
+        actionFeedback: null
+      };
+
+      playNotificationChime(alertData.is_safe);
+      return [newCard, ...prev.slice(0, 3)];
+    });
+  };
+
 
   // Stack Countdown interval with per-alert pause checking
   useEffect(() => {
