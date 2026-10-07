@@ -1,0 +1,37 @@
+#cyberguard-sentinel-container {
+  position: fixed !important;
+  top: 16px !important;
+  right: 16px !important;
+  z-index: 2147483647 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 10px !important;
+  max-width: 420px !important;
+  width: calc(100vw - 32px) !important;
+  pointer-events: none !important;
+}
+
+.cg-card {
+  pointer-events: auto !important;
+  background: #090d16 !important;
+  color: #f8fafc !important;
+  border-radius: 18px !important;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+  overflow: hidden !important;
+  box-sizing: border-box !important;
+  box-shadow: 0 20px 45px -10px rgba(0, 0, 0, 0.95), 0 0 25px rgba(16, 185, 129, 0.3) !important;
+  transition: all 0.15s ease !important;
+}
+
+.cg-card.safe {
+  border: 1px solid #10b981 !important;
+}
+
+.cg-card.unsafe {
+  border: 1px solid #f43f5e !important;
+  box-shadow: 0 20px 45px -10px rgba(0, 0, 0, 0.95), 0 0 25px rgba(244, 63, 94, 0.4) !important;
+}
+
+.cg-card button:hover {
+  filter: brightness(1.2) !important;
+}

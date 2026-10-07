@@ -28,7 +28,6 @@
     }
   }
 
-  // Set of URLs that have already received a pop-up on this tab
   const seenUrlsOnTab = new Set();
   let currentActiveUrl = window.location.href;
 
@@ -37,46 +36,58 @@
     return;
   }
 
+  let container = null;
+
   // Get or create floating container immediately
   function getContainer() {
-    let container = document.getElementById('cyberguard-sentinel-container');
-    const parent = document.body || document.documentElement;
-
-    if (!container && parent) {
-      container = document.createElement('div');
-      container.id = 'cyberguard-sentinel-container';
-      container.style.cssText = `
-        position: fixed !important;
-        top: 16px !important;
-        right: 16px !important;
-        z-index: 2147483647 !important;
-        display: flex !important;
-        flex-direction: column !important;
-        gap: 10px !important;
-        max-width: 420px !important;
-        width: calc(100vw - 32px) !important;
-        pointer-events: none !important;
-      `;
-      parent.appendChild(container);
+    if (container && container.isConnected) {
+      if (document.body && container.parentElement !== document.body) {
+        document.body.appendChild(container);
+      }
+      return container;
     }
 
-    // Ensure container stays attached if body replaces documentElement
-    if (container && document.body && container.parentElement !== document.body) {
-      document.body.appendChild(container);
+    container = document.getElementById('cyberguard-sentinel-container');
+    if (!container) {
+      container = document.createElement('div');
+      container.id = 'cyberguard-sentinel-container';
+    }
+
+    const parent = document.body || document.documentElement;
+    if (parent && container.parentElement !== parent) {
+      parent.appendChild(container);
     }
 
     return container;
   }
 
-  // Render individual floating HUD card in the stack (Snap-in 0ms appearance)
+  // Ensure container moves into document.body the exact millisecond body is parsed
+  const bodyWatcher = new MutationObserver(() => {
+    if (document.body && container && container.parentElement !== document.body) {
+      document.body.appendChild(container);
+      bodyWatcher.disconnect();
+    }
+  });
+
+  if (document.documentElement) {
+    bodyWatcher.observe(document.documentElement, { childList: true });
+  }
+
+  window.addEventListener('DOMContentLoaded', () => {
+    if (document.body && container && container.parentElement !== document.body) {
+      document.body.appendChild(container);
+    }
+  }, { once: true });
+
+  // Render individual floating HUD card in the stack (Instant 0ms display)
   function renderSentinelHud(data) {
     if (!data || !data.url) return;
     const clean = getCleanUrl(data.url);
-    const container = getContainer();
-    if (!container) return;
+    const hostContainer = getContainer();
+    if (!hostContainer) return;
 
-    // Check if a card for this exact URL is already in the DOM
-    const existingCard = Array.from(container.children).find(card => card.dataset.cleanUrl === clean);
+    // Check if a card for this exact URL is already showing
+    const existingCard = Array.from(hostContainer.children).find(card => card.dataset.cleanUrl === clean);
     if (existingCard) {
       return; // Exactly one pop-up per URL
     }
@@ -86,33 +97,9 @@
     const card = document.createElement('div');
     card.id = cardId;
     card.dataset.cleanUrl = clean;
-
-    // High-tech snappy styling
-    card.style.cssText = `
-      pointer-events: auto !important;
-      background: #090d16 !important;
-      color: #f8fafc !important;
-      border: 1px solid ${isSafe ? '#10b981' : '#f43f5e'} !important;
-      border-radius: 18px !important;
-      box-shadow: 0 20px 45px -10px rgba(0, 0, 0, 0.9), 0 0 25px ${isSafe ? 'rgba(16, 185, 129, 0.3)' : 'rgba(244, 63, 94, 0.4)'} !important;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
-      overflow: hidden !important;
-      box-sizing: border-box !important;
-      animation: cyberguardInstantPop 0.08s ease-out !important;
-      transition: all 0.15s ease !important;
-    `;
+    card.className = `cg-card ${isSafe ? 'safe' : 'unsafe'}`;
 
     card.innerHTML = `
-      <style>
-        @keyframes cyberguardInstantPop {
-          from { opacity: 0; transform: scale(0.97); }
-          to { opacity: 1; transform: scale(1); }
-        }
-        #${cardId} button:hover {
-          filter: brightness(1.2);
-        }
-      </style>
-      
       <!-- Header Banner -->
       <div style="padding: 9px 14px; background: ${isSafe ? 'rgba(16, 185, 129, 0.15)' : 'rgba(244, 63, 94, 0.15)'}; border-bottom: 1px solid ${isSafe ? 'rgba(16, 185, 129, 0.3)' : 'rgba(244, 63, 94, 0.3)'}; display: flex; align-items: center; justify-content: space-between;">
         <div style="display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 11px; letter-spacing: 0.5px; text-transform: uppercase; color: ${isSafe ? '#34d399' : '#fb7185'};">
@@ -121,7 +108,7 @@
         </div>
         <div style="display: flex; align-items: center; gap: 8px;">
           <span style="background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(255, 255, 255, 0.1); padding: 2px 6px; border-radius: 9999px; font-size: 10px; font-family: monospace; color: #38bdf8; font-weight: bold;">
-            ⚡ ${data.latency_ms || 18}ms
+            ⚡ ${data.latency_ms || 1}ms
           </span>
           <button class="cg-close-btn" style="background: none; border: none; color: #94a3b8; font-size: 18px; cursor: pointer; padding: 0 4px; line-height: 1;" title="Fermer">&times;</button>
         </div>
@@ -178,7 +165,7 @@
       </div>
     `;
 
-    container.appendChild(card);
+    hostContainer.appendChild(card);
 
     let timeLeft = isSafe ? 8 : 10;
     const initialTime = timeLeft;
@@ -226,8 +213,8 @@
       card.style.transition = 'all 0.15s ease';
       setTimeout(() => {
         card.remove();
-        if (container.children.length === 0) {
-          container.remove();
+        if (hostContainer.children.length === 0) {
+          hostContainer.remove();
         }
       }, 150);
     };
@@ -378,7 +365,7 @@
   document.addEventListener('click', (e) => {
     const link = e.target && e.target.closest ? e.target.closest('a') : null;
     if (link && link.href) {
-      setTimeout(onUrlChangeSync, 20);
+      setTimeout(onUrlChangeSync, 10);
     }
   }, { passive: true });
 })();

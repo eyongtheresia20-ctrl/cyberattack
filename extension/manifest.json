@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "CyberGuard Sentinel — Protection Active",
-  "version": "1.1",
-  "description": "Protection active en arrière-plan : Intercepte et évalue instantanément (<15ms dès navigation) chaque URL ouverte dans Google Chrome avec IA CyberGuard.",
+  "version": "1.2",
+  "description": "Protection active en arrière-plan : Intercepte et évalue instantanément (<1ms dès navigation) chaque URL ouverte dans Google Chrome avec IA CyberGuard.",
   "permissions": [
     "tabs",
     "webNavigation",
@@ -26,6 +26,7 @@
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
+      "css": ["sentinel.css"],
       "js": ["content.js"],
       "run_at": "document_start"
     }
