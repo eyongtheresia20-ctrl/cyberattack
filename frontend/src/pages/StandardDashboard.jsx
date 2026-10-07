@@ -359,6 +359,11 @@ export default function StandardDashboard({ isHistoryView = false }) {
       };
 
       setCurrentResult(resObj);
+      if (actualType === 'URL') {
+        window.dispatchEvent(new CustomEvent('cyberguard:inspect-url', { 
+          detail: { url: targetContent, context: 'URL ouverte par l\'utilisateur' } 
+        }));
+      }
       const userKey = user?.id ? `_${user.id}` : '';
       try { localStorage.setItem(`phishguard_latest_result${userKey}`, JSON.stringify(resObj)); } catch(e){}
       setScanHistory(prev => [resObj, ...prev]);

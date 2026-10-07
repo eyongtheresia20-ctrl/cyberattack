@@ -26,6 +26,9 @@ export default function UrlAnalysis() {
     try {
       const res = await api.analyzeUrl(urlInput.trim());
       setResult(res.data);
+      window.dispatchEvent(new CustomEvent('cyberguard:inspect-url', { 
+        detail: { url: urlInput.trim(), context: 'URL analysée par l\'utilisateur' } 
+      }));
     } catch (err) {
       console.error(err);
     } finally {
