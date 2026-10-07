@@ -126,7 +126,7 @@ def query_virustotal_url_reputation(url: str,
         url_id = base64.urlsafe_b64encode(url.encode()).decode().strip("=")
         response = requests.get(
             f"https://www.virustotal.com/api/v3/urls/{url_id}",
-            headers=headers, timeout=4.0, verify=False
+            headers=headers, timeout=2.2, verify=False
         )
 
         if response.status_code == 200:
@@ -194,7 +194,7 @@ def query_google_safebrowsing(url: str,
         }
     }
     try:
-        res = requests.post(endpoint, json=payload, timeout=4.0, verify=False)
+        res = requests.post(endpoint, json=payload, timeout=2.2, verify=False)
 
         if res.status_code == 200:
             matches = res.json().get("matches", [])

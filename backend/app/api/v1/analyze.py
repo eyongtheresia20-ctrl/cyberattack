@@ -1,6 +1,7 @@
 import os
 import joblib
 import random
+from datetime import datetime, timezone
 from typing import Dict, Any
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, HttpUrl
@@ -113,17 +114,48 @@ def analyze_url(req: URLAnalysisRequest, db: Session = Depends(get_db), current_
             rule_triggers.append(f"Excessive subdomains ({features['num_subdomains']} count) (+15 risk)")
             rule_score += 15.0
 
-        # 4. Live Technical Network, SSL & Security Headers Deep Inspection
-        from app.services.network_inspector import inspect_endpoint_deeply
-        technical_inspection = inspect_endpoint_deeply(url)
+        # 4 & 5. High-Speed Concurrent Execution: Network Audit, Threat Intel & GeoIP
+        import concurrent.futures
+        from datetime import timezone
+        from app.services.network_inspector import (
+            clean_url_and_domain, resolve_dns_records,
+            inspect_ssl_certificate, inspect_http_connection,
+            detect_brand_impersonation
+        )
+        from app.services.geoip_service import lookup_ip_geolocation, resolve_domain_to_ip
+
+        target_url_clean, hostname, scheme = clean_url_and_domain(url)
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=6) as executor:
+            fut_dns = executor.submit(resolve_dns_records, hostname)
+            fut_ssl = executor.submit(inspect_ssl_certificate, hostname, 443 if scheme == 'https' else 80)
+            fut_http = executor.submit(inspect_http_connection, target_url_clean)
+            fut_brand = executor.submit(detect_brand_impersonation, hostname)
+            fut_vt = executor.submit(query_virustotal_url_reputation, url, features)
+            fut_gsb = executor.submit(query_google_safebrowsing, url, features)
+
+            dns_info = fut_dns.result()
+            ssl_info = fut_ssl.result()
+            http_info = fut_http.result()
+            brand_spoof = fut_brand.result()
+            vt_data = fut_vt.result()
+            gsb_data = fut_gsb.result()
+
+        technical_inspection = {
+            "hostname": hostname,
+            "target_url": target_url_clean,
+            "dns": dns_info,
+            "ssl": ssl_info,
+            "http": http_info,
+            "brand_impersonation": brand_spoof,
+            "inspected_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+        }
 
         # Brand Impersonation check
-        brand_spoof = technical_inspection.get("brand_impersonation", {})
         if brand_spoof.get("is_impersonating"):
             rule_triggers.append(f"BRAND SPOOFING ALERT: Impersonation attempt of brand {brand_spoof.get('brand_name')} (+45 risk)")
             rule_score += 45.0
 
-        ssl_info = technical_inspection.get("ssl", {})
         if ssl_info.get("ssl_active") and not ssl_info.get("is_trusted"):
             rule_triggers.append("Untrusted or self-signed SSL certificate (+20 risk)")
             rule_score += 20.0
@@ -131,19 +163,13 @@ def analyze_url(req: URLAnalysisRequest, db: Session = Depends(get_db), current_
             rule_triggers.append("Expired SSL certificate (+25 risk)")
             rule_score += 25.0
 
-        # 5. External Threat Intelligence & GeoIP Lookup
-        # Pass the enriched features dict so ML fallback can use them if APIs are unavailable
-        vt_data  = query_virustotal_url_reputation(url, features=features)
-        gsb_data = query_google_safebrowsing(url, features=features)
-
-        from app.services.geoip_service import lookup_ip_geolocation, resolve_domain_to_ip
-        dns_a = technical_inspection.get("dns", {}).get("a_records", [])
-        resolved_ip    = (dns_a[0] if dns_a else None) or resolve_domain_to_ip(url)
+        # GeoIP Lookup
+        dns_a = dns_info.get("a_records", [])
+        resolved_ip = (dns_a[0] if dns_a else None) or resolve_domain_to_ip(url)
         target_host_ip = (resolved_ip or features.get("host_ip")
                           or ("185.220.101.5" if features["has_ip"] or features["keyword_count"] > 0
                               else "104.28.19.44"))
         features["host_ip"] = target_host_ip
-        # Pass features for ML-powered GeoIP fallback
         geoip_info = lookup_ip_geolocation(target_host_ip, domain_context=url, features=features)
 
         # 6. Hybrid Correlation — adaptive weighting based on API availability
@@ -215,7 +241,6 @@ def analyze_url(req: URLAnalysisRequest, db: Session = Depends(get_db), current_
         # MongoDB Sync
         try:
             from app.db.mongodb import mongo_collections
-            from datetime import datetime, timezone
             mongo_rec = {
                 "id": str(db_record.id),
                 "user_id": str(authenticated_user_id) if authenticated_user_id else None,
@@ -340,7 +365,6 @@ def analyze_text(req: TextAnalysisRequest, db: Session = Depends(get_db), curren
         # MongoDB Sync
         try:
             from app.db.mongodb import mongo_collections
-            from datetime import datetime, timezone
             mongo_rec = {
                 "id": str(db_record.id),
                 "user_id": str(authenticated_user_id) if authenticated_user_id else None,
