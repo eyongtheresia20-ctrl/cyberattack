@@ -84,13 +84,16 @@ export default function RealtimeProtectionSentinel() {
     }
   });
 
-  // Track URLs that have already popped up so each URL pops up STRICTLY ONCE (never twice)
-  const [seenUrls, setSeenUrls] = useState(() => {
+  // 30-minute Re-validation Policy
+  const REVALIDATION_COOLDOWN_MS = 30 * 60 * 1000; // 30 minutes
+
+  // Map of { [normalizedUrl]: timestamp } tracking when each URL last popped up
+  const [seenUrlsMap, setSeenUrlsMap] = useState(() => {
     try {
-      const saved = sessionStorage.getItem('cyberguard_seen_urls');
-      return saved ? JSON.parse(saved) : [];
+      const saved = sessionStorage.getItem('cyberguard_seen_urls_map');
+      return saved ? JSON.parse(saved) : {};
     } catch {
-      return [];
+      return {};
     }
   });
 
@@ -111,26 +114,45 @@ export default function RealtimeProtectionSentinel() {
 
   useEffect(() => {
     try {
-      sessionStorage.setItem('cyberguard_seen_urls', JSON.stringify(seenUrls));
+      sessionStorage.setItem('cyberguard_seen_urls_map', JSON.stringify(seenUrlsMap));
     } catch (e) {}
-  }, [seenUrls]);
+  }, [seenUrlsMap]);
 
-  // Main URL inspection function — strictly evaluates what the user opens/submits
-  // and pops up ONLY ONCE per unique URL
+  // Periodic Re-validation: Every 60s, check if any open URL has reached 30 minutes
+  useEffect(() => {
+    if (!isEnabled) return;
+    const interval = setInterval(() => {
+      const now = Date.now();
+      Object.entries(seenUrlsMap).forEach(([normUrl, lastSeenTime]) => {
+        if (now - lastSeenTime >= REVALIDATION_COOLDOWN_MS) {
+          // 30 minutes reached: re-evaluate URL with a fresh health check pop-up
+          handleInspectUrl(normUrl, 'Re-validation Périodique (30 min)', true);
+        }
+      });
+    }, 60000);
+
+    return () => clearInterval(interval);
+  }, [isEnabled, seenUrlsMap]);
+
+  // Main URL inspection function — pops up immediately when opened,
+  // suppresses duplicate popups for 30 minutes, and re-tests after 30 minutes or next session
   const handleInspectUrl = async (rawUrl, contextLabel = null, forcePopup = false) => {
     if (!rawUrl || typeof rawUrl !== 'string' || !rawUrl.trim()) return;
     const url = rawUrl.trim();
 
-    // Normalize URL for single-popup enforcement (ignore trailing slashes and case)
+    // Normalize URL
     const normalizedUrl = url.toLowerCase().replace(/\/+$/, '');
+    const now = Date.now();
+    const lastSeenTime = seenUrlsMap[normalizedUrl];
+    const isWithin30MinCooldown = lastSeenTime && (now - lastSeenTime < REVALIDATION_COOLDOWN_MS);
 
-    // If this URL has ALREADY popped up, DO NOT pop up a second time!
-    if (!forcePopup && seenUrls.includes(normalizedUrl)) {
+    // Suppress popup ONLY if it already popped up within the last 30 minutes
+    if (!forcePopup && isWithin30MinCooldown) {
       return;
     }
 
-    // Mark as seen immediately so it NEVER pops up again
-    setSeenUrls(prev => prev.includes(normalizedUrl) ? prev : [...prev, normalizedUrl]);
+    // Update timestamp for 30-minute renewal
+    setSeenUrlsMap(prev => ({ ...prev, [normalizedUrl]: now }));
 
     setIsAnalyzing(true);
     const startTime = performance.now();
@@ -676,8 +698,8 @@ export default function RealtimeProtectionSentinel() {
                   <button 
                     onClick={() => {
                       setHistory([]);
-                      setSeenUrls([]);
-                      try { sessionStorage.removeItem('cyberguard_seen_urls'); } catch(e) {}
+                      setSeenUrlsMap({});
+                      try { sessionStorage.removeItem('cyberguard_seen_urls_map'); } catch(e) {}
                     }}
                     className="text-[10px] text-slate-400 hover:text-rose-400 transition cursor-pointer"
                   >
