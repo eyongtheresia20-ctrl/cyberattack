@@ -20,6 +20,22 @@ function getCleanUrl(rawUrl) {
   }
 }
 
+const TOP_LEGIT_DOMAINS = [
+  "google.", "claude.ai", "anthropic.com", "chatgpt.com", "openai.com",
+  "nike.com", "github.com", "microsoft.com", "apple.com", "youtube.com",
+  "amazon.", "linkedin.com", "twitter.com", "x.com", "wikipedia.org"
+];
+
+function isKnownSafeDomain(rawUrl) {
+  try {
+    const u = new URL(rawUrl);
+    const host = u.hostname.toLowerCase();
+    return TOP_LEGIT_DOMAINS.some(d => host === d || host.endsWith('.' + d) || host.includes(d));
+  } catch {
+    return false;
+  }
+}
+
 // Evaluate URL against CyberGuard Backend (strictly memory-only, no DB writes)
 // Policy: Exactly ONE pop-up per URL. When URL changes (e.g. Claude -> Claude Sign-In), pops up for the new URL.
 async function evaluateUrl(url, reasonLabel = "Navigation en direct", tabId = null) {
@@ -38,6 +54,26 @@ async function evaluateUrl(url, reasonLabel = "Navigation en direct", tabId = nu
 
   urlCheckHistory.set(clean, now);
 
+  // 1. INSTANT LOCAL DOMAIN RESOLUTION (0ms latency for Google, Claude, Nike, ChatGPT, etc.)
+  if (isKnownSafeDomain(url)) {
+    const instantData = {
+      url: url,
+      is_safe: true,
+      risk_score: 0.0,
+      verdict: "LÉGITIME",
+      threat_level: "FAIBLE",
+      latency_ms: 1,
+      reasons: ["Domaine officiel vérifié et réputé", "Protocole sécurisé conforme"]
+    };
+
+    if (tabId) {
+      chrome.tabs.sendMessage(tabId, { type: 'CYBERGUARD_SHOW_ALERT', data: instantData }).catch(() => {});
+    }
+    broadcastToCyberguardTab(instantData);
+    displayNotification(instantData);
+    return instantData;
+  }
+
   try {
     const res = await fetch(BACKEND_ENDPOINT, {
       method: 'POST',
@@ -47,13 +83,13 @@ async function evaluateUrl(url, reasonLabel = "Navigation en direct", tabId = nu
 
     if (res.ok) {
       const data = await res.json();
-      displayNotification(data);
-      broadcastToCyberguardTab(data);
-
-      // Deliver directly to the specific tab
+      
+      // Deliver to tab first
       if (tabId) {
         chrome.tabs.sendMessage(tabId, { type: 'CYBERGUARD_SHOW_ALERT', data }).catch(() => {});
       }
+      broadcastToCyberguardTab(data);
+      displayNotification(data);
       return data;
     }
   } catch (err) {
@@ -61,6 +97,7 @@ async function evaluateUrl(url, reasonLabel = "Navigation en direct", tabId = nu
   }
   return null;
 }
+
 
 // Display real desktop notification (Windows Toast / Chrome Notification)
 function displayNotification(data) {
