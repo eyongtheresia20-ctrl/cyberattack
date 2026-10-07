@@ -134,24 +134,30 @@ export default function RealtimeProtectionSentinel() {
     return () => clearInterval(interval);
   }, [isEnabled, seenUrlsMap]);
 
-  // Main URL inspection function — pops up immediately when opened,
-  // suppresses duplicate popups for 30 minutes, and re-tests after 30 minutes or next session
-  const handleInspectUrl = async (rawUrl, contextLabel = null, forcePopup = false) => {
+  // Main URL inspection function:
+  // 1. Tests immediately whenever a URL is opened (< 20ms)
+  // 2. If it was closed and opened again, tests it immediately as a new open
+  // 3. If it remains open for > 30 minutes, automatically re-tests it
+  const handleInspectUrl = async (rawUrl, contextLabel = null, isNewOpen = true) => {
     if (!rawUrl || typeof rawUrl !== 'string' || !rawUrl.trim()) return;
     const url = rawUrl.trim();
 
-    // Normalize URL
     const normalizedUrl = url.toLowerCase().replace(/\/+$/, '');
     const now = Date.now();
     const lastSeenTime = seenUrlsMap[normalizedUrl];
-    const isWithin30MinCooldown = lastSeenTime && (now - lastSeenTime < REVALIDATION_COOLDOWN_MS);
+    const isWithin30Min = lastSeenTime && (now - lastSeenTime < REVALIDATION_COOLDOWN_MS);
 
-    // Suppress popup ONLY if it already popped up within the last 30 minutes
-    if (!forcePopup && isWithin30MinCooldown) {
+    // If this exact URL is ALREADY actively showing on the screen right now, avoid double flash
+    if (activeAlert && activeAlert.url.toLowerCase().replace(/\/+$/, '') === normalizedUrl) {
       return;
     }
 
-    // Update timestamp for 30-minute renewal
+    // If it's not a fresh opening and still within 30-minute window, don't spam
+    if (!isNewOpen && isWithin30Min) {
+      return;
+    }
+
+    // Record open timestamp
     setSeenUrlsMap(prev => ({ ...prev, [normalizedUrl]: now }));
 
     setIsAnalyzing(true);
@@ -233,16 +239,19 @@ export default function RealtimeProtectionSentinel() {
     };
   }, [activeAlert, isPaused]);
 
-  // Global event listener — intercepts ONLY URLs opened or scanned by the user across the app
   useEffect(() => {
     const onInspect = (e) => {
       if (e.detail?.url) {
-        handleInspectUrl(e.detail.url, e.detail.context || 'URL ouverte par l\'utilisateur');
+        handleInspectUrl(
+          e.detail.url, 
+          e.detail.context || 'URL ouverte par l\'utilisateur', 
+          e.detail.isNewOpen !== undefined ? e.detail.isNewOpen : true
+        );
       }
     };
     window.addEventListener('cyberguard:inspect-url', onInspect);
     return () => window.removeEventListener('cyberguard:inspect-url', onInspect);
-  }, [isEnabled]);
+  }, [isEnabled, activeAlert]);
 
   // Read URL from Windows Clipboard (upon user request)
   const handleInspectClipboard = async () => {
