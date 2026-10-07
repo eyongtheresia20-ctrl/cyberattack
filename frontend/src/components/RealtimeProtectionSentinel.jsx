@@ -84,6 +84,16 @@ export default function RealtimeProtectionSentinel() {
     }
   });
 
+  // Track URLs that have already popped up so each URL pops up STRICTLY ONCE (never twice)
+  const [seenUrls, setSeenUrls] = useState(() => {
+    try {
+      const saved = sessionStorage.getItem('cyberguard_seen_urls');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
   const countdownIntervalRef = useRef(null);
 
   // Save settings
@@ -99,10 +109,28 @@ export default function RealtimeProtectionSentinel() {
     }
   }, [history]);
 
+  useEffect(() => {
+    try {
+      sessionStorage.setItem('cyberguard_seen_urls', JSON.stringify(seenUrls));
+    } catch (e) {}
+  }, [seenUrls]);
+
   // Main URL inspection function — strictly evaluates what the user opens/submits
-  const handleInspectUrl = async (rawUrl, contextLabel = null) => {
+  // and pops up ONLY ONCE per unique URL
+  const handleInspectUrl = async (rawUrl, contextLabel = null, forcePopup = false) => {
     if (!rawUrl || typeof rawUrl !== 'string' || !rawUrl.trim()) return;
     const url = rawUrl.trim();
+
+    // Normalize URL for single-popup enforcement (ignore trailing slashes and case)
+    const normalizedUrl = url.toLowerCase().replace(/\/+$/, '');
+
+    // If this URL has ALREADY popped up, DO NOT pop up a second time!
+    if (!forcePopup && seenUrls.includes(normalizedUrl)) {
+      return;
+    }
+
+    // Mark as seen immediately so it NEVER pops up again
+    setSeenUrls(prev => prev.includes(normalizedUrl) ? prev : [...prev, normalizedUrl]);
 
     setIsAnalyzing(true);
     const startTime = performance.now();
@@ -646,7 +674,11 @@ export default function RealtimeProtectionSentinel() {
                 <div className="flex items-center justify-between text-[11px] font-bold text-slate-500">
                   <span>{lang === 'fr' ? 'Historique des URLs vérifiées :' : 'History of checked URLs:'}</span>
                   <button 
-                    onClick={() => setHistory([])}
+                    onClick={() => {
+                      setHistory([]);
+                      setSeenUrls([]);
+                      try { sessionStorage.removeItem('cyberguard_seen_urls'); } catch(e) {}
+                    }}
                     className="text-[10px] text-slate-400 hover:text-rose-400 transition cursor-pointer"
                   >
                     {lang === 'fr' ? 'Effacer' : 'Clear'}
