@@ -1,8 +1,9 @@
 // CyberGuard Sentinel — Chrome Background Service Worker
+// NOTE: Pure in-memory real-time check. Does NOT modify the database.
 const BACKEND_ENDPOINT = 'http://localhost:8000/api/v1/monitor/realtime-check';
-const REVALIDATION_COOLDOWN_MS = 30 * 60 * 1000; // 30 minutes
+const REVALIDATION_COOLDOWN_MS = 15 * 60 * 1000; // 15 minutes
 
-// Map of tabId -> { url, lastCheckedAt }
+// Map of tabId -> { url, lastCheckedAt, openedAt }
 const activeTabs = new Map();
 // Map of normalizedUrl -> lastCheckedAt
 const urlCheckHistory = new Map();
@@ -17,7 +18,7 @@ function normalizeUrl(rawUrl) {
   }
 }
 
-// Evaluate URL against CyberGuard Backend
+// Evaluate URL against CyberGuard Backend (strictly memory-only, no DB writes)
 async function evaluateUrl(url, reasonLabel = "Navigation en direct") {
   if (!url || typeof url !== 'string') return null;
   if (!url.startsWith('http://') && !url.startsWith('https://')) return null;
@@ -27,12 +28,13 @@ async function evaluateUrl(url, reasonLabel = "Navigation en direct") {
   const now = Date.now();
   const lastChecked = urlCheckHistory.get(norm);
 
-  // If already tested within 30 minutes, skip repeated notification unless re-opened
+  // If already tested within 15 minutes, skip repeated notification unless re-opened or periodic re-check
   if (lastChecked && (now - lastChecked < REVALIDATION_COOLDOWN_MS) && reasonLabel === "periodic") {
     return null;
   }
 
   urlCheckHistory.set(norm, now);
+
 
   try {
     const res = await fetch(BACKEND_ENDPOINT, {
@@ -108,25 +110,32 @@ async function broadcastToCyberguardTab(data) {
 }
 
 // Helper to transfer alert directly to Investigator queue
+// Identical to how a user sends an analysed URL to the investigator in CyberGuard
 async function transferToInvestigator(alertData) {
   try {
+    const payload = {
+      title: `[Signalement URL] ${alertData.url}`,
+      target: alertData.url,
+      scan_type: "URL",
+      verdict: alertData.verdict || (alertData.is_safe ? "LÉGITIME" : "SUSPECT"),
+      risk_score: parseFloat(alertData.risk_score || 0),
+      details: {
+        report_category: "Signalement URL",
+        user_observations: "Rapport généré par l'utilisateur pour étude approfondie par l'enquêteur SOC.",
+        features: alertData.features || {},
+        reasons: alertData.reasons || [],
+        latency_ms: alertData.latency_ms || 18,
+        intercepted_by: "Sentinelle Utilisateur CyberGuard",
+        timestamp: new Date().toISOString()
+      },
+      reporter_name: "Utilisateur Standard",
+      reporter_email: "alice.martin@example.com"
+    };
+
     const res = await fetch('http://localhost:8000/api/v1/incidents/submit-user-report', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        title: `Alerte Sentinelle: ${alertData.url.substring(0, 60)}`,
-        target: alertData.url,
-        scan_type: "URL",
-        verdict: alertData.verdict || (alertData.is_safe ? "CLEAN" : "SUSPICIOUS"),
-        risk_score: parseFloat(alertData.risk_score || 0),
-        details: {
-          intercepted_by: "Extension Chrome Sentinel CyberGuard",
-          latency_ms: alertData.latency_ms || 18,
-          timestamp: new Date().toISOString()
-        },
-        reporter_name: "Sentinelle Navigateur (Temps Réel)",
-        reporter_email: "sentinel@cyberguard.local"
-      })
+      body: JSON.stringify(payload)
     });
     if (res.ok) {
       const result = await res.json();
@@ -187,13 +196,14 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   }
 });
 
-// 3. Periodic re-check: if a tab has been open for > 30 minutes, re-test it
+// 3. Periodic re-check: every minute, check if any tab has been open for > 15 minutes
 setInterval(() => {
   const now = Date.now();
   for (const [tabId, info] of activeTabs.entries()) {
     if (now - info.openedAt >= REVALIDATION_COOLDOWN_MS) {
-      info.openedAt = now;
+      info.openedAt = now; // reset 15min window
       evaluateUrl(info.url, "periodic");
     }
   }
-}, 300000); // 5 min interval
+}, 60000); // Check every 60s
+

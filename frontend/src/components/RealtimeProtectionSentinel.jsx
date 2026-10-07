@@ -84,8 +84,8 @@ export default function RealtimeProtectionSentinel() {
     }
   });
 
-  // 30-minute Re-validation Policy
-  const REVALIDATION_COOLDOWN_MS = 30 * 60 * 1000; // 30 minutes
+  // 15-minute Re-validation Policy (Re-checks any URL continuously open for > 15 minutes)
+  const REVALIDATION_COOLDOWN_MS = 15 * 60 * 1000; // 15 minutes
 
   // Map of { [normalizedUrl]: timestamp } tracking when each URL last popped up
   const [seenUrlsMap, setSeenUrlsMap] = useState(() => {
@@ -118,15 +118,15 @@ export default function RealtimeProtectionSentinel() {
     } catch (e) {}
   }, [seenUrlsMap]);
 
-  // Periodic Re-validation: Every 60s, check if any open URL has reached 30 minutes
+  // Periodic Re-validation: Every 60s, check if any open URL has reached 15 minutes
   useEffect(() => {
     if (!isEnabled) return;
     const interval = setInterval(() => {
       const now = Date.now();
       Object.entries(seenUrlsMap).forEach(([normUrl, lastSeenTime]) => {
         if (now - lastSeenTime >= REVALIDATION_COOLDOWN_MS) {
-          // 30 minutes reached: re-evaluate URL with a fresh health check pop-up
-          handleInspectUrl(normUrl, 'Re-validation Périodique (30 min)', true);
+          // 15 minutes reached: re-evaluate URL with a fresh health check pop-up
+          handleInspectUrl(normUrl, 'Re-validation Périodique (15 min)', true);
         }
       });
     }, 60000);
@@ -137,7 +137,9 @@ export default function RealtimeProtectionSentinel() {
   // Main URL inspection function:
   // 1. Tests immediately whenever a URL is opened (< 20ms)
   // 2. If it was closed and opened again, tests it immediately as a new open
-  // 3. If it remains open for > 30 minutes, automatically re-tests it
+  // 3. If it remains open for > 15 minutes, automatically re-tests it
+  // 4. Memory-only check: DOES NOT write to database
+
   const handleInspectUrl = async (rawUrl, contextLabel = null, isNewOpen = true) => {
     if (!rawUrl || typeof rawUrl !== 'string' || !rawUrl.trim()) return;
     const url = rawUrl.trim();
@@ -321,7 +323,8 @@ export default function RealtimeProtectionSentinel() {
     }
   };
 
-  // Action: Transfer report directly to SOC
+  // Action: Transfer report directly to SOC / Investigator
+  // Transmits the incident exactly like a user reporting an analyzed URL in CyberGuard
   const handleTransferToSoc = async () => {
     if (!activeAlert) return;
     try {
@@ -329,29 +332,42 @@ export default function RealtimeProtectionSentinel() {
       const headers = { 'Content-Type': 'application/json' };
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
-      const res = await fetch('/api/v1/incidents/create-from-analysis', {
+      const reporterName = user 
+        ? `${user.prenom || 'Alice'} ${user.nom || 'Martin'}`.trim() 
+        : 'Alice Martin';
+
+      const payload = {
+        title: `[Signalement URL] ${activeAlert.url}`,
+        target: activeAlert.url,
+        scan_type: 'URL',
+        verdict: activeAlert.verdict || (activeAlert.is_safe ? 'LÉGITIME' : 'SUSPECT'),
+        risk_score: activeAlert.risk_score || 0,
+        details: {
+          report_category: 'Signalement URL',
+          user_observations: "Rapport généré par l'utilisateur pour étude approfondie par l'enquêteur SOC.",
+          features: activeAlert.features || {},
+          ml_ensemble: activeAlert.ml_ensemble || {},
+          reasons: activeAlert.reasons || [],
+          intercepted_by: 'Sentinelle de Protection Temps Réel CyberGuard'
+        },
+        reporter_name: reporterName,
+        reporter_email: user?.email || 'alice.martin@example.com'
+      };
+
+      const res = await fetch('/api/v1/incidents/submit-user-report', {
         method: 'POST',
         headers,
-        body: JSON.stringify({
-          type: 'url',
-          target: activeAlert.url,
-          risk_score: activeAlert.risk_score,
-          verdict: activeAlert.verdict,
-          details: {
-            features: activeAlert.features,
-            ml_ensemble: activeAlert.ml_ensemble,
-            reasons: activeAlert.reasons,
-            intercepted_by: 'Sentinelle de Protection Temps Réel CyberGuard'
-          }
-        })
+        body: JSON.stringify(payload)
       });
 
       if (res.ok) {
+        const data = await res.json();
+        const code = data?.report?.report_code || data?.incident?.incident_code || 'INC-OK';
         setActionFeedback({
           type: 'success',
           text: lang === 'fr' 
-            ? 'Dossier transmis avec succès à l’Enquêteur SOC !' 
-            : 'Incident dossier transferred to SOC Investigator!'
+            ? `Dossier ${code} scellé SHA-256 et transmis à l’Enquêteur !` 
+            : `Dossier ${code} SHA-256 sealed and transferred to Investigator!`
         });
       } else {
         setActionFeedback({
@@ -366,6 +382,7 @@ export default function RealtimeProtectionSentinel() {
       });
     }
   };
+
 
   return (
     <>
