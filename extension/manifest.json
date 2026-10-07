@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "CyberGuard Sentinel — Protection Active",
+  "version": "1.0",
+  "description": "Protection active en arrière-plan : Intercepte et évalue en temps réel (<20ms) chaque URL ouverte dans Google Chrome avec IA CyberGuard.",
+  "permissions": [
+    "tabs",
+    "notifications",
+    "storage",
+    "scripting"
+  ],
+  "host_permissions": [
+    "<all_urls>",
+    "http://localhost:8000/*",
+    "http://localhost:3000/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "CyberGuard Sentinel",
+    "default_popup": "popup.html"
+  }
+}
