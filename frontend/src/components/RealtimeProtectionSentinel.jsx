@@ -500,26 +500,37 @@ export default function RealtimeProtectionSentinel() {
                 </div>
               )}
 
-              {/* Action Buttons for Unsafe Links */}
-              {!activeAlert.is_safe && (
-                <div className="grid grid-cols-2 gap-2 pt-1">
-                  <button
-                    onClick={handleBlockUrl}
-                    className="flex items-center justify-center gap-1.5 px-3 py-2 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white rounded-xl text-xs font-bold transition shadow-lg shadow-rose-950/50 cursor-pointer"
-                  >
-                    <Ban className="w-3.5 h-3.5" />
-                    <span>{lang === 'fr' ? 'Bloquer l\'accès' : 'Block Access'}</span>
-                  </button>
+              {/* Action Buttons */}
+              <div className="grid grid-cols-2 gap-2 pt-1">
+                {!activeAlert.is_safe ? (
+                  <>
+                    <button
+                      onClick={handleBlockUrl}
+                      className="flex items-center justify-center gap-1.5 px-3 py-2 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white rounded-xl text-xs font-bold transition shadow-lg shadow-rose-950/50 cursor-pointer"
+                    >
+                      <Ban className="w-3.5 h-3.5" />
+                      <span>{lang === 'fr' ? 'Bloquer l\'accès' : 'Block Access'}</span>
+                    </button>
 
+                    <button
+                      onClick={handleTransferToSoc}
+                      className="flex items-center justify-center gap-1.5 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white rounded-xl text-xs font-bold transition shadow-lg shadow-indigo-950/50 cursor-pointer"
+                    >
+                      <Send className="w-3.5 h-3.5" />
+                      <span>{lang === 'fr' ? 'Transférer à l\'Enquêteur' : 'Transfer to Investigator'}</span>
+                    </button>
+                  </>
+                ) : (
                   <button
                     onClick={handleTransferToSoc}
-                    className="flex items-center justify-center gap-1.5 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white rounded-xl text-xs font-bold transition shadow-lg shadow-indigo-950/50 cursor-pointer"
+                    className="col-span-2 flex items-center justify-center gap-2 px-3 py-2 bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 active:scale-95 text-white rounded-xl text-xs font-bold transition shadow-lg shadow-indigo-950/50 cursor-pointer"
                   >
                     <Send className="w-3.5 h-3.5" />
-                    <span>{lang === 'fr' ? 'Transférer au SOC' : 'Report to SOC'}</span>
+                    <span>{lang === 'fr' ? 'Transférer à l\'Enquêteur (Dossier d\'archive)' : 'Transfer to Investigator (Archive)'}</span>
                   </button>
-                </div>
-              )}
+                )}
+              </div>
+
             </div>
 
             {/* Countdown Auto-Dismiss Progress Bar */}

@@ -107,6 +107,37 @@ async function broadcastToCyberguardTab(data) {
   } catch (e) {}
 }
 
+// Helper to transfer alert directly to Investigator queue
+async function transferToInvestigator(alertData) {
+  try {
+    const res = await fetch('http://localhost:8000/api/v1/incidents/submit-user-report', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: `Alerte Sentinelle: ${alertData.url.substring(0, 60)}`,
+        target: alertData.url,
+        scan_type: "URL",
+        verdict: alertData.verdict || (alertData.is_safe ? "CLEAN" : "SUSPICIOUS"),
+        risk_score: parseFloat(alertData.risk_score || 0),
+        details: {
+          intercepted_by: "Extension Chrome Sentinel CyberGuard",
+          latency_ms: alertData.latency_ms || 18,
+          timestamp: new Date().toISOString()
+        },
+        reporter_name: "Sentinelle Navigateur (Temps Réel)",
+        reporter_email: "sentinel@cyberguard.local"
+      })
+    });
+    if (res.ok) {
+      const result = await res.json();
+      return { success: true, result };
+    }
+    return { success: false, status: res.status };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+}
+
 // Handle message from content script injected on web pages
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'CYBERGUARD_INSPECT_PAGE' && message.url) {
@@ -117,7 +148,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     });
     return true; // Keep channel open for async response
   }
+
+  if (message.type === 'CYBERGUARD_TRANSFER_INVESTIGATOR' && message.data) {
+    transferToInvestigator(message.data).then(res => {
+      sendResponse(res);
+    }).catch(err => {
+      sendResponse({ success: false, error: err.message });
+    });
+    return true;
+  }
 });
+
 
 // 1. Listen for new or updated tabs (user opened a URL in Chrome)
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {

@@ -544,6 +544,31 @@ def submit_user_report(req: UserScanReportRequest, db: Session = Depends(get_db)
         "message": "Signalement transmis avec succès à la file des enquêtes"
     }
 
+class CreateFromAnalysisRequest(BaseModel):
+    type: Optional[str] = "URL"
+    target: str
+    risk_score: float = 0.0
+    verdict: Optional[str] = "SUSPICIOUS"
+    details: Optional[dict] = None
+    reporter_name: Optional[str] = "Sentinelle CyberGuard"
+    reporter_email: Optional[str] = None
+
+@router.post("/create-from-analysis")
+def create_from_analysis(req: CreateFromAnalysisRequest, db: Session = Depends(get_db)):
+    """Direct alias to create an incident dossier for the investigator from analysis or extension sentinel."""
+    user_report_req = UserScanReportRequest(
+        title=f"Incident Sentinelle: {req.target[:50]}",
+        target=req.target,
+        scan_type=req.type.upper() if req.type else "URL",
+        verdict=req.verdict or "ANALYSE_SENTINELLE",
+        risk_score=float(req.risk_score),
+        details=req.details,
+        reporter_name=req.reporter_name or "Sentinelle CyberGuard",
+        reporter_email=req.reporter_email
+    )
+    return submit_user_report(user_report_req, db)
+
+
 class IncidentUpdateRequest(BaseModel):
     title: Optional[str] = None
     category: Optional[str] = None
