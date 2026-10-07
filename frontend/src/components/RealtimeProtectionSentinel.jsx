@@ -650,7 +650,7 @@ export default function RealtimeProtectionSentinel() {
                   onChange={(e) => setTestUrlInput(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && testUrlInput) {
-                      handleInspectUrl(testUrlInput, 'URL ouverte par l\'utilisateur');
+                      handleInspectUrl(testUrlInput, 'URL ouverte par l\'utilisateur', true);
                       setTestUrlInput('');
                     }
                   }}
@@ -659,7 +659,7 @@ export default function RealtimeProtectionSentinel() {
                 <button
                   onClick={() => {
                     if (testUrlInput) {
-                      handleInspectUrl(testUrlInput, 'URL ouverte par l\'utilisateur');
+                      handleInspectUrl(testUrlInput, 'URL ouverte par l\'utilisateur', true);
                       setTestUrlInput('');
                     }
                   }}
@@ -668,6 +668,43 @@ export default function RealtimeProtectionSentinel() {
                 >
                   <Play className="w-3.5 h-3.5 fill-current" />
                 </button>
+              </div>
+
+              {/* 1-Click Open & Test Buttons */}
+              <div className="space-y-1 pt-1">
+                <div className="text-[10px] text-slate-400 font-mono font-bold uppercase">
+                  {lang === 'fr' ? 'Démonstrations en 1 clic :' : '1-Click live demonstrations:'}
+                </div>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <button
+                    onClick={() => handleInspectUrl('https://chatgpt.com', 'Ouverture ChatGPT', true)}
+                    className="p-2 rounded-xl text-left border bg-emerald-500/10 hover:bg-emerald-500/20 border-emerald-500/30 text-emerald-400 cursor-pointer flex items-center justify-between transition"
+                  >
+                    <span className="font-bold text-[11px]">🟢 ChatGPT</span>
+                    <span className="text-[9px] font-mono opacity-80">Sain</span>
+                  </button>
+                  <button
+                    onClick={() => handleInspectUrl('https://www.nike.com', 'Ouverture Nike', true)}
+                    className="p-2 rounded-xl text-left border bg-emerald-500/10 hover:bg-emerald-500/20 border-emerald-500/30 text-emerald-400 cursor-pointer flex items-center justify-between transition"
+                  >
+                    <span className="font-bold text-[11px]">👟 Nike</span>
+                    <span className="text-[9px] font-mono opacity-80">Sain</span>
+                  </button>
+                  <button
+                    onClick={() => handleInspectUrl('https://claude.ai', 'Ouverture Claude AI', true)}
+                    className="p-2 rounded-xl text-left border bg-emerald-500/10 hover:bg-emerald-500/20 border-emerald-500/30 text-emerald-400 cursor-pointer flex items-center justify-between transition"
+                  >
+                    <span className="font-bold text-[11px]">🤖 Claude AI</span>
+                    <span className="text-[9px] font-mono opacity-80">Sain</span>
+                  </button>
+                  <button
+                    onClick={() => handleInspectUrl('http://192.168.1.100/paypal-login.xyz', 'Ouverture Faux PayPal', true)}
+                    className="p-2 rounded-xl text-left border bg-rose-500/10 hover:bg-rose-500/20 border-rose-500/30 text-rose-400 cursor-pointer flex items-center justify-between transition"
+                  >
+                    <span className="font-bold text-[11px]">🚨 Faux PayPal</span>
+                    <span className="text-[9px] font-mono opacity-80">Danger</span>
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -720,7 +757,7 @@ export default function RealtimeProtectionSentinel() {
                   {history.slice(0, 4).map((h, i) => (
                     <div 
                       key={i}
-                      onClick={() => triggerHudAlert(h)}
+                      onClick={() => handleInspectUrl(h.url, 'URL ré-ouverte', true)}
                       className="p-1.5 bg-slate-50 dark:bg-slate-900/60 rounded-lg border border-slate-200 dark:border-slate-800 flex items-center justify-between cursor-pointer hover:border-cyan-500/40"
                     >
                       <div className="truncate max-w-[210px] font-mono text-[10px] text-slate-600 dark:text-slate-300">
