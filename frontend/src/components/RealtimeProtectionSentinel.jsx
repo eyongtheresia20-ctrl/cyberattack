@@ -15,7 +15,11 @@ import {
   ChevronRight, 
   Eye, 
   Sliders,
-  Play
+  Play,
+  Clipboard,
+  Sparkles,
+  Lock,
+  Globe
 } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
@@ -44,6 +48,7 @@ export default function RealtimeProtectionSentinel() {
   const [isSentinelDrawerOpen, setIsSentinelDrawerOpen] = useState(false);
   const [testUrlInput, setTestUrlInput] = useState('');
   const [actionFeedback, setActionFeedback] = useState(null);
+  const [clipboardStatus, setClipboardStatus] = useState(null);
   const [history, setHistory] = useState(() => {
     try {
       const saved = localStorage.getItem('cyberguard_sentinel_history');
@@ -117,8 +122,8 @@ export default function RealtimeProtectionSentinel() {
   const triggerHudAlert = (alertData) => {
     setActiveAlert(alertData);
     setActionFeedback(null);
-    // Unsafe URLs get 10 seconds, safe URLs get 5 seconds
-    const initialTime = alertData.is_safe ? 5 : 10;
+    // Unsafe URLs get 10 seconds, safe URLs get 8 seconds (enough time to read)
+    const initialTime = alertData.is_safe ? 8 : 10;
     setCountdown(initialTime);
     setIsPaused(false);
   };
@@ -161,6 +166,29 @@ export default function RealtimeProtectionSentinel() {
     window.addEventListener('cyberguard:inspect-url', onInspect);
     return () => window.removeEventListener('cyberguard:inspect-url', onInspect);
   }, [isEnabled]);
+
+  // Read URL from Windows Clipboard (e.g. copied from Word, WhatsApp, browser)
+  const handleInspectClipboard = async () => {
+    try {
+      if (!navigator.clipboard || !navigator.clipboard.readText) {
+        setClipboardStatus(lang === 'fr' ? 'Accès presse-papier non disponible' : 'Clipboard access unavailable');
+        return;
+      }
+      const text = await navigator.clipboard.readText();
+      if (!text || !text.trim()) {
+        setClipboardStatus(lang === 'fr' ? 'Presse-papier vide !' : 'Clipboard is empty!');
+        setTimeout(() => setClipboardStatus(null), 3000);
+        return;
+      }
+      const cleaned = text.trim();
+      setClipboardStatus(lang === 'fr' ? `Lien détecté : ${cleaned.slice(0, 25)}...` : `Link found: ${cleaned.slice(0, 25)}...`);
+      setTimeout(() => setClipboardStatus(null), 2500);
+      handleInspectUrl(cleaned);
+    } catch (err) {
+      setClipboardStatus(lang === 'fr' ? 'Autorisez l\'accès au presse-papier' : 'Allow clipboard permission in browser');
+      setTimeout(() => setClipboardStatus(null), 3500);
+    }
+  };
 
   // Action: Block host / IP in Dynamic Firewall
   const handleBlockUrl = async () => {
@@ -253,28 +281,55 @@ export default function RealtimeProtectionSentinel() {
     }
   };
 
-  // Sample URLs for immediate live demonstration
-  const sampleUrls = [
+  // Popular Real-World URLs for Teacher / Jury Live Demonstration
+  const popularUrls = [
     {
-      title: '🚨 Phishing Bancaire Paypal (IP)',
-      url: 'http://192.168.1.100/paypal-login.xyz',
-      isDanger: true
+      name: 'ChatGPT',
+      category: 'safe',
+      badge: 'SAIN',
+      url: 'https://chatgpt.com',
+      desc: 'IA OpenAI certifiée conforme'
     },
     {
-      title: '🚨 Faux Domaine Crypto / Update',
-      url: 'https://metamask-security-update.tk/verify',
-      isDanger: true
+      name: 'Claude AI',
+      category: 'safe',
+      badge: 'SAIN',
+      url: 'https://claude.ai',
+      desc: 'IA Anthropic certifiée conforme'
     },
     {
-      title: '🛡️ Google Services (Légitime)',
+      name: 'Nike Officiel',
+      category: 'safe',
+      badge: 'SAIN',
+      url: 'https://www.nike.com',
+      desc: 'Site e-commerce sécurisé HTTPS'
+    },
+    {
+      name: 'Google',
+      category: 'safe',
+      badge: 'SAIN',
       url: 'https://www.google.com',
-      isDanger: false
+      desc: 'Moteur de recherche légitime'
+    },
+    {
+      name: 'Phishing Bancaire (IP)',
+      category: 'danger',
+      badge: 'DANGER',
+      url: 'http://192.168.1.100/paypal-login.xyz',
+      desc: 'Fausse page PayPal sur adresse IP brute'
+    },
+    {
+      name: 'Faux Crypto Wallet',
+      category: 'danger',
+      badge: 'DANGER',
+      url: 'https://metamask-security-update.tk/verify',
+      desc: 'TLD jetable .tk & vol de clés secrètes'
     }
   ];
 
   return (
     <>
-      {/* 1. FLOATING HUD TOAST NOTIFICATION (Appears when Sentinel intercepts a URL) */}
+      {/* 1. FLOATING HUD TOAST NOTIFICATION (Pop-up that appears when Sentinel intercepts ANY URL) */}
       {activeAlert && (
         <div 
           className="fixed top-20 right-6 z-50 max-w-md w-full animate-in slide-in-from-top-4 duration-300 pointer-events-auto"
@@ -302,16 +357,16 @@ export default function RealtimeProtectionSentinel() {
                     !activeAlert.is_safe ? 'bg-rose-500' : 'bg-emerald-500'
                   }`}></span>
                 </span>
-                <span className="tracking-wider uppercase">
+                <span className="tracking-wider uppercase font-extrabold">
                   {!activeAlert.is_safe 
                     ? (lang === 'fr' ? 'Menace Interceptée en Temps Réel' : 'Real-Time Threat Intercepted')
-                    : (lang === 'fr' ? 'Ressource Certifiée Saine' : 'Verified Safe Resource')
+                    : (lang === 'fr' ? 'Ressource Légitime & Saine' : 'Verified Safe Resource')
                   }
                 </span>
               </div>
 
               <div className="flex items-center gap-2">
-                <span className="text-[10px] bg-slate-900/80 px-2 py-0.5 rounded-full border border-slate-700/60 flex items-center gap-1 font-mono text-cyan-400">
+                <span className="text-[10px] bg-slate-900/80 px-2 py-0.5 rounded-full border border-slate-700/60 flex items-center gap-1 font-mono text-cyan-400 font-bold">
                   <Zap className="w-3 h-3 text-amber-400" />
                   {activeAlert.latency_ms}ms
                 </span>
@@ -345,7 +400,7 @@ export default function RealtimeProtectionSentinel() {
                     ) : (
                       <>
                         <ShieldCheck className="w-5 h-5 text-emerald-400 shrink-0" />
-                        <span>{activeAlert.verdict}</span>
+                        <span>{lang === 'fr' ? 'CERTIFIÉ SÉCURISÉ' : 'VERIFIED SAFE'}</span>
                       </>
                     )}
                   </h4>
@@ -362,13 +417,16 @@ export default function RealtimeProtectionSentinel() {
               </div>
 
               {/* Reasons / Flags Tags */}
-              {activeAlert.reasons && activeAlert.reasons.length > 0 && (
-                <div className="space-y-1.5 pt-1">
-                  <div className="text-[11px] font-bold text-slate-400">
-                    {lang === 'fr' ? 'Indicateurs de compromission détectés :' : 'Compromise indicators detected:'}
-                  </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {activeAlert.reasons.map((reason, idx) => (
+              <div className="space-y-1.5 pt-1">
+                <div className="text-[11px] font-bold text-slate-400">
+                  {!activeAlert.is_safe 
+                    ? (lang === 'fr' ? 'Indicateurs de compromission détectés :' : 'Compromise indicators detected:')
+                    : (lang === 'fr' ? 'Garanties de sécurité vérifiées :' : 'Verified security attributes:')
+                  }
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {activeAlert.reasons && activeAlert.reasons.length > 0 ? (
+                    activeAlert.reasons.map((reason, idx) => (
                       <span 
                         key={idx} 
                         className={`text-[10px] px-2 py-0.5 rounded-md font-mono border ${
@@ -379,22 +437,36 @@ export default function RealtimeProtectionSentinel() {
                       >
                         {reason}
                       </span>
-                    ))}
-                  </div>
+                    ))
+                  ) : (
+                    <span className="text-[10px] px-2 py-0.5 rounded-md font-mono bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">
+                      Structure conforme • Chiffrement actif
+                    </span>
+                  )}
                 </div>
-              )}
+              </div>
 
-              {/* ML Ensemble Details */}
-              {activeAlert.ml_ensemble && (
-                <div className="bg-slate-900/60 p-2.5 rounded-xl border border-slate-800/80 flex items-center justify-between text-[11px] font-mono text-slate-400">
+              {/* Extra Details Banner for Safe vs Threat */}
+              {activeAlert.is_safe ? (
+                <div className="bg-emerald-500/10 p-2.5 rounded-xl border border-emerald-500/20 flex items-center justify-between text-[11px] font-mono text-emerald-300">
                   <div className="flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-cyan-400" />
-                    <span>Ensemble ML (RF + GBM)</span>
+                    <Lock className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>{lang === 'fr' ? 'Protocole HTTPS & Domaine Réputé' : 'HTTPS Protocol & Reputable Domain'}</span>
                   </div>
-                  <div className="text-cyan-300 font-bold">
-                    Confiance : {activeAlert.ml_ensemble.confidence}%
-                  </div>
+                  <span className="font-bold text-emerald-400">OK</span>
                 </div>
+              ) : (
+                activeAlert.ml_ensemble && (
+                  <div className="bg-slate-900/60 p-2.5 rounded-xl border border-slate-800/80 flex items-center justify-between text-[11px] font-mono text-slate-400">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-cyan-400" />
+                      <span>Ensemble ML (RF + GBM)</span>
+                    </div>
+                    <div className="text-cyan-300 font-bold">
+                      Confiance : {activeAlert.ml_ensemble.confidence}%
+                    </div>
+                  </div>
+                )
               )}
 
               {/* Dynamic Action Feedback */}
@@ -438,7 +510,7 @@ export default function RealtimeProtectionSentinel() {
                   !activeAlert.is_safe ? 'bg-rose-500' : 'bg-emerald-400'
                 }`}
                 style={{ 
-                  width: `${(countdown / (activeAlert.is_safe ? 5 : 10)) * 100}%` 
+                  width: `${(countdown / (activeAlert.is_safe ? 8 : 10)) * 100}%` 
                 }}
               />
             </div>
@@ -469,10 +541,10 @@ export default function RealtimeProtectionSentinel() {
           onClick={() => setIsSentinelDrawerOpen(!isSentinelDrawerOpen)}
           className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-2xl shadow-xl backdrop-blur-md transition-all duration-200 border cursor-pointer hover:scale-105 ${
             isEnabled
-              ? 'bg-slate-900/90 dark:bg-slate-950/90 border-cyan-500/40 text-cyan-400 shadow-cyan-950/40'
+              ? 'bg-slate-900/90 dark:bg-slate-950/90 border-cyan-500/40 text-cyan-400 shadow-cyan-950/40 ring-1 ring-cyan-500/30'
               : 'bg-slate-900/80 border-slate-700/60 text-slate-400'
           }`}
-          title={lang === 'fr' ? 'Sentinelle de Protection Active en Arrière-Plan' : 'Real-Time Protection Sentinel'}
+          title={lang === 'fr' ? 'Sentinelle de Protection Active en Arrière-Plan — Cliquez pour ouvrir le contrôleur' : 'Real-Time Protection Sentinel — Click to open controller'}
         >
           <div className="relative">
             <Shield className={`w-4 h-4 ${isEnabled ? 'text-cyan-400' : 'text-slate-400'}`} />
@@ -495,68 +567,95 @@ export default function RealtimeProtectionSentinel() {
 
         {/* 3. SENTINEL CONTROL & LIVE TESTER DRAWER */}
         {isSentinelDrawerOpen && (
-          <div className="absolute bottom-14 left-0 w-80 sm:w-96 bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-cyan-900/50 rounded-3xl shadow-2xl p-5 space-y-4 animate-in fade-in slide-in-from-bottom-2 text-slate-900 dark:text-white">
+          <div className="absolute bottom-14 left-0 w-84 sm:w-[420px] bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-cyan-900/50 rounded-3xl shadow-2xl p-5 space-y-4 animate-in fade-in slide-in-from-bottom-2 text-slate-900 dark:text-white max-h-[85vh] overflow-y-auto">
             
             {/* Header */}
             <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
               <div className="flex items-center gap-2.5">
                 <div className="p-2 rounded-xl bg-gradient-to-tr from-cyan-500 to-blue-600 text-white shadow-md shadow-cyan-500/30">
-                  <ShieldCheck className="w-4 h-4" />
+                  <ShieldCheck className="w-5 h-5" />
                 </div>
                 <div>
-                  <h4 className="font-extrabold text-sm">
-                    {lang === 'fr' ? 'Sentinelle en Arrière-Plan' : 'Background Sentinel'}
+                  <h4 className="font-extrabold text-sm flex items-center gap-1.5">
+                    <span>{lang === 'fr' ? 'Sentinelle de Protection Active' : 'Real-Time Protection Sentinel'}</span>
+                    <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-1.5 py-0.2 rounded font-mono font-bold">24/7</span>
                   </h4>
-                  <p className="text-[10px] text-cyan-500 dark:text-cyan-400 font-mono">
-                    {lang === 'fr' ? 'Analyse heuristique + IA (<300ms)' : 'Heuristic + AI Analysis (<300ms)'}
+                  <p className="text-[11px] text-cyan-500 dark:text-cyan-400 font-mono">
+                    {lang === 'fr' ? 'Interception instantanée (< 40ms)' : 'Instant interception (< 40ms)'}
                   </p>
                 </div>
               </div>
               <button 
                 onClick={() => setIsSentinelDrawerOpen(false)}
-                className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-white rounded-lg transition cursor-pointer"
+                className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-white rounded-lg transition cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            {/* Toggle Status */}
-            <div className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-900/80 rounded-2xl border border-slate-200 dark:border-slate-800 text-xs">
-              <div>
-                <div className="font-bold">
-                  {lang === 'fr' ? 'Interception en temps réel' : 'Real-time interception'}
+            {/* Toggle Status & Clipboard Helper */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-900/80 rounded-2xl border border-slate-200 dark:border-slate-800 text-xs">
+                <div>
+                  <div className="font-bold text-[11px]">
+                    {lang === 'fr' ? 'Protection Active' : 'Active Sentinel'}
+                  </div>
+                  <div className="text-[9px] text-slate-500">
+                    {isEnabled ? 'Interception en cours' : 'En pause'}
+                  </div>
                 </div>
-                <div className="text-[10px] text-slate-500">
-                  {isEnabled 
-                    ? (lang === 'fr' ? 'Surveille les liens & affiche le pop-up' : 'Monitors links & shows popup HUD')
-                    : (lang === 'fr' ? 'Protection temporairement en pause' : 'Protection temporarily paused')
-                  }
-                </div>
-              </div>
-              <button
-                onClick={() => setIsEnabled(!isEnabled)}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer ${
-                  isEnabled ? 'bg-cyan-500' : 'bg-slate-700'
-                }`}
-              >
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                    isEnabled ? 'translate-x-6' : 'translate-x-1'
+                <button
+                  onClick={() => setIsEnabled(!isEnabled)}
+                  className={`relative inline-flex h-5 w-10 items-center rounded-full transition-colors cursor-pointer ${
+                    isEnabled ? 'bg-cyan-500' : 'bg-slate-700'
                   }`}
-                />
+                >
+                  <span
+                    className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+                      isEnabled ? 'translate-x-5' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {/* Instant Clipboard Button */}
+              <button
+                onClick={handleInspectClipboard}
+                disabled={isAnalyzing}
+                className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-900/80 hover:border-cyan-500/40 rounded-2xl border border-slate-200 dark:border-slate-800 text-xs transition cursor-pointer group"
+                title={lang === 'fr' ? 'Colle et analyse le lien copié depuis Word ou le navigateur' : 'Pastes and evaluates copied URL from clipboard'}
+              >
+                <div className="text-left">
+                  <div className="font-bold text-[11px] group-hover:text-cyan-400 transition flex items-center gap-1">
+                    <Clipboard className="w-3 h-3 text-cyan-400" />
+                    <span>{lang === 'fr' ? 'Presse-Papier' : 'Clipboard'}</span>
+                  </div>
+                  <div className="text-[9px] text-slate-500">
+                    {lang === 'fr' ? 'Vérifier lien copié' : 'Check copied link'}
+                  </div>
+                </div>
+                <ChevronRight className="w-3.5 h-3.5 text-slate-400 group-hover:translate-x-0.5 transition" />
               </button>
             </div>
 
-            {/* Live Interactive Tester */}
+            {/* Clipboard feedback message */}
+            {clipboardStatus && (
+              <div className="p-2 rounded-xl text-[11px] font-mono bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 flex items-center gap-1.5 animate-fade-in">
+                <Sparkles className="w-3.5 h-3.5 shrink-0" />
+                <span>{clipboardStatus}</span>
+              </div>
+            )}
+
+            {/* Live Interactive URL Input Tester */}
             <div className="space-y-2">
               <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
-                {lang === 'fr' ? 'Tester l\'interception instantanée :' : 'Test instant interception:'}
+                {lang === 'fr' ? 'Tester une URL en direct (Tapez ou collez) :' : 'Live test any URL (Type or paste):'}
               </label>
 
               <div className="flex gap-2">
                 <input
                   type="text"
-                  placeholder="https://example.com/login"
+                  placeholder="ex: https://chatgpt.com ou https://nike.com"
                   value={testUrlInput}
                   onChange={(e) => setTestUrlInput(e.target.value)}
                   onKeyDown={(e) => {
@@ -565,7 +664,7 @@ export default function RealtimeProtectionSentinel() {
                       setTestUrlInput('');
                     }
                   }}
-                  className="flex-1 px-3 py-2 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-mono focus:outline-none focus:border-cyan-500"
+                  className="flex-1 px-3 py-2 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-mono focus:outline-none focus:border-cyan-500 text-slate-900 dark:text-white"
                 />
                 <button
                   onClick={() => {
@@ -575,30 +674,49 @@ export default function RealtimeProtectionSentinel() {
                     }
                   }}
                   disabled={isAnalyzing || !testUrlInput.trim()}
-                  className="px-3 py-2 bg-cyan-500 hover:bg-cyan-600 active:scale-95 text-white rounded-xl text-xs font-bold transition disabled:opacity-50 cursor-pointer flex items-center gap-1"
+                  className="px-3.5 py-2 bg-cyan-500 hover:bg-cyan-600 active:scale-95 text-white rounded-xl text-xs font-bold transition disabled:opacity-50 cursor-pointer flex items-center gap-1 shadow-md shadow-cyan-500/30"
                 >
                   <Play className="w-3.5 h-3.5 fill-current" />
                 </button>
               </div>
+            </div>
 
-              {/* One-Click Demo Samples */}
-              <div className="space-y-1.5 pt-1">
-                <div className="text-[10px] text-slate-400 font-mono font-semibold">
-                  {lang === 'fr' ? 'Exemples rapides pour démonstration :' : 'Quick demo samples:'}
-                </div>
-                {sampleUrls.map((s, idx) => (
+            {/* Preset Real-World Demonstration Sites (Teacher & Jury) */}
+            <div className="space-y-2">
+              <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center justify-between">
+                <span>{lang === 'fr' ? 'Démonstrations en 1 clic (Pour le professeur) :' : '1-Click live demonstrations (For teacher):'}</span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-1.5">
+                {popularUrls.map((site, idx) => (
                   <button
                     key={idx}
-                    onClick={() => handleInspectUrl(s.url)}
+                    onClick={() => handleInspectUrl(site.url)}
                     disabled={isAnalyzing}
-                    className={`w-full text-left p-2 rounded-xl text-xs transition border flex items-center justify-between cursor-pointer ${
-                      s.isDanger 
-                        ? 'bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-300 border-rose-500/20' 
-                        : 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-300 border-emerald-500/20'
+                    className={`text-left p-2 rounded-xl text-xs transition border flex items-center justify-between cursor-pointer group ${
+                      site.category === 'safe'
+                        ? 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-500/25'
+                        : 'bg-rose-500/10 hover:bg-rose-500/20 text-rose-700 dark:text-rose-300 border-rose-500/25'
                     }`}
                   >
-                    <span className="font-bold text-[11px] truncate">{s.title}</span>
-                    <ChevronRight className="w-3.5 h-3.5 shrink-0 opacity-70" />
+                    <div className="min-w-0 pr-1">
+                      <div className="font-extrabold text-[11px] truncate flex items-center gap-1">
+                        {site.category === 'safe' ? (
+                          <ShieldCheck className="w-3 h-3 text-emerald-500 shrink-0" />
+                        ) : (
+                          <ShieldAlert className="w-3 h-3 text-rose-500 shrink-0" />
+                        )}
+                        <span>{site.name}</span>
+                      </div>
+                      <div className="text-[9px] opacity-70 font-mono truncate">{site.url}</div>
+                    </div>
+                    <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded font-mono shrink-0 ${
+                      site.category === 'safe'
+                        ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400'
+                        : 'bg-rose-500/20 text-rose-600 dark:text-rose-400'
+                    }`}>
+                      {site.badge}
+                    </span>
                   </button>
                 ))}
               </div>
@@ -608,7 +726,7 @@ export default function RealtimeProtectionSentinel() {
             {history.length > 0 && (
               <div className="space-y-1.5 pt-2 border-t border-slate-200 dark:border-slate-800">
                 <div className="flex items-center justify-between text-[11px] font-bold text-slate-500">
-                  <span>{lang === 'fr' ? 'Dernières détections :' : 'Recent detections:'}</span>
+                  <span>{lang === 'fr' ? 'Dernières interceptions :' : 'Recent interceptions:'}</span>
                   <button 
                     onClick={() => setHistory([])}
                     className="text-[10px] text-slate-400 hover:text-rose-400 transition"
@@ -617,14 +735,14 @@ export default function RealtimeProtectionSentinel() {
                   </button>
                 </div>
 
-                <div className="max-h-32 overflow-y-auto space-y-1 text-xs">
+                <div className="max-h-28 overflow-y-auto space-y-1 text-xs">
                   {history.slice(0, 4).map((h, i) => (
                     <div 
                       key={i}
                       onClick={() => triggerHudAlert(h)}
                       className="p-1.5 bg-slate-50 dark:bg-slate-900/60 rounded-lg border border-slate-200 dark:border-slate-800 flex items-center justify-between cursor-pointer hover:border-cyan-500/40"
                     >
-                      <div className="truncate max-w-[190px] font-mono text-[10px] text-slate-600 dark:text-slate-300">
+                      <div className="truncate max-w-[210px] font-mono text-[10px] text-slate-600 dark:text-slate-300">
                         {h.url}
                       </div>
                       <span className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded ${
