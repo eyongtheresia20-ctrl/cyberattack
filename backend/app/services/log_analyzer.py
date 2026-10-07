@@ -1,7 +1,25 @@
+"""
+Moteur d'Analyse des Journaux HTTP & Détection d'Attaques Web — PhishGuard SOC
+==============================================================================
+Ce module inspecte les requêtes HTTP, charges utiles et agents utilisateurs (User-Agents)
+afin de classifier et d'intercepter 16 catégories d'attaques cybernétiques :
+  - Injections SQL (SQLi) et falsifications de requêtes
+  - Injections de scripts intersites (XSS - Cross-Site Scripting)
+  - Traversée de répertoires & inclusion de fichiers locaux (Path Traversal / LFI)
+  - Téléchargements furtifs et charges utiles malveillantes (Drive-by / Malware / Ransomware)
+  - Exploits Zero-Day & exécution de code à distance (RCE / Log4j / CVE-2021-44228)
+  - Détournement de session & vol de cookies de sécurité
+  - Tunnels DNS et exfiltration de protocoles
+  - Balayage et cartographie de vulnérabilités par botnets & scanners automatisés
+  - Attaques par force brute et bourrage d'identifiants (Credential Stuffing)
+  - Dénis de service volumétriques (DoS / DDoS)
+"""
+
 import re
 from typing import Dict, Any, List
 
-# 1. SQL Injection (SQLi)
+# ─── 1. Motifs d'Injection SQL (SQLi) ──────────────────────────────────────
+# Détecte les clauses SQL classiques, les commentaires de fin de ligne et les attaques temporelles (SLEEP/BENCHMARK)
 SQLI_PATTERNS = [
     r"(?i)(\b(SELECT|INSERT|UPDATE|DELETE|DROP|UNION|ALTER|CREATE|EXEC)\b)",
     r"(?i)('|\"|;)\s*--(.*)",
@@ -11,7 +29,8 @@ SQLI_PATTERNS = [
     r"(?i)BENCHMARK\("
 ]
 
-# 2. Cross-Site Scripting (XSS)
+# ─── 2. Motifs de Cross-Site Scripting (XSS) ─────────────────────────────────
+# Détecte les balises de script, pseudo-protocoles javascript:, gestionnaires d'événements et accès au document.cookie
 XSS_PATTERNS = [
     r"(?i)<script[^>]*>",
     r"(?i)javascript\s*:",

@@ -1,15 +1,29 @@
+"""
+Module d'Inspection Approfondie des Paquets Réseau (DPI & PCAP Analysis) — PhishGuard SOC
+========================================================================================
+Ce service analyse les captures de paquets réseau (fichiers .pcap) aux couches OSI 3 et 4 :
+  1. Détection des attaques par déni de service distribué (TCP SYN Flood DoS/DDoS).
+  2. Détection des sondes de reconnaissance furtives (Scans de ports Nmap SYN/FIN/NULL).
+  3. Détection des tunnels d'exfiltration de données confidentielles via DNS (Layer 7/4).
+  4. Répartition statistique des protocoles (TCP, UDP, DNS, ICMP) et drapeaux de contrôle.
+"""
+
 import time
 import random
 from typing import Dict, Any, List
 
 def analyze_pcap_data(filename: str = "capture.pcap", raw_bytes: bytes = None, scenario: str = None) -> Dict[str, Any]:
     """
-    Network Layer 3/4 Deep Packet Inspection & PCAP Analyzer.
-    Parses packet captures, extracts TCP/UDP/ICMP metadata, and flags:
-    - TCP SYN Flood Attacks (DDoS)
-    - Stealth Port Scans (Nmap SYN / FIN / NULL)
-    - DNS Exfiltration Tunneling
-    - ICMP Amplification Floods
+    Analyse approfondie de capture réseau (DPI - Deep Packet Inspection).
+    
+    Paramètres :
+      filename (str)  : Nom du fichier PCAP analysé.
+      raw_bytes (bytes): Contenu binaire brut de la capture.
+      scenario (str)  : Scénario de test SOC optionnel ('SYN_FLOOD', 'PORT_SCAN', 'DNS_TUNNEL').
+      
+    Retour :
+      Dict[str, Any]  : Rapport d'analyse complet contenant métriques réseau, drapeaux TCP,
+                        attaques détectées, niveau de risque et échantillons de paquets.
     """
     if scenario == "SYN_FLOOD":
         return _generate_syn_flood_pcap_report()

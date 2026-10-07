@@ -4,10 +4,20 @@ import { LayoutDashboard, History, FileSearch, Users, ShieldCheck, Activity, Sea
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 
+/**
+ * Composant Barre Latérale de Navigation (Sidebar) — CyberGuard SOC
+ * =================================================================
+ * Affiche dynamiquement les liens de navigation selon le rôle RBAC de l'utilisateur connecté :
+ *   - UTILISATEUR : Dashboard & Historique des analyses personnelles.
+ *   - ENQUÊTEUR  : Dashboard SOC, Scanner d'investigation, Signalements & Preuves judiciaires.
+ *   - ADMINISTRATEUR : Vue complète incluant Gestion des utilisateurs & Journaux d'audit.
+ * Supporte le bilinguisme dynamique (Français / Anglais).
+ */
 export default function Sidebar() {
   const { user } = useAuth();
   const { lang } = useLanguage();
 
+  // Menu pour les utilisateurs standards
   const stdItems = [
     { path: '/dashboard', label: lang === 'fr' ? 'Scanner & Tableau de Bord' : 'Scanner & Dashboard', icon: LayoutDashboard },
     { path: '/history', label: lang === 'fr' ? 'Historique des Analyses' : 'Analysis History', icon: History },

@@ -1,3 +1,19 @@
+"""
+========================================================================================
+CYBERGUARD SOC — MOTEUR DE DÉTONATION DYNAMIQUE EN BAC À SABLE (SANDBOX)
+========================================================================================
+Rôle et Responsabilités :
+- Simulation de visite dynamique sécurisée (Headless HTTP/DOM Detonation).
+- Traçage complet de la chaîne de redirection (Redirect hops, status codes).
+- Analyse en profondeur du Document Object Model (DOM) :
+    * Détection des formulaires de vol d'identifiants (password inputs).
+    * Détection des champs de cartes de crédit / données financières (exfiltration).
+    * Détection des iframes invisibles (Clickjacking / Drive-by download).
+    * Détection d'usurpation de marque (Brand Spoofing : PayPal, Microsoft, etc.).
+- Calcul du score de risque comportemental et émission du verdict Sandbox.
+========================================================================================
+"""
+
 import re
 import time
 import base64
@@ -6,14 +22,21 @@ from urllib.parse import urlparse, urljoin
 import requests
 import urllib3
 
+# Désactivation des avertissements SSL pour inspecter sans interruption les certificats auto-signés suspects
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 def analyze_url_sandbox(target_url: str) -> Dict[str, Any]:
     """
-    Headless Browser Sandbox & Dynamic DOM Analysis Engine.
-    Simulates dynamic page detonation, inspects DOM elements, forms,
-    redirect chains, scripts, and captures visual page preview metadata.
+    Exécute la détonation dynamique en bac à sable d'une URL suspecte.
+    Inspecte le code HTML brut, les formulaires, les iframes et les scripts tiers.
+    
+    Args:
+        target_url (str): L'URL cible à auditer dans la sandbox.
+        
+    Returns:
+        Dict[str, Any]: Rapport d'audit complet incluant le score de risque et les indicateurs.
     """
+    # Nettoyage et normalisation du protocole de l'URL cible
     clean_url = target_url.strip()
     if not clean_url.startswith(('http://', 'https://')):
         clean_url = 'https://' + clean_url
@@ -21,6 +44,7 @@ def analyze_url_sandbox(target_url: str) -> Dict[str, Any]:
     parsed = urlparse(clean_url)
     hostname = parsed.netloc.split(':')[0]
 
+    # Structure de données du rapport de détonation
     result = {
         "target_url": clean_url,
         "hostname": hostname,
@@ -46,6 +70,7 @@ def analyze_url_sandbox(target_url: str) -> Dict[str, Any]:
 
     start_time = time.time()
     try:
+        # Configuration d'un User-Agent moderne pour éviter les faux blocages anti-bot
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 CyberGuard-Sandbox/3.0",
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
@@ -55,7 +80,9 @@ def analyze_url_sandbox(target_url: str) -> Dict[str, Any]:
         res = session.get(clean_url, headers=headers, timeout=4.5, allow_redirects=True, verify=False)
         duration_ms = int((time.time() - start_time) * 1000)
 
-        # 1. Trace Full Redirect Chain
+        # ------------------------------------------------------------------------------
+        # 1. Traçage de la chaîne complète de redirection
+        # ------------------------------------------------------------------------------
         chain = []
         for hop in res.history:
             chain.append({
@@ -74,7 +101,9 @@ def analyze_url_sandbox(target_url: str) -> Dict[str, Any]:
         html = res.text or ""
         html_lower = html.lower()
 
-        # 2. Extract Title & Favicon
+        # ------------------------------------------------------------------------------
+        # 2. Extraction du titre de page et du Favicon
+        # ------------------------------------------------------------------------------
         title_m = re.search(r'<title[^>]*>(.*?)</title>', html, re.I | re.S)
         if title_m:
             result["dom_analysis"]["page_title"] = title_m.group(1).strip()[:100]
@@ -83,7 +112,9 @@ def analyze_url_sandbox(target_url: str) -> Dict[str, Any]:
         if fav_m:
             result["dom_analysis"]["favicon_url"] = urljoin(res.url, fav_m.group(1))
 
-        # 3. Form & Credential Theft Inspection
+        # ------------------------------------------------------------------------------
+        # 3. Analyse des formulaires et détection de tentative d'hameçonnage
+        # ------------------------------------------------------------------------------
         forms = []
         form_matches = re.finditer(r'<form\b([^>]*)>(.*?)</form>', html, re.I | re.S)
         for fm in form_matches:
@@ -94,6 +125,7 @@ def analyze_url_sandbox(target_url: str) -> Dict[str, Any]:
             action_url = action_m.group(1) if action_m else ""
             method = method_m.group(1).upper() if method_m else "GET"
 
+            # Recherche de champs sensibles (mots de passe, cartes bancaires)
             has_pwd = bool(re.search(r'type=[\'"]password[\'"]', body, re.I))
             has_cc = bool(re.search(r'(card|cvv|expir|credit|carte|banque)', body, re.I))
             forms.append({
@@ -110,7 +142,9 @@ def analyze_url_sandbox(target_url: str) -> Dict[str, Any]:
 
         result["dom_analysis"]["forms"] = forms[:5]
 
-        # 4. External Scripts
+        # ------------------------------------------------------------------------------
+        # 4. Identification des scripts JavaScript externes
+        # ------------------------------------------------------------------------------
         script_srcs = re.findall(r'<script\b[^>]*src=[\'"]([^\'"]+)[\'"]', html, re.I)
         ext_scripts = []
         for s in script_srcs:
@@ -118,20 +152,26 @@ def analyze_url_sandbox(target_url: str) -> Dict[str, Any]:
             ext_scripts.append(full_s)
         result["dom_analysis"]["external_scripts"] = ext_scripts[:8]
 
-        # 5. Iframes
+        # ------------------------------------------------------------------------------
+        # 5. Détection des iframes cachés (Technique Clickjacking)
+        # ------------------------------------------------------------------------------
         iframes = re.findall(r'<iframe\b[^>]*src=[\'"]([^\'"]+)[\'"]', html, re.I)
         result["dom_analysis"]["iframes"] = iframes[:4]
         if "<iframe" in html_lower and ("display:none" in html_lower or "visibility:hidden" in html_lower or "width=0" in html_lower or "height=0" in html_lower):
             result["dom_analysis"]["has_hidden_iframes"] = True
 
-        # 6. Behavioral Heuristics Scoring
+        # ------------------------------------------------------------------------------
+        # 6. Évaluation heuristique comportementale du risque
+        # ------------------------------------------------------------------------------
         risk_score = 0
         indicators = []
 
+        # Pénalité pour redirections excessives
         if len(chain) > 2:
             risk_score += 25
             indicators.append(f"Chaîne de redirection suspecte ({len(chain)} rebonds détectés)")
 
+        # Formulaire de mot de passe transmis en clair (HTTP)
         if result["dom_analysis"]["password_inputs_count"] > 0:
             if not res.url.startswith("https://"):
                 risk_score += 45
@@ -140,15 +180,17 @@ def analyze_url_sandbox(target_url: str) -> Dict[str, Any]:
                 risk_score += 15
                 indicators.append("Formulaire de collecte d'identifiants (mot de passe)")
 
+        # Collecte suspecte de données bancaires
         if result["dom_analysis"]["credit_card_inputs_count"] > 0:
             risk_score += 35
             indicators.append("Champs de collecte de données bancaires / cartes de crédit détectés")
 
+        # Présence d'iframe invisible
         if result["dom_analysis"]["has_hidden_iframes"]:
             risk_score += 30
             indicators.append("Iframe masqué détecté (technique classique de Clickjacking / Drive-By)")
 
-        # Brand Spoofing in Title/DOM vs domain
+        # Usurpation visuelle de grandes marques (Brand Spoofing)
         for brand in ["paypal", "apple", "microsoft", "google", "netflix", "binance"]:
             if brand in (result["dom_analysis"]["page_title"].lower() + " " + html_lower[:5000]):
                 if brand not in hostname:
@@ -161,7 +203,9 @@ def analyze_url_sandbox(target_url: str) -> Dict[str, Any]:
         result["sandbox_risk_score"] = min(100, risk_score)
         result["sandbox_verdict"] = "MALICIOUS" if risk_score >= 60 else ("SUSPICIOUS" if risk_score >= 30 else "CLEAN")
 
-        # 7. Rendered Visual Preview Metadata
+        # ------------------------------------------------------------------------------
+        # 7. Métadonnées d'aperçu visuel rendu
+        # ------------------------------------------------------------------------------
         result["visual_preview"] = {
             "title": result["dom_analysis"]["page_title"] or hostname,
             "status": f"{res.status_code} {res.reason}",

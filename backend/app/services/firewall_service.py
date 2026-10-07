@@ -1,7 +1,22 @@
+"""
+========================================================================================
+CYBERGUARD SOC — SERVICE DU PARE-FEU DYNAMIQUE ACTIF & PIÈGES HONEYPOT
+========================================================================================
+Rôle et Responsabilités :
+- Gestion de la liste noire (Blacklist) en mémoire vive et synchronisée avec le WAF.
+- Interception dynamique en ligne de toute requête provenant d'une adresse IP hostile.
+- Détection et capture proactive des attaquants via les endpoints leurres (Honeypot).
+- Bannissement automatique et immédiat dès qu'un attaquant touche un leurre sensible.
+========================================================================================
+"""
+
 import time
 from typing import Dict, Any, List
 
-# In-Memory & Persistent Active Firewall Blacklist
+# --------------------------------------------------------------------------------------
+# 1. TABLEAU DE BORD DE LA LISTE NOIRE DU PARE-FEU (WAF Blacklist en mémoire)
+# --------------------------------------------------------------------------------------
+# Dictionnaire indexé par adresse IP contenant les détails d'audit et la sévérité.
 _BLOCKED_IPS: Dict[str, Dict[str, Any]] = {
     "185.220.101.5": {
         "ip": "185.220.101.5",
@@ -25,7 +40,10 @@ _BLOCKED_IPS: Dict[str, Dict[str, Any]] = {
     }
 }
 
-# Honeypot Decoy Trapped Attackers
+# --------------------------------------------------------------------------------------
+# 2. JOURNAL DES ATTAQUANTS PIÉGÉS PAR LES LEURRES HONEYPOT
+# --------------------------------------------------------------------------------------
+# Enregistre les sondes hostiles attirées par les faux points d'entrée (/wp-login.php, /.env)
 _HONEYPOT_HITS: List[Dict[str, Any]] = [
     {
         "id": "HNY-01",
@@ -50,15 +68,29 @@ _HONEYPOT_HITS: List[Dict[str, Any]] = [
 ]
 
 def is_ip_blocked(ip: str) -> bool:
+    """
+    Vérifie si une adresse IP cliente est présente dans la liste noire active du pare-feu.
+    Utilisé en amont par le middleware WAF pour bloquer l'accès en < 1 milliseconde.
+    """
     return ip in _BLOCKED_IPS
 
 def get_blocked_ip_info(ip: str) -> Dict[str, Any]:
+    """
+    Récupère les détails et la justification du blocage pour une adresse IP donnée.
+    """
     return _BLOCKED_IPS.get(ip)
 
 def list_all_blocked_ips() -> List[Dict[str, Any]]:
+    """
+    Retourne la liste intégrale de toutes les adresses IP actuellement sous embargo.
+    """
     return list(_BLOCKED_IPS.values())
 
 def block_ip_address(ip: str, reason: str = "Interception WAF d'attaque critique", severity: str = "HIGH", blocked_by: str = "Administrateur SOC") -> Dict[str, Any]:
+    """
+    Ajoute ou actualise une adresse IP dans la liste noire active du pare-feu dynamique.
+    Appliqué immédiatement sans redémarrage du serveur.
+    """
     entry = {
         "ip": ip,
         "reason": reason,
@@ -73,13 +105,20 @@ def block_ip_address(ip: str, reason: str = "Interception WAF d'attaque critique
     return entry
 
 def unblock_ip_address(ip: str) -> bool:
+    """
+    Lève le blocage d'une adresse IP et lui réautorise l'accès normal à la plateforme.
+    """
     if ip in _BLOCKED_IPS:
         del _BLOCKED_IPS[ip]
         return True
     return False
 
 def record_honeypot_hit(trap_endpoint: str, attacker_ip: str, user_agent: str = "", payload: str = "") -> Dict[str, Any]:
-    # Auto-ban attacker in WAF blacklist immediately
+    """
+    Enregistre une tentative d'intrusion sur un leurre Honeypot et applique
+    instantanément un bannissement automatique de l'IP hostile dans le pare-feu.
+    """
+    # Bannissement automatique immédiat de l'attaquant dans la blacklist active
     block_ip_address(
         ip=attacker_ip,
         reason=f"Sonde hostile interceptée sur le piège Honeypot {trap_endpoint}",
@@ -100,4 +139,7 @@ def record_honeypot_hit(trap_endpoint: str, attacker_ip: str, user_agent: str = 
     return hit
 
 def get_honeypot_hits() -> List[Dict[str, Any]]:
+    """
+    Retourne la liste chronologique des intrusions leurrées par le module Honeypot.
+    """
     return _HONEYPOT_HITS

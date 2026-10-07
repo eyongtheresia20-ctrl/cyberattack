@@ -1,16 +1,34 @@
+"""
+Module d'Extraction de Caractéristiques d'URL — PhishGuard ML Engine
+=====================================================================
+Ce module extrait 27 caractéristiques numériques et heuristiques à partir d'une URL brute :
+  1. 17 caractéristiques structurelles et lexicales (longueur, caractères spéciaux, entropie, tokens)
+  2. 10 caractéristiques avancées simulant l'intelligence sur les menaces (VirusTotal, Google Safe
+     Browsing, GeoIP/ASN, usurpation de marque, catégorie de menace et score de consensus).
+
+Ces caractéristiques alimentent les modèles d'apprentissage automatique (Random Forest,
+Gradient Boosting, MLP Neural Network) pour détecter le phishing et les cyberattaques en temps réel.
+"""
+
 import re
 import math
 from urllib.parse import urlparse
 
+# ─────────────────────────────────────────────────────────────────────────────
+# DICTIONNAIRES & LISTES D'INDICATEURS DE COMPROMISSION (IoC / HEURISTIQUES)
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Mots-clés fréquemment rencontrés dans les leurres de phishing et ingénierie sociale
 SUSPICIOUS_KEYWORDS = [
     'login', 'signin', 'verify', 'update', 'account', 'banking', 'secure',
     'security', 'confirm', 'paypal', 'appleid', 'microsoft', 'google',
     'wallet', 'billing', 'service', 'authenticate', 'token', 'recover', 'claim'
 ]
 
+# Domaines de premier niveau (TLD) à haut risque souvent associés à des campagnes malveillantes gratuites/jetables
 SUSPICIOUS_TLDS = ['.xyz', '.top', '.club', '.work', '.info', '.biz', '.gq', '.cf', '.tk', '.ml', '.online', '.site']
 
-# ─── VT / Brand Impersonation Simulation ────────────────────────────────────
+# ─── Marques majeures ciblées par l'usurpation d'identité (Brand Impersonation) ──
 MAJOR_BRANDS = [
     'paypal', 'apple', 'microsoft', 'google', 'amazon', 'facebook', 'instagram',
     'netflix', 'twitter', 'whatsapp', 'linkedin', 'tiktok', 'discord', 'steam',
@@ -20,7 +38,7 @@ MAJOR_BRANDS = [
     'ameli', 'caf', 'spotify', 'office365', 'sharepoint', 'outlook', 'dropbox'
 ]
 
-# GSB social engineering patterns
+# Motifs d'ingénierie sociale (Google Safe Browsing SOCIAL_ENGINEERING pattern emulation)
 SOCIAL_ENGINEERING_PATTERNS = [
     'verify', 'confirm', 'suspend', 'locked', 'urgent', 'alert', 'warning',
     'unusual', 'activity', 'claim', 'reward', 'prize', 'winner', 'giftcard',
@@ -28,33 +46,45 @@ SOCIAL_ENGINEERING_PATTERNS = [
     'unlock', 'reactivate', 'validate', 'authenticate', 'checkpoint'
 ]
 
-# GSB malware patterns (drive-by download / malware distribution)
+# Motifs de distribution de logiciels malveillants (Google Safe Browsing MALWARE pattern emulation)
 MALWARE_PATTERNS = [
     'download', 'setup', 'install', 'crack', 'keygen', 'patch', 'serial',
     'activation', 'loader', 'dropper', 'payload', 'exploit', 'exe', 'dll',
     'bat', 'vbs', 'ps1', 'zip-free', 'full-version', 'torrent'
 ]
 
-# GeoIP/ASN: Known high-risk datacenter/hosting IP prefixes (CIDR approximation)
+# Préfixes IP / CIDR associés aux hébergements pare-balles (Bulletproof Hosting / Tor)
 HIGH_RISK_IP_PREFIXES = [
-    '185.220.', '185.100.', '185.130.', '185.38.',  # Tor/Bulletproof hosting
-    '45.33.', '45.55.', '45.79.',                    # Linode/Akamai bulletproof
-    '192.99.', '192.168.', '10.', '172.16.',          # Private / RFC-1918 attack
-    '5.188.', '5.61.', '5.135.',                      # OVH bulletproof subrange
-    '91.108.', '91.109.', '91.121.',                  # Eastern European abuse
-    '194.165.', '194.87.',                             # Known phishing hosting
-    '104.244.', '104.244.72.',                         # Known phishing CDN abuse
+    '185.220.', '185.100.', '185.130.', '185.38.',  # Noeuds de sortie Tor & hébergement offshore
+    '45.33.', '45.55.', '45.79.',                    # Sous-réseaux cloud fréquemment détournés
+    '192.99.', '192.168.', '10.', '172.16.',          # Adresses IP privées RFC-1918 / attaques intranet
+    '5.188.', '5.61.', '5.135.',                      # Sous-plages d'abus hébergement
+    '91.108.', '91.109.', '91.121.',                  # Hébergements malveillants identifiés
+    '194.165.', '194.87.',                             # Hébergeurs fréquemment signalés pour phishing
+    '104.244.', '104.244.72.',                         # Abus de proxys / relais
 ]
 
-# GeoIP/ASN: CDN ASN ranges (legitimate)
+# Fournisseurs de CDN légitimes reconnus (réduction du score de risque ASN)
 LEGIT_CDN_ORGS = [
     'cloudflare', 'akamai', 'fastly', 'amazon', 'google', 'microsoft azure',
     'cloudfront', 'incapsula', 'edgecast', 'stackpath', 'cdn77', 'bunnycdn'
 ]
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# FONCTIONS DE CALCUL MATHÉMATIQUE ET HEURISTIQUES
+# ─────────────────────────────────────────────────────────────────────────────
+
 def calculate_entropy(text: str) -> float:
-    """Calculate Shannon Entropy of a string."""
+    """
+    Calcule l'entropie de Shannon d'une chaîne de caractères.
+    
+    L'entropie mesure le degré d'aléatoire ou de désordre dans la distribution des caractères.
+    Les noms de domaine générés par des algorithmes DGA (Domain Generation Algorithms)
+    présentent typiquement une entropie élevée (> 3.5).
+    
+    Formule : H(X) = - sum( p(x) * log2(p(x)) )
+    """
     if not text:
         return 0.0
     entropy = 0.0
@@ -265,9 +295,24 @@ def compute_multi_engine_consensus(vt_positives: float, gsb_social: float,
 
 def extract_url_features(url: str, host_ip: str = "") -> dict:
     """
-    Extract enriched numeric feature dictionary for ML classifiers.
-    Includes 17 original structural features + 10 threat-intel-equivalent features.
-    Total: 27 features.
+    Extrait un vecteur enrichi de 27 caractéristiques numériques pour les modèles ML de détection d'URL.
+    
+    Structure des caractéristiques (27 dimensions) :
+      - [0-16]  17 caractéristiques lexicales & structurelles :
+                url_length, domain_length, path_length, num_dots, num_hyphens, num_at,
+                num_question, num_equals, num_slashes, num_digits, num_special_chars,
+                num_subdomains, has_ip, is_https, keyword_count, has_suspicious_tld, entropy.
+      - [17-26] 10 caractéristiques de Threat Intelligence simulée :
+                vt_positives_sim, gsb_social_sim, gsb_malware_sim, asn_risk_score,
+                is_hosting_server, is_proxy_vpn_sim, domain_age_risk, brand_impersonation_sim,
+                threat_category_sim, multi_engine_consensus.
+                
+    Paramètres :
+      url (str)     : L'URL à analyser (ex: 'https://paypal.com/signin' ou 'http://10.0.0.1/verify')
+      host_ip (str) : (Optionnel) L'adresse IP résolue pour l'évaluation de réputation ASN/GeoIP
+      
+    Retour :
+      dict : Dictionnaire contenant les 27 caractéristiques calculées.
     """
     if not url.startswith(('http://', 'https://')):
         url_formatted = 'http://' + url

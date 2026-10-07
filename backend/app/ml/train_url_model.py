@@ -540,25 +540,37 @@ def compute_confusion_matrix_values(y_true, y_pred):
 
 def train_and_save_url_model(output_dir: str = None, csv_path: str = None):
     """
-    Train Random Forest, Gradient Boosting, and MLP models.
-    Includes 5-Fold Stratified Cross-Validation.
-    Saves trained models with full metrics to disk.
+    Pipeline d'Entraînement et de Validation Croisée des Modèles ML PhishGuard
+    ==========================================================================
+    Cette fonction orchestre l'entraînement de 3 algorithmes de pointe pour la détection
+    d'URL malveillantes :
+      1. Random Forest Classifier : Ensemble d'arbres de décision non-linéaires résistants au surapprentissage.
+      2. Gradient Boosting Machine (GBM) : Boosting séquentiel minimisant les résidus d'erreur.
+      3. Multi-Layer Perceptron (MLP) : Réseau de neurones profonds normalisé (StandardScaler + ReLU).
+      
+    Procédure de validation rigoureuse :
+      - Split Hold-out (80% Train, 20% Test) stratifié selon la distribution des classes.
+      - Validation croisée stratifiée à 5 plis (5-Fold Stratified K-Fold) sur l'ensemble complet.
+      - Métriques enregistrées : Accuracy, Précision, Rappel, F1-Score et Matrice de Confusion (TP, FP, TN, FN).
+      - Export sérialisé au format joblib avec métadonnées complètes.
     """
     if output_dir is None:
         output_dir = os.path.dirname(__file__)
 
+    # Étape 1 : Chargement et vectorisation des caractéristiques (27 dimensions)
     df = generate_dataset_from_csv_or_builtin(csv_path)
     X = df.drop(columns=['label'])
     y = df['label']
 
-    # ── Hold-out Test Split ──────────────────────────────────────────
+    # Étape 2 : Découpage Train / Test (80% / 20%) avec stratification pour préserver le ratio légitime / phishing
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.20, random_state=42, stratify=y
     )
 
-    # ── 5-Fold Stratified Cross-Validation Setup ─────────────────────
+    # Étape 3 : Configuration de la validation croisée stratifiée à 5 plis
     cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
 
+    # Étape 4 : Définition des hyperparamètres des 3 architectures
     models_config = {
         "rf": (
             RandomForestClassifier(n_estimators=150, max_depth=12, min_samples_split=4, random_state=42),
