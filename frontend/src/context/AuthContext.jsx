@@ -3,63 +3,97 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(() => {
+  const initialToken = localStorage.getItem('phishguard_token') || null;
+  const initialUser = (() => {
     try {
       const cached = localStorage.getItem('phishguard_user');
       return cached ? JSON.parse(cached) : null;
-    } catch (e) {
+    } catch {
       return null;
     }
-  });
-  const [token, setToken] = useState(localStorage.getItem('phishguard_token') || null);
-  const [loading, setLoading] = useState(true);
+  })();
+
+  const [token, setToken] = useState(initialToken);
+  const [user, setUser] = useState(initialUser);
+  // If we already have both token and cached user, don't block UI with loading
+  const [loading, setLoading] = useState(!initialToken);
 
   const API_URL = '/api/v1';
 
   useEffect(() => {
-    if (token) {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 6000);
-
-      fetch(`${API_URL}/auth/me`, {
-        signal: controller.signal,
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      })
-        .then((res) => {
-          if (res.ok) return res.json();
-          throw new Error('Token expiré');
-        })
-        .then((data) => {
-          const userData = data.user || data;
-          setUser(userData);
-          try {
-            localStorage.setItem('phishguard_user', JSON.stringify(userData));
-          } catch (e) {}
-        })
-        .catch(() => {
-          logout();
-        })
-        .finally(() => {
-          clearTimeout(timeoutId);
-          setLoading(false);
-        });
-
-      return () => {
-        clearTimeout(timeoutId);
-        controller.abort();
-      };
-    } else {
+    if (!token) {
       setLoading(false);
       setUser(null);
-      localStorage.removeItem('phishguard_user');
+      try {
+        localStorage.removeItem('phishguard_user');
+      } catch (e) {}
+      return;
     }
+
+    let isCancelled = false;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+    fetch(`${API_URL}/auth/me`, {
+      signal: controller.signal,
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    })
+      .then((res) => {
+        if (isCancelled) return null;
+        if (res.status === 401 || res.status === 403) {
+          const err = new Error('TOKEN_EXPIRED');
+          err.status = res.status;
+          throw err;
+        }
+        if (!res.ok) {
+          // Transient 500 error or server glitch: keep cached session
+          return null;
+        }
+        return res.json();
+      })
+      .then((data) => {
+        if (isCancelled || !data) return;
+        const userData = data.user || data;
+        setUser(userData);
+        try {
+          localStorage.setItem('phishguard_user', JSON.stringify(userData));
+        } catch (e) {}
+      })
+      .catch((err) => {
+        if (isCancelled) return;
+        if (err.name === 'AbortError') {
+          // Strictly a timeout or StrictMode remount cleanup — DO NOT logout!
+          return;
+        }
+        // ONLY log out if server explicitly returned 401/403
+        if (err.status === 401 || err.status === 403 || err.message === 'TOKEN_EXPIRED') {
+          console.warn('[AuthContext] Session expired or invalid, logging out.');
+          logout();
+        } else {
+          console.warn('[AuthContext] Background token refresh failed, keeping cached session.');
+        }
+      })
+      .finally(() => {
+        clearTimeout(timeoutId);
+        if (!isCancelled) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      isCancelled = true;
+      clearTimeout(timeoutId);
+      controller.abort();
+    };
   }, [token]);
 
   const logout = () => {
-    localStorage.removeItem('phishguard_token');
-    localStorage.removeItem('phishguard_user');
+    try {
+      localStorage.removeItem('phishguard_token');
+      localStorage.removeItem('phishguard_user');
+    } catch (e) {}
     setToken(null);
     setUser(null);
   };
@@ -141,6 +175,9 @@ export const AuthProvider = ({ children }) => {
     }
     
     localStorage.setItem('phishguard_token', data.token);
+    try {
+      localStorage.setItem('phishguard_user', JSON.stringify(data.user));
+    } catch (e) {}
     setToken(data.token);
     setUser(data.user);
     return data.user;
