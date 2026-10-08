@@ -1,3 +1,18 @@
+/**
+ * ========================================================================================
+ * CYBERGUARD SOC — TABLEAU DE BORD DE L'ENQUÊTEUR (INVESTIGATOR DASHBOARD)
+ * ========================================================================================
+ * 📍 CORRESPONDANCE DANS LE RAPPORT :
+ * Cette interface correspond exactement à la FIGURE 43 : "Tableau de bord de l'enquêteur" (Page 108).
+ * 
+ * 📌 RÔLE DE CETTE CONSOLE D'INVESTIGATION :
+ * 1. Visualiser les dossiers d'incidents signalés et transférés par les utilisateurs.
+ * 2. Suivre le cycle de vie des enquêtes (Nouveau -> En Cours -> Résolu -> Clôturé).
+ * 3. Inspecter les éléments techniques de preuve (Adresses IP, captures DOM, en-têtes).
+ * 4. Contrôler l'intégrité forensique des preuves grâce au Scellé SHA-256.
+ * ========================================================================================
+ */
+
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
@@ -16,7 +31,9 @@ export default function InvestigatorDashboard() {
   const [incidents, setIncidents] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Fetch live stats & incidents directly from backend database
+  // --------------------------------------------------------------------------------------
+  // SECTION 1 : CHARGEMENT DES STATISTIQUES EN DIRECT DEPUIS LA BASE DE DONNÉES
+  // --------------------------------------------------------------------------------------
   const fetchLiveData = async () => {
     setLoading(true);
     try {

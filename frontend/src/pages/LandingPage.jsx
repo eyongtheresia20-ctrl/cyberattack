@@ -1,3 +1,18 @@
+/**
+ * ========================================================================================
+ * CYBERGUARD SOC — PAGE D'ACCUEIL VITRINE (LANDING PAGE - ROUTE: /)
+ * ========================================================================================
+ * 📍 CORRESPONDANCE DANS LE RAPPORT :
+ * Cette interface correspond exactement à la FIGURE 39 : "Page d'accueil" (Page 106).
+ * 
+ * 📌 RÔLE DE CETTE INTERFACE :
+ * 1. Présenter la mission de la plateforme de cybersécurité CyberGuard aux visiteurs.
+ * 2. Permettre l'accès rapide aux formulaires d'authentification ("Se Connecter" / "S'inscrire").
+ * 3. Permettre le basculement dynamique du thème (Clair / Sombre) et de la langue (FR / EN).
+ * 4. Présenter les piliers technologiques : Scanner IA, NLP, WAF, Forensique SHA-256.
+ * ========================================================================================
+ */
+
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
@@ -11,11 +26,15 @@ import { useLanguage } from '../context/LanguageContext';
 import CyberGuardLogo from '../components/CyberGuardLogo';
 
 export default function LandingPage() {
+  // États globaux : Thème (Sombre/Clair) et Langue (Français/Anglais)
   const { isDark, toggle: toggleTheme } = useTheme();
   const { lang, toggle: toggleLang, t } = useLanguage();
   const [startIndex, setStartIndex] = useState(0);
   const [activeModalKey, setActiveModalKey] = useState(null);
 
+  // --------------------------------------------------------------------------------------
+  // SECTION 1 : DICTIONNAIRE DES MODALES D'INFORMATION SOC (Contenu bilingue au clic)
+  // --------------------------------------------------------------------------------------
   const footerModalData = {
     footer_soc_dash: {
       category: lang === 'fr' ? 'Plateforme' : 'Platform',

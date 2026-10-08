@@ -1,3 +1,18 @@
+/**
+ * ========================================================================================
+ * CYBERGUARD SOC — TABLEAU DE BORD ADMINISTRATEUR (ADMIN DASHBOARD)
+ * ========================================================================================
+ * 📍 CORRESPONDANCE DANS LE RAPPORT :
+ * Cette interface correspond exactement à la FIGURE 44 : "Tableau de bord de l'administrateur" (Page 108).
+ * 
+ * 📌 RÔLE DE CETTE CONSOLE DE SUPERVISION :
+ * 1. Visualiser les métriques globales de sécurité du système en temps réel.
+ * 2. Suivre la répartition des attaques interceptées (SQLi, XSS, Brute Force, Scanners).
+ * 3. Observer les volumes d'activité hebdomadaires et mensuels (Courbes analytiques Recharts).
+ * 4. Contrôler les effectifs d'utilisateurs par rôle (Standards, Enquêteurs, Admins).
+ * ========================================================================================
+ */
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';

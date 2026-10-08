@@ -1,3 +1,18 @@
+/**
+ * ========================================================================================
+ * CYBERGUARD SOC — ESPACE UTILISATEUR STANDARD (STANDARD DASHBOARD / SCANNER)
+ * ========================================================================================
+ * 📍 CORRESPONDANCE DANS LE RAPPORT :
+ * Cette interface correspond exactement à la FIGURE 42 : "Dashboard d'utilisateur standard" (Page 107).
+ * 
+ * 📌 RÔLE DE CETTE CONSOLE UTILISATEUR :
+ * 1. Scanner d'URL et de domaine en temps réel avec sélection du modèle ML (RF, GBM, MLP).
+ * 2. Analyseur de messages texte, SMS et e-mails suspects par NLP (TF-IDF).
+ * 3. Affichage visuel du score de risque (0 à 100 %), de la sévérité et du verdict de sécurité.
+ * 4. Bouton d'action directe "Transférer à l'Enquêteur" avec scellé cryptographique SHA-256.
+ * ========================================================================================
+ */
+
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
