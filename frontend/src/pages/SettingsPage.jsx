@@ -1,0 +1,484 @@
+import React, { useState, useEffect } from 'react';
+import { 
+  Settings, Sliders, Shield, Lock, Ban, Zap, Eye, CheckCircle2, 
+  AlertTriangle, RefreshCw, Save, Terminal, Radio, BellRing, 
+  Volume2, Cpu, HardDrive, KeyRound, ExternalLink, Globe
+} from 'lucide-react';
+import { useLanguage } from '../context/LanguageContext';
+import { useNavigate } from 'react-router-dom';
+
+export default function SettingsPage() {
+  const { lang } = useLanguage();
+  const navigate = useNavigate();
+
+  // Settings State
+  const [settings, setSettings] = useState({
+    // Content Filter / MINESEC
+    block_adult_content: true,
+    block_gambling: true,
+    enforcement_mode: 'BLOCK', // 'BLOCK' | 'WARN' | 'ALLOW'
+    school_shield_active: true,
+    redirect_to_block_page: true,
+
+    // Machine Learning & Threat Intel
+    ml_auto_block_phishing: true,
+    shannon_entropy_detection: true,
+    external_threat_intel: true,
+
+    // WAF & Network Defense
+    waf_autoban_hostile_ips: true,
+    honeypot_active_defense: true,
+
+    // Real-time Sentinel & Extension
+    sentinel_realtime_protection: true,
+    audio_alert_chimes: true,
+    sha256_forensic_sealing: true
+  });
+
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+
+  // Load existing settings
+  useEffect(() => {
+    const fetchSettings = async () => {
+      try {
+        const res = await fetch('/api/v1/enterprise/policy-settings');
+        if (res.ok) {
+          const data = await res.json();
+          setSettings(prev => ({
+            ...prev,
+            ...data,
+            // Keep local stored settings if any
+            sentinel_realtime_protection: localStorage.getItem('cyberguard_sentinel_enabled') !== 'false',
+            audio_alert_chimes: localStorage.getItem('cyberguard_audio_chimes') !== 'false'
+          }));
+        }
+      } catch (e) {
+        console.error('Fetch settings error:', e);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchSettings();
+  }, []);
+
+  const toggleSetting = (key) => {
+    setSettings(prev => ({ ...prev, [key]: !prev[key] }));
+    setSaveSuccess(false);
+  };
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    try {
+      // 1. Save to backend API
+      const res = await fetch('/api/v1/enterprise/policy-settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          block_adult_content: settings.block_adult_content,
+          block_gambling: settings.block_gambling,
+          enforcement_mode: settings.enforcement_mode,
+          school_shield_active: settings.school_shield_active
+        })
+      });
+
+      // 2. Save local Sentinel preferences
+      localStorage.setItem('cyberguard_sentinel_enabled', JSON.stringify(settings.sentinel_realtime_protection));
+      localStorage.setItem('cyberguard_audio_chimes', JSON.stringify(settings.audio_alert_chimes));
+      localStorage.setItem('cyberguard_redirect_block_page', JSON.stringify(settings.redirect_to_block_page));
+
+      if (res.ok) {
+        setSaveSuccess(true);
+        setTimeout(() => setSaveSuccess(false), 3000);
+      }
+    } catch (e) {
+      console.error('Error saving settings:', e);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <div className="space-y-8 animate-in fade-in duration-300">
+      
+      {/* Page Title & Save Action Bar */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200 dark:border-slate-800">
+        <div className="flex items-center gap-3.5">
+          <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-sky-500 via-indigo-600 to-purple-600 flex items-center justify-center text-white shadow-lg shadow-sky-500/20">
+            <Sliders className="w-6 h-6" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white tracking-tight">
+                {lang === 'fr' ? "Paramètres & Politiques de Sécurité" : "Security Settings & Policies"}
+              </h1>
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20">
+                ADMIN SOC
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              {lang === 'fr'
+                ? "Configuration des modules d'interception, du filtrage de contenu scolaire et des règles de pare-feu."
+                : "Configuration of threat interception modules, school content filtering, and active firewall rules."}
+            </p>
+          </div>
+        </div>
+
+        {/* Save Button */}
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => navigate('/blocked?url=https://pornhub.com/video&category=CONTENU+ADULTE+RESTREINT&reason=Démonstration+de+la+page+de+blocage+personnalisée')}
+            className="px-4 py-2.5 text-xs font-bold rounded-xl border border-rose-300 dark:border-rose-900/60 bg-rose-50 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400 hover:bg-rose-100 transition flex items-center gap-2 cursor-pointer"
+          >
+            <Eye className="w-4 h-4" />
+            <span>{lang === 'fr' ? "Tester la Page de Blocage" : "Preview Block Page"}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={isSaving}
+            className={`px-5 py-2.5 text-xs font-bold rounded-xl flex items-center gap-2 transition shadow-lg cursor-pointer ${
+              saveSuccess
+                ? 'bg-emerald-500 text-white shadow-emerald-500/20'
+                : 'bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 text-white shadow-sky-500/20'
+            }`}
+          >
+            {isSaving ? (
+              <RefreshCw className="w-4 h-4 animate-spin" />
+            ) : saveSuccess ? (
+              <CheckCircle2 className="w-4 h-4" />
+            ) : (
+              <Save className="w-4 h-4" />
+            )}
+            <span>
+              {saveSuccess 
+                ? (lang === 'fr' ? "Enregistré avec succès !" : "Saved Successfully!") 
+                : (lang === 'fr' ? "Enregistrer les modifications" : "Save Changes")}
+            </span>
+          </button>
+        </div>
+      </div>
+
+      {/* Grid of Settings Categories */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+        {/* ── SECTION 1 : FILTRAGE WEB & CONTRÔLE PARENTAL (MINESEC) ── */}
+        <div className="p-6 bg-white dark:bg-[#111726] border border-emerald-500/30 rounded-3xl space-y-5 shadow-sm">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+            <div className="flex items-center gap-2.5">
+              <span className="p-2 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                <Lock className="w-5 h-5" />
+              </span>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white uppercase font-mono">
+                  {lang === 'fr' ? "1. Filtrage Web & Contrôle Parental (MINESEC)" : "1. Web Content Filtering (MINESEC Policy)"}
+                </h3>
+                <p className="text-[11px] text-slate-500">Protection des élèves et établissements scolaires</p>
+              </div>
+            </div>
+
+            {/* Enforcement Mode Selector */}
+            <select
+              value={settings.enforcement_mode}
+              onChange={(e) => {
+                setSettings(prev => ({ ...prev, enforcement_mode: e.target.value }));
+                setSaveSuccess(false);
+              }}
+              className="px-2.5 py-1 text-xs font-mono font-bold rounded-xl bg-slate-50 dark:bg-slate-800 border border-emerald-500/40 text-emerald-600 dark:text-emerald-400 focus:outline-none cursor-pointer"
+            >
+              <option value="BLOCK">⛔ Blocage Strict</option>
+              <option value="WARN">⚠️ Avertissement</option>
+              <option value="ALLOW">✅ Autoriser</option>
+            </select>
+          </div>
+
+          <div className="space-y-4">
+            
+            {/* Toggle: Adult Content */}
+            <div className="flex items-center justify-between p-3.5 rounded-2xl bg-slate-50 dark:bg-[#161d2b] border border-slate-200 dark:border-slate-800">
+              <div className="space-y-0.5">
+                <div className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                  <Ban className="w-3.5 h-3.5 text-rose-500" />
+                  <span>Bloquer le contenu adulte & pornographique</span>
+                </div>
+                <p className="text-[11px] text-slate-500">Intercepte les sites .xxx, .porn, cam, streaming adulte</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => toggleSetting('block_adult_content')}
+                className={`w-12 h-7 rounded-full p-1 transition-colors flex items-center cursor-pointer shrink-0 ${
+                  settings.block_adult_content ? 'bg-emerald-500 justify-end' : 'bg-slate-300 dark:bg-slate-700 justify-start'
+                }`}
+              >
+                <div className="w-5 h-5 rounded-full bg-white shadow-md" />
+              </button>
+            </div>
+
+            {/* Toggle: Gambling */}
+            <div className="flex items-center justify-between p-3.5 rounded-2xl bg-slate-50 dark:bg-[#161d2b] border border-slate-200 dark:border-slate-800">
+              <div className="space-y-0.5">
+                <div className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                  <Zap className="w-3.5 h-3.5 text-amber-500" />
+                  <span>Bloquer les jeux d'argent & paris en ligne</span>
+                </div>
+                <p className="text-[11px] text-slate-500">Neutralise les casinos en ligne, bookmakers (1xBet, Betway, etc.)</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => toggleSetting('block_gambling')}
+                className={`w-12 h-7 rounded-full p-1 transition-colors flex items-center cursor-pointer shrink-0 ${
+                  settings.block_gambling ? 'bg-emerald-500 justify-end' : 'bg-slate-300 dark:bg-slate-700 justify-start'
+                }`}
+              >
+                <div className="w-5 h-5 rounded-full bg-white shadow-md" />
+              </button>
+            </div>
+
+            {/* Toggle: Custom Block Screen Redirect */}
+            <div className="flex items-center justify-between p-3.5 rounded-2xl bg-slate-50 dark:bg-[#161d2b] border border-slate-200 dark:border-slate-800">
+              <div className="space-y-0.5">
+                <div className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                  <Shield className="w-3.5 h-3.5 text-sky-500" />
+                  <span>Redirection physique vers la Page d'Interdiction</span>
+                </div>
+                <p className="text-[11px] text-slate-500">Affiche la page CyberGuard de blocage au lieu de laisser naviguer</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => toggleSetting('redirect_to_block_page')}
+                className={`w-12 h-7 rounded-full p-1 transition-colors flex items-center cursor-pointer shrink-0 ${
+                  settings.redirect_to_block_page ? 'bg-emerald-500 justify-end' : 'bg-slate-300 dark:bg-slate-700 justify-start'
+                }`}
+              >
+                <div className="w-5 h-5 rounded-full bg-white shadow-md" />
+              </button>
+            </div>
+
+          </div>
+        </div>
+
+        {/* ── SECTION 2 : MACHINE LEARNING & DÉTECTION PHISHING ── */}
+        <div className="p-6 bg-white dark:bg-[#111726] border border-sky-500/30 rounded-3xl space-y-5 shadow-sm">
+          <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100 dark:border-slate-800">
+            <span className="p-2 rounded-xl bg-sky-500/10 text-sky-600 dark:text-sky-400">
+              <Cpu className="w-5 h-5" />
+            </span>
+            <div>
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white uppercase font-mono">
+                {lang === 'fr' ? "2. Moteur IA & Détection Phishing" : "2. AI Engine & Phishing Detection"}
+              </h3>
+              <p className="text-[11px] text-slate-500">Random Forest (94,8%) et analyse des 27 caractéristiques</p>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            
+            {/* Toggle: ML Auto Block */}
+            <div className="flex items-center justify-between p-3.5 rounded-2xl bg-slate-50 dark:bg-[#161d2b] border border-slate-200 dark:border-slate-800">
+              <div className="space-y-0.5">
+                <div className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-sky-500" />
+                  <span>Blocage automatique du Phishing (Score &gt; 70%)</span>
+                </div>
+                <p className="text-[11px] text-slate-500">Neutralise automatiquement les URLs confirmées malveillantes</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => toggleSetting('ml_auto_block_phishing')}
+                className={`w-12 h-7 rounded-full p-1 transition-colors flex items-center cursor-pointer shrink-0 ${
+                  settings.ml_auto_block_phishing ? 'bg-sky-500 justify-end' : 'bg-slate-300 dark:bg-slate-700 justify-start'
+                }`}
+              >
+                <div className="w-5 h-5 rounded-full bg-white shadow-md" />
+              </button>
+            </div>
+
+            {/* Toggle: Shannon Entropy */}
+            <div className="flex items-center justify-between p-3.5 rounded-2xl bg-slate-50 dark:bg-[#161d2b] border border-slate-200 dark:border-slate-800">
+              <div className="space-y-0.5">
+                <div className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                  <Terminal className="w-3.5 h-3.5 text-indigo-500" />
+                  <span>Détection d'Entropie de Shannon (Domaines DGA)</span>
+                </div>
+                <p className="text-[11px] text-slate-500">Repère les domaines aléatoires générés automatiquement par les botnets</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => toggleSetting('shannon_entropy_detection')}
+                className={`w-12 h-7 rounded-full p-1 transition-colors flex items-center cursor-pointer shrink-0 ${
+                  settings.shannon_entropy_detection ? 'bg-sky-500 justify-end' : 'bg-slate-300 dark:bg-slate-700 justify-start'
+                }`}
+              >
+                <div className="w-5 h-5 rounded-full bg-white shadow-md" />
+              </button>
+            </div>
+
+            {/* Toggle: Threat Intel */}
+            <div className="flex items-center justify-between p-3.5 rounded-2xl bg-slate-50 dark:bg-[#161d2b] border border-slate-200 dark:border-slate-800">
+              <div className="space-y-0.5">
+                <div className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                  <Globe className="w-3.5 h-3.5 text-purple-500" />
+                  <span>Corrélation Threat Intel (VirusTotal & Safe Browsing)</span>
+                </div>
+                <p className="text-[11px] text-slate-500">Interroge les bases de réputation mondiales en direct</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => toggleSetting('external_threat_intel')}
+                className={`w-12 h-7 rounded-full p-1 transition-colors flex items-center cursor-pointer shrink-0 ${
+                  settings.external_threat_intel ? 'bg-sky-500 justify-end' : 'bg-slate-300 dark:bg-slate-700 justify-start'
+                }`}
+              >
+                <div className="w-5 h-5 rounded-full bg-white shadow-md" />
+              </button>
+            </div>
+
+          </div>
+        </div>
+
+        {/* ── SECTION 3 : PARE-FEU WAF & DÉFENSE RÉSEAU ── */}
+        <div className="p-6 bg-white dark:bg-[#111726] border border-rose-500/30 rounded-3xl space-y-5 shadow-sm">
+          <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100 dark:border-slate-800">
+            <span className="p-2 rounded-xl bg-rose-500/10 text-rose-600 dark:text-rose-400">
+              <Shield className="w-5 h-5" />
+            </span>
+            <div>
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white uppercase font-mono">
+                {lang === 'fr' ? "3. Pare-Feu WAF & Défense Active" : "3. WAF Firewall & Active Defense"}
+              </h3>
+              <p className="text-[11px] text-slate-500">Protection contre 16 familles d'attaques web (SQLi, XSS, etc.)</p>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            
+            {/* Toggle: Auto-ban IP */}
+            <div className="flex items-center justify-between p-3.5 rounded-2xl bg-slate-50 dark:bg-[#161d2b] border border-slate-200 dark:border-slate-800">
+              <div className="space-y-0.5">
+                <div className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                  <Ban className="w-3.5 h-3.5 text-rose-500" />
+                  <span>Bannissement IP automatique sur attaque critique</span>
+                </div>
+                <p className="text-[11px] text-slate-500">Ajoute immédiatement l'IP assaillante à la liste noire du pare-feu</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => toggleSetting('waf_autoban_hostile_ips')}
+                className={`w-12 h-7 rounded-full p-1 transition-colors flex items-center cursor-pointer shrink-0 ${
+                  settings.waf_autoban_hostile_ips ? 'bg-rose-500 justify-end' : 'bg-slate-300 dark:bg-slate-700 justify-start'
+                }`}
+              >
+                <div className="w-5 h-5 rounded-full bg-white shadow-md" />
+              </button>
+            </div>
+
+            {/* Toggle: Honeypots */}
+            <div className="flex items-center justify-between p-3.5 rounded-2xl bg-slate-50 dark:bg-[#161d2b] border border-slate-200 dark:border-slate-800">
+              <div className="space-y-0.5">
+                <div className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                  <Zap className="w-3.5 h-3.5 text-amber-500" />
+                  <span>Leurres Honeypot Actifs (/wp-login.php, /.env)</span>
+                </div>
+                <p className="text-[11px] text-slate-500">Attire et piège les scanners automatisés pour bloquer leur IP</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => toggleSetting('honeypot_active_defense')}
+                className={`w-12 h-7 rounded-full p-1 transition-colors flex items-center cursor-pointer shrink-0 ${
+                  settings.honeypot_active_defense ? 'bg-rose-500 justify-end' : 'bg-slate-300 dark:bg-slate-700 justify-start'
+                }`}
+              >
+                <div className="w-5 h-5 rounded-full bg-white shadow-md" />
+              </button>
+            </div>
+
+          </div>
+        </div>
+
+        {/* ── SECTION 4 : SENTINELLE TEMPS RÉEL & FORENSIQUE ── */}
+        <div className="p-6 bg-white dark:bg-[#111726] border border-purple-500/30 rounded-3xl space-y-5 shadow-sm">
+          <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100 dark:border-slate-800">
+            <span className="p-2 rounded-xl bg-purple-500/10 text-purple-600 dark:text-purple-400">
+              <Radio className="w-5 h-5" />
+            </span>
+            <div>
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white uppercase font-mono">
+                {lang === 'fr' ? "4. Sentinelle de Navigation & Forensique" : "4. Real-Time Sentinel & Forensics"}
+              </h3>
+              <p className="text-[11px] text-slate-500">Inspection en direct et scellement d'intégrité de la preuve</p>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            
+            {/* Toggle: Sentinel */}
+            <div className="flex items-center justify-between p-3.5 rounded-2xl bg-slate-50 dark:bg-[#161d2b] border border-slate-200 dark:border-slate-800">
+              <div className="space-y-0.5">
+                <div className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                  <Radio className="w-3.5 h-3.5 text-purple-500" />
+                  <span>Protection Sentinelle en temps réel (Background)</span>
+                </div>
+                <p className="text-[11px] text-slate-500">Surveille les URLs ouvertes et analyse en mémoire vive (&lt; 15 ms)</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => toggleSetting('sentinel_realtime_protection')}
+                className={`w-12 h-7 rounded-full p-1 transition-colors flex items-center cursor-pointer shrink-0 ${
+                  settings.sentinel_realtime_protection ? 'bg-purple-500 justify-end' : 'bg-slate-300 dark:bg-slate-700 justify-start'
+                }`}
+              >
+                <div className="w-5 h-5 rounded-full bg-white shadow-md" />
+              </button>
+            </div>
+
+            {/* Toggle: Audio Chimes */}
+            <div className="flex items-center justify-between p-3.5 rounded-2xl bg-slate-50 dark:bg-[#161d2b] border border-slate-200 dark:border-slate-800">
+              <div className="space-y-0.5">
+                <div className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                  <Volume2 className="w-3.5 h-3.5 text-amber-500" />
+                  <span>Signaux audio d'alerte lors de la détection</span>
+                </div>
+                <p className="text-[11px] text-slate-500">Joue un signal sonore haute-fréquence lors d'une interception</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => toggleSetting('audio_alert_chimes')}
+                className={`w-12 h-7 rounded-full p-1 transition-colors flex items-center cursor-pointer shrink-0 ${
+                  settings.audio_alert_chimes ? 'bg-purple-500 justify-end' : 'bg-slate-300 dark:bg-slate-700 justify-start'
+                }`}
+              >
+                <div className="w-5 h-5 rounded-full bg-white shadow-md" />
+              </button>
+            </div>
+
+            {/* Toggle: SHA-256 */}
+            <div className="flex items-center justify-between p-3.5 rounded-2xl bg-slate-50 dark:bg-[#161d2b] border border-slate-200 dark:border-slate-800">
+              <div className="space-y-0.5">
+                <div className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                  <KeyRound className="w-3.5 h-3.5 text-emerald-500" />
+                  <span>Scellement Forensique SHA-256 des rapports</span>
+                </div>
+                <p className="text-[11px] text-slate-500">Garantit la chaîne de traçabilité immuable pour les enquêtes judiciaires</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => toggleSetting('sha256_forensic_sealing')}
+                className={`w-12 h-7 rounded-full p-1 transition-colors flex items-center cursor-pointer shrink-0 ${
+                  settings.sha256_forensic_sealing ? 'bg-purple-500 justify-end' : 'bg-slate-300 dark:bg-slate-700 justify-start'
+                }`}
+              >
+                <div className="w-5 h-5 rounded-full bg-white shadow-md" />
+              </button>
+            </div>
+
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+  );
+}

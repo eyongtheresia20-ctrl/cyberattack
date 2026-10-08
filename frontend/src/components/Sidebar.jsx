@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, History, FileSearch, Users, ShieldCheck, Activity, Search } from 'lucide-react';
+import { LayoutDashboard, History, FileSearch, Users, ShieldCheck, Activity, Search, Sliders } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 
@@ -10,7 +10,7 @@ import { useLanguage } from '../context/LanguageContext';
  * Affiche dynamiquement les liens de navigation selon le rôle RBAC de l'utilisateur connecté :
  *   - UTILISATEUR : Dashboard & Historique des analyses personnelles.
  *   - ENQUÊTEUR  : Dashboard SOC, Scanner d'investigation, Signalements & Preuves judiciaires.
- *   - ADMINISTRATEUR : Vue complète incluant Gestion des utilisateurs & Journaux d'audit.
+ *   - ADMINISTRATEUR : Vue complète incluant Gestion des utilisateurs, Journaux d'audit & Paramètres de Sécurité.
  * Supporte le bilinguisme dynamique (Français / Anglais).
  */
 export default function Sidebar() {
@@ -27,6 +27,7 @@ export default function Sidebar() {
     { path: '/dashboard', label: lang === 'fr' ? 'Tableau de Bord SOC' : 'SOC Dashboard', icon: LayoutDashboard },
     { path: '/scanner', label: lang === 'fr' ? 'Scanner & Analyse' : 'Scanner & Analysis', icon: Activity },
     { path: '/incidents', label: lang === 'fr' ? 'Rapports & Signalements' : 'Reports & Evidence', icon: FileSearch },
+    { path: '/settings', label: lang === 'fr' ? 'Paramètres & Politiques' : 'Security Settings', icon: Sliders },
     { path: '/history', label: lang === 'fr' ? 'Historique des Analyses' : 'Analysis History', icon: History },
   ];
 
@@ -37,6 +38,7 @@ export default function Sidebar() {
     { path: '/incidents', label: lang === 'fr' ? 'Signalements & Enquêtes' : 'Incidents & Evidence', icon: FileSearch },
     { path: '/admin/users', label: lang === 'fr' ? 'Gestion d\'utilisateurs' : 'User Management', icon: Users },
     { path: '/activity-logs', label: lang === 'fr' ? 'Journal des Activités' : 'Activity Logs', icon: Activity },
+    { path: '/settings', label: lang === 'fr' ? 'Paramètres de Sécurité' : 'Security Settings', icon: Sliders },
   ];
 
   let navItems = stdItems;

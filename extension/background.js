@@ -87,6 +87,13 @@ async function evaluateUrl(url, reasonLabel = "Navigation en direct", tabId = nu
       // Deliver to tab first
       if (tabId) {
         chrome.tabs.sendMessage(tabId, { type: 'CYBERGUARD_SHOW_ALERT', data }).catch(() => {});
+
+        // PHYSICAL ENFORCEMENT: Completely block access by redirecting the tab to CyberGuard Custom Block Page
+        if (data.is_adult_blocked || data.blocked_by_policy) {
+          const reasonStr = (data.reasons && data.reasons[0]) || "Accès restreint par la politique MINESEC";
+          const blockUrl = `http://localhost:3000/blocked?url=${encodeURIComponent(data.url)}&category=${encodeURIComponent(data.verdict)}&reason=${encodeURIComponent(reasonStr)}&policy=SEC-MINESEC-POL-04`;
+          chrome.tabs.update(tabId, { url: blockUrl }).catch(() => {});
+        }
       }
       broadcastToCyberguardTab(data);
       displayNotification(data);

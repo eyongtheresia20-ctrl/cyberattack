@@ -22,11 +22,13 @@ import Verification from './pages/Verification';
 import Assistant from './pages/Assistant';
 import AdminUsersPage from './pages/AdminUsersPage';
 import ActivityLogsPage from './pages/ActivityLogsPage';
+import SettingsPage from './pages/SettingsPage';
+import BlockedPage from './pages/BlockedPage';
 
 import FloatingAiAssistant from './components/FloatingAiAssistant';
 import RealtimeProtectionSentinel from './components/RealtimeProtectionSentinel';
 
-const PUBLIC_ROUTES = ['/', '/login', '/register'];
+const PUBLIC_ROUTES = ['/', '/login', '/register', '/blocked'];
 
 function AppLayout() {
   const { user, token, loading } = useAuth();
@@ -48,6 +50,7 @@ function AppLayout() {
           <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
+          <Route path="/blocked" element={<BlockedPage />} />
         </Routes>
         <AuthModal isOpen={authModalOpen} onClose={() => setAuthModalOpen(false)} />
       </>
@@ -79,6 +82,7 @@ function AppLayout() {
             <Route path="/assistant" element={<Assistant />} />
             <Route path="/admin/users" element={user?.role === 'ADMINISTRATEUR' ? <AdminUsersPage /> : <Navigate to="/dashboard" replace />} />
             <Route path="/activity-logs" element={user?.role === 'ADMINISTRATEUR' ? <ActivityLogsPage /> : <Navigate to="/dashboard" replace />} />
+            <Route path="/settings" element={<SettingsPage />} />
           </Routes>
         </main>
       </div>
