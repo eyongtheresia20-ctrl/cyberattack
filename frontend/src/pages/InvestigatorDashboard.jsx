@@ -23,6 +23,7 @@ import {
   AlertTriangle, User, FileText, ExternalLink
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import EnterpriseDefenseSuite from '../components/EnterpriseDefenseSuite';
 
 export default function InvestigatorDashboard() {
   const { user } = useAuth();
@@ -307,6 +308,11 @@ export default function InvestigatorDashboard() {
           </div>
         </div>
 
+      </div>
+
+      {/* ── ACTIVE NETWORK DEFENSE, FIREWALL & MINESEC CONTENT FILTER ── */}
+      <div className="pt-2">
+        <EnterpriseDefenseSuite lang={lang} mode="ALL" initialSubTab="CONTENT_FILTER" />
       </div>
 
     </div>

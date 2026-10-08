@@ -30,6 +30,7 @@ import {
   YAxis,
   Tooltip
 } from 'recharts';
+import EnterpriseDefenseSuite from '../components/EnterpriseDefenseSuite';
 
 export default function AdminDashboard() {
   const { token } = useAuth();
@@ -364,6 +365,12 @@ export default function AdminDashboard() {
         </div>
 
       </div>
+
+      {/* ── ACTIVE NETWORK DEFENSE, FIREWALL & MINESEC CONTENT FILTER ── */}
+      <div className="pt-2">
+        <EnterpriseDefenseSuite lang={lang} mode="ALL" initialSubTab="CONTENT_FILTER" />
+      </div>
+
     </div>
   );
 }
