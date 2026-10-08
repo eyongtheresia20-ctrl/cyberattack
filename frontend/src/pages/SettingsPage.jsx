@@ -478,8 +478,90 @@ export default function SettingsPage() {
           </div>
         </div>
 
+         {/* ── SECTION 5 : AGENT SYSTÈME ── */}
+        <AgentCard lang={lang} />
+
       </div>
 
+    </div>
+  );
+}
+
+function AgentCard({ lang }) {
+  const [status, setStatus] = useState(null);
+  const [events, setEvents] = useState([]);
+  const fr = lang === 'fr';
+
+  useEffect(() => {
+    let alive = true;
+    const load = async () => {
+      try {
+        const [s, e] = await Promise.all([
+          fetch('/api/v1/enterprise/agent/status').then(r => r.json()),
+          fetch('/api/v1/enterprise/agent/events?limit=8').then(r => r.json()),
+        ]);
+        if (alive) { setStatus(s); setEvents(e.events || []); }
+      } catch (err) { if (alive) setStatus(null); }
+    };
+    load();
+    const t = setInterval(load, 5000);
+    return () => { alive = false; clearInterval(t); };
+  }, []);
+
+  const online = !!status?.online;
+  const st = status?.stats || {};
+  const counters = [
+    [fr ? 'Requêtes DNS' : 'DNS queries', st.dns_queries || 0],
+    [fr ? 'DNS bloquées' : 'DNS blocked', st.dns_blocked || 0],
+    [fr ? 'Requêtes proxy' : 'Proxy requests', st.proxy_requests || 0],
+    [fr ? 'Proxy bloquées' : 'Proxy blocked', st.proxy_blocked || 0],
+  ];
+
+  return (
+    <div className="lg:col-span-2 p-6 bg-white dark:bg-[#111726] border border-emerald-500/30 rounded-3xl space-y-5 shadow-sm">
+      <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+        <div className="flex items-center gap-2.5">
+          <span className="p-2 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"><Globe className="w-5 h-5" /></span>
+          <div>
+            <h3 className="text-sm font-bold text-slate-900 dark:text-white uppercase font-mono">
+              {fr ? "5. Agent Système (DNS + Proxy)" : "5. System Agent (DNS + Proxy)"}
+            </h3>
+            <p className="text-[11px] text-slate-500">
+              {fr ? "Protège toute la machine, même sans l'extension" : "Protects the whole machine, even without the extension"}
+            </p>
+          </div>
+        </div>
+        <span className={`px-3 py-1 rounded-full text-[11px] font-mono font-bold border ${online ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30' : 'bg-slate-500/10 text-slate-500 border-slate-500/30'}`}>
+          {online ? (fr ? '● EN LIGNE' : '● ONLINE') : (fr ? '○ HORS LIGNE' : '○ OFFLINE')}
+        </span>
+      </div>
+
+      {!online && (
+        <p className="text-xs text-slate-500 font-mono">
+          {fr ? 'Lancez en administrateur : ' : 'Run as Administrator: '}<code>agent\run_agent.bat</code>
+        </p>
+      )}
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {counters.map(([label, val]) => (
+          <div key={label} className="p-3 rounded-2xl bg-slate-50 dark:bg-[#161d2b] border border-slate-200 dark:border-slate-800">
+            <div className="text-xl font-black text-slate-900 dark:text-white">{val}</div>
+            <div className="text-[11px] text-slate-500">{label}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="space-y-2">
+        {events.length === 0 && <p className="text-xs text-slate-500">{fr ? 'Aucun blocage récent.' : 'No recent blocks.'}</p>}
+        {events.map((ev, i) => (
+          <div key={i} className="flex items-center justify-between gap-3 p-2.5 rounded-xl bg-slate-50 dark:bg-[#161d2b] border border-slate-200 dark:border-slate-800 text-[11px] font-mono">
+            <span className="text-rose-500 font-bold shrink-0">{ev.via}</span>
+            <span className="truncate flex-1 text-slate-800 dark:text-slate-200">{ev.host}</span>
+            <span className="text-slate-500 truncate max-w-[40%]">{ev.category}</span>
+            <span className="text-slate-400 shrink-0">{(ev.ts || '').slice(11)}</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

@@ -1,4 +1,6 @@
-from typing import Optional
+import time
+from collections import deque
+from typing import Optional, List, Any, Dict
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Depends
 from pydantic import BaseModel
 
@@ -138,4 +140,44 @@ def inspect_url_content_policy(req: ContentFilterTestRequest):
     if not req.url:
         raise HTTPException(status_code=400, detail="URL cannot be empty")
     return check_url_content_policy(req.url)
+
+
+# ── SYSTEM-WIDE AGENT (DNS + proxy) : état en mémoire ────────────────────
+AGENT_STATE: Dict[str, Any] = {"last_seen": 0.0, "stats": {}, "info": {}}
+AGENT_EVENTS: deque = deque(maxlen=500)
+
+class AgentHeartbeat(BaseModel):
+    stats: Dict[str, Any] = {}
+    info: Dict[str, Any] = {}
+
+class AgentEvents(BaseModel):
+    events: List[Dict[str, Any]] = []
+
+@router.post("/agent/heartbeat")
+def agent_heartbeat(req: AgentHeartbeat):
+    """Le agent système signale qu'il est vivant et envoie ses compteurs."""
+    AGENT_STATE.update(last_seen=time.time(), stats=req.stats, info=req.info)
+    return {"ok": True}
+
+@router.post("/agent/events")
+def agent_events(req: AgentEvents):
+    """Réception des blocages interceptés par le agent (DNS / proxy)."""
+    for ev in req.events:
+        AGENT_EVENTS.appendleft(ev)
+    return {"ok": True, "received": len(req.events)}
+
+@router.get("/agent/status")
+def agent_status():
+    age = time.time() - AGENT_STATE["last_seen"] if AGENT_STATE["last_seen"] else None
+    return {
+        "online": age is not None and age < 30,
+        "last_seen_seconds": round(age, 1) if age is not None else None,
+        "stats": AGENT_STATE["stats"],
+        "info": AGENT_STATE["info"],
+        "total_events": len(AGENT_EVENTS),
+    }
+
+@router.get("/agent/events")
+def agent_events_list(limit: int = 50):
+    return {"events": list(AGENT_EVENTS)[:max(1, min(limit, 500))]}
 
