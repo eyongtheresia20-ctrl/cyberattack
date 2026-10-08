@@ -96,6 +96,7 @@ class PolicySettingsUpdate(BaseModel):
     block_gambling: Optional[bool] = None
     enforcement_mode: Optional[str] = None  # "BLOCK" | "WARN" | "ALLOW"
     school_shield_active: Optional[bool] = None
+    redirect_to_block_page: Optional[bool] = None
     custom_blacklist: Optional[list] = None
     custom_whitelist: Optional[list] = None
 
@@ -119,6 +120,8 @@ def update_policy_settings(req: PolicySettingsUpdate):
         current["enforcement_mode"] = req.enforcement_mode.upper()
     if req.school_shield_active is not None:
         current["school_shield_active"] = req.school_shield_active
+    if req.redirect_to_block_page is not None:
+        current["redirect_to_block_page"] = req.redirect_to_block_page
     if req.custom_blacklist is not None:
         current["custom_blacklist"] = req.custom_blacklist
     if req.custom_whitelist is not None:

@@ -79,7 +79,8 @@ export default function SettingsPage() {
           block_adult_content: settings.block_adult_content,
           block_gambling: settings.block_gambling,
           enforcement_mode: settings.enforcement_mode,
-          school_shield_active: settings.school_shield_active
+          school_shield_active: settings.school_shield_active,
+          redirect_to_block_page: settings.redirect_to_block_page
         })
       });
 

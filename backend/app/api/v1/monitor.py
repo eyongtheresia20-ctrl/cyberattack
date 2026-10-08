@@ -364,6 +364,7 @@ def realtime_background_check(req: RealtimeCheckRequest):
                 ],
                 "checked_at": time.strftime("%H:%M:%S UTC", time.gmtime()),
                 "blocked_by_policy": True,
+                "redirect_to_block_page": policy_res.get("redirect_to_block_page", True),
                 "is_adult_blocked": is_adult,
                 "is_gambling_blocked": policy_res.get("is_gambling", False),
                 "policy_info": policy_res,

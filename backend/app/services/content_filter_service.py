@@ -27,6 +27,7 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "block_gambling": True,
     "enforcement_mode": "BLOCK",  # "BLOCK" (Blocage automatique) | "WARN" (Avertissement) | "ALLOW" (Autoriser)
     "school_shield_active": True,
+    "redirect_to_block_page": True,
     "custom_blacklist": [],
     "custom_whitelist": []
 }
@@ -112,12 +113,13 @@ def check_url_content_policy(raw_url: str) -> Dict[str, Any]:
     enforcement = settings.get("enforcement_mode", "BLOCK")
 
     url = (raw_url or "").strip().lower()
-    if not url:
+    if not url or not settings.get("school_shield_active", True):
         return {
             "is_restricted": False,
             "category": "CLEAN",
             "action": "ALLOW",
-            "reasons": []
+            "reasons": [],
+            "redirect_to_block_page": settings.get("redirect_to_block_page", True)
         }
 
     # Extraction du domaine et du chemin
@@ -226,5 +228,6 @@ def check_url_content_policy(raw_url: str) -> Dict[str, Any]:
         "action": action,
         "reasons": matched_reasons,
         "enforcement_mode": enforcement,
+        "redirect_to_block_page": settings.get("redirect_to_block_page", True),
         "school_shield_active": settings.get("school_shield_active", True)
     }

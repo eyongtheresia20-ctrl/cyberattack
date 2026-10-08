@@ -30,10 +30,29 @@ function isKnownSafeDomain(rawUrl) {
   try {
     const u = new URL(rawUrl);
     const host = u.hostname.toLowerCase();
-    return TOP_LEGIT_DOMAINS.some(d => host === d || host.endsWith('.' + d) || host.includes(d));
+    // STRICT label matching (no substring match, otherwise 'xnxx.com' would match 'x.com')
+    return TOP_LEGIT_DOMAINS.some(d => {
+      if (d.endsWith('.')) {
+        // Brand prefix entries like "google." / "amazon." => host label must equal the brand
+        const brand = d.slice(0, -1);
+        return host.split('.').includes(brand);
+      }
+      return host === d || host.endsWith('.' + d);
+    });
   } catch {
     return false;
   }
+}
+
+// Memory of URLs already blocked by the MINESEC content policy (always re-enforced, no cooldown)
+const blockedUrls = new Map();
+
+// Physically replace the tab content with the CyberGuard custom block page
+function redirectToBlockPage(tabId, data) {
+  if (!tabId || !data) return;
+  const reasonStr = (data.reasons && data.reasons[0]) || "Accès restreint par la politique MINESEC";
+  const blockUrl = `http://localhost:3000/blocked?url=${encodeURIComponent(data.url)}&category=${encodeURIComponent(data.verdict || 'CONTENU RESTREINT')}&reason=${encodeURIComponent(reasonStr)}&policy=SEC-MINESEC-POL-04`;
+  chrome.tabs.update(tabId, { url: blockUrl }).catch(() => {});
 }
 
 // Evaluate URL against CyberGuard Backend (strictly memory-only, no DB writes)
@@ -46,6 +65,18 @@ async function evaluateUrl(url, reasonLabel = "Navigation en direct", tabId = nu
   const clean = getCleanUrl(url);
   const now = Date.now();
   const lastChecked = urlCheckHistory.get(clean);
+
+  // Already-blocked URL: ALWAYS redirect again immediately (no cooldown for restricted content)
+  if (blockedUrls.has(clean)) {
+    const entry = blockedUrls.get(clean);
+    if (now - entry.at < 10000) {
+      redirectToBlockPage(tabId, entry.data);
+      return entry.data;
+    }
+    // TTL expired: re-validate against the live policy (admin may have changed settings)
+    blockedUrls.delete(clean);
+    urlCheckHistory.delete(clean);
+  }
 
   // If this exact URL has already popped up recently and this is not a 15-minute periodic re-check, skip duplicate
   if (lastChecked && (now - lastChecked < REVALIDATION_COOLDOWN_MS) && reasonLabel !== "periodic") {
@@ -84,16 +115,17 @@ async function evaluateUrl(url, reasonLabel = "Navigation en direct", tabId = nu
     if (res.ok) {
       const data = await res.json();
       
-      // Deliver to tab first
+      // PHYSICAL ENFORCEMENT: policy-blocked content => redirect the tab to the CyberGuard block page
+      if (data.blocked_by_policy && data.redirect_to_block_page !== false) {
+        blockedUrls.set(clean, { data, at: Date.now() });
+        redirectToBlockPage(tabId, data);
+        displayNotification(data);
+        return data;
+      }
+
+      // Deliver to tab (normal HUD alert)
       if (tabId) {
         chrome.tabs.sendMessage(tabId, { type: 'CYBERGUARD_SHOW_ALERT', data }).catch(() => {});
-
-        // PHYSICAL ENFORCEMENT: Completely block access by redirecting the tab to CyberGuard Custom Block Page
-        if (data.is_adult_blocked || data.blocked_by_policy) {
-          const reasonStr = (data.reasons && data.reasons[0]) || "Accès restreint par la politique MINESEC";
-          const blockUrl = `http://localhost:3000/blocked?url=${encodeURIComponent(data.url)}&category=${encodeURIComponent(data.verdict)}&reason=${encodeURIComponent(reasonStr)}&policy=SEC-MINESEC-POL-04`;
-          chrome.tabs.update(tabId, { url: blockUrl }).catch(() => {});
-        }
       }
       broadcastToCyberguardTab(data);
       displayNotification(data);
