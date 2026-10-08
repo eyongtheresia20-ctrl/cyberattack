@@ -105,13 +105,18 @@ function displayNotification(data) {
   const isSafe = data.is_safe;
   const notifId = 'cyberguard-' + Date.now();
 
-  const title = isSafe 
+  let title = isSafe 
     ? `🛡️ CyberGuard : Ressource Saine (${data.latency_ms || 18}ms)` 
     : `🚨 CyberGuard : MENACE DÉTECTÉE (${data.verdict})`;
 
-  const message = isSafe
+  let message = isSafe
     ? `Site vérifié et conforme : ${data.url}\nRisque: ${Math.round(data.risk_score)}% (Faible)`
-    : `ATTENTION : ${data.url}\nRisque: ${Math.round(data.risk_score)}% — Phishing intercepté !`;
+    : `ATTENTION : ${data.url}\nRisque: ${Math.round(data.risk_score)}% — Menace interceptée !`;
+
+  if (data.is_adult_blocked || data.blocked_by_policy) {
+    title = `🔞 CyberGuard : CONTENU ADULTE BLOQUÉ (MINESEC)`;
+    message = `ACCÈS RESTREINT : ${data.url}\nContenu adulte ou jeux d'argent bloqué conformément à la politique scolaire.`;
+  }
 
   try {
     chrome.notifications.create(notifId, {

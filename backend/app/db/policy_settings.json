@@ -1,0 +1,8 @@
+{
+  "block_adult_content": true,
+  "block_gambling": true,
+  "enforcement_mode": "BLOCK",
+  "school_shield_active": true,
+  "custom_blacklist": [],
+  "custom_whitelist": []
+}

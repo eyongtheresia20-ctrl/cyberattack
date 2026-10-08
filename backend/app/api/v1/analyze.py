@@ -208,6 +208,22 @@ def analyze_url(req: URLAnalysisRequest, db: Session = Depends(get_db), current_
             "autonomous_mode":     correlation.get("autonomous_mode", True),
         }
 
+        # Check Content Filtering Policy (MINESEC Policy: Adult & Gambling Protection)
+        from app.services.content_filter_service import check_url_content_policy
+        content_policy = check_url_content_policy(url)
+        response_payload["content_filter"] = content_policy
+        if content_policy.get("is_restricted") and content_policy.get("action") == "BLOCK":
+            is_ad = content_policy.get("is_adult", False)
+            rule_triggers.append(f"POLITIQUE SCOLAIRE MINESEC : Contenu non autorisé ({content_policy.get('category')})")
+            if is_ad:
+                response_payload["verdict"] = "CONTENU ADULTE BLOQUÉ"
+                response_payload["risk_level"] = "CRITICAL"
+                response_payload["risk_score"] = 100.0
+            elif content_policy.get("is_gambling"):
+                response_payload["verdict"] = "JEU D'ARGENT BLOQUÉ"
+                response_payload["risk_level"] = "HIGH"
+                response_payload["risk_score"] = max(85.0, response_payload["risk_score"])
+
         # Generate SHA-256 integrity hash
         integrity_hash = generate_sha256_hash(response_payload)
         response_payload["integrity_hash"] = integrity_hash

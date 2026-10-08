@@ -15,7 +15,8 @@ import {
   Play, 
   Clipboard, 
   Sparkles, 
-  BellRing
+  BellRing,
+  Lock
 } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
@@ -502,6 +503,14 @@ export default function RealtimeProtectionSentinel() {
                       <div className="text-base font-black leading-none">{Math.round(alert.risk_score)}%</div>
                     </div>
                   </div>
+
+                  {/* Content Filter Policy Badge */}
+                  {alert.blocked_by_policy && (
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-purple-500/20 border border-purple-500/40 text-purple-300 text-[10px] font-mono font-bold">
+                      <Lock className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+                      <span>{lang === 'fr' ? 'POLITIQUE MINESEC : Filtrage Contenu Adulte / Jeux Actif' : 'MINESEC POLICY: Adult Content Filter Active'}</span>
+                    </div>
+                  )}
 
                   {/* Reasons / Flags Tags */}
                   <div className="space-y-1">

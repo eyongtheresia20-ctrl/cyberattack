@@ -168,11 +168,83 @@ export default function EnterpriseDefenseSuite({
     }
   };
 
+  // ── 5. CONTENT FILTER & MINESEC POLICY STATE ──
+  const [policySettings, setPolicySettings] = useState({
+    block_adult_content: true,
+    block_gambling: true,
+    enforcement_mode: 'BLOCK',
+    school_shield_active: true,
+    custom_blacklist: [],
+    custom_whitelist: []
+  });
+  const [filterTestUrl, setFilterTestUrl] = useState('https://pornhub.com');
+  const [filterTestResult, setFilterTestResult] = useState(null);
+  const [isUpdatingPolicy, setIsUpdatingPolicy] = useState(false);
+  const [isTestingFilter, setIsTestingFilter] = useState(false);
+
+  const fetchPolicySettings = async () => {
+    try {
+      const res = await fetch('/api/v1/enterprise/policy-settings');
+      if (res.ok) {
+        const data = await res.json();
+        setPolicySettings(data);
+      }
+    } catch (e) {
+      console.error('Fetch policy error:', e);
+    }
+  };
+
+  const handleUpdatePolicy = async (updates) => {
+    setIsUpdatingPolicy(true);
+    try {
+      const res = await fetch('/api/v1/enterprise/policy-settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setPolicySettings(data.settings);
+        // Refresh live test if open
+        if (filterTestUrl) {
+          handleTestFilterUrl(filterTestUrl);
+        }
+      }
+    } catch (e) {
+      console.error('Update policy error:', e);
+    } finally {
+      setIsUpdatingPolicy(false);
+    }
+  };
+
+  const handleTestFilterUrl = async (testTarget) => {
+    const target = testTarget || filterTestUrl;
+    if (!target) return;
+    setIsTestingFilter(true);
+    try {
+      const res = await fetch('/api/v1/enterprise/content-filter/inspect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: target })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setFilterTestResult(data);
+      }
+    } catch (e) {
+      console.error('Filter test error:', e);
+    } finally {
+      setIsTestingFilter(false);
+    }
+  };
+
   useEffect(() => {
     fetchBlockedIps();
     fetchHoneypotHits();
+    fetchPolicySettings();
     // Default initial mock runs
     runPcapAnalysis('SYN_FLOOD');
+    handleTestFilterUrl('https://pornhub.com');
   }, []);
 
   return (
@@ -256,6 +328,19 @@ export default function EnterpriseDefenseSuite({
             >
               <Zap className="w-4 h-4" />
               <span>{lang === 'fr' ? `3. Leurres Honeypot (${honeypotHits.length})` : `3. Honeypot Traps (${honeypotHits.length})`}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveSubTab('CONTENT_FILTER')}
+              className={`px-3 py-2 rounded-xl font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                activeSubTab === 'CONTENT_FILTER'
+                  ? 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-md'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              <Lock className="w-4 h-4" />
+              <span>{lang === 'fr' ? '4. Filtrage Contenu Adulte (MINESEC)' : '4. Adult Content Filter (MINESEC)'}</span>
             </button>
           </div>
         </div>
@@ -652,6 +737,227 @@ export default function EnterpriseDefenseSuite({
               ))}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ── SUB-TAB 4: CONTENT FILTER & MINESEC POLICY ── */}
+      {activeSubTab === 'CONTENT_FILTER' && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          
+          {/* Header Policy Banner */}
+          <div className="p-5 bg-gradient-to-r from-emerald-500/10 via-teal-500/10 to-sky-500/10 border border-emerald-500/30 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="p-1.5 rounded-lg bg-emerald-500/20 text-emerald-600 dark:text-emerald-400">
+                  <Lock className="w-5 h-5" />
+                </span>
+                <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase font-mono tracking-wider">
+                  {lang === 'fr' 
+                    ? "Bouclier de Filtrage Web & Contrôle Parental (MINESEC)" 
+                    : "Web Content Filtering & Parental Shield (MINESEC)"}
+                </h3>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 font-mono">
+                  {policySettings.school_shield_active ? "POLITIQUE ACTIVE" : "DÉSACTIVÉ"}
+                </span>
+              </div>
+              <p className="text-xs text-slate-600 dark:text-slate-300">
+                {lang === 'fr'
+                  ? "Interception proactive et blocage automatique des sites adultes, pornographiques et de jeux d'argent pour la protection des élèves et des infrastructures du MINESEC."
+                  : "Proactive interception and automated blocking of adult, pornographic, and gambling websites for school and administrative MINESEC protection."}
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="text-[11px] font-mono font-bold text-slate-500">Mode :</span>
+              <select
+                value={policySettings.enforcement_mode}
+                onChange={(e) => handleUpdatePolicy({ enforcement_mode: e.target.value })}
+                disabled={isUpdatingPolicy}
+                className="px-3 py-1.5 text-xs font-mono font-bold rounded-xl bg-white dark:bg-[#161d2b] border border-emerald-500/40 text-emerald-600 dark:text-emerald-300 focus:outline-none cursor-pointer"
+              >
+                <option value="BLOCK">⛔ Blocage Automatique (Strict)</option>
+                <option value="WARN">⚠️ Avertissement (Warning)</option>
+                <option value="ALLOW">✅ Autoriser l'accès (Pass-through)</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Interactive Policy Toggles Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            
+            {/* Toggle 1: Adult Content */}
+            <div className="p-4 bg-slate-50 dark:bg-[#161d2b] border border-slate-200 dark:border-slate-800 rounded-2xl flex items-center justify-between gap-4">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <Ban className="w-4 h-4 text-rose-500" />
+                  <h4 className="text-xs font-bold text-slate-900 dark:text-white uppercase font-mono">
+                    {lang === 'fr' ? "Bloquer le Contenu Adulte & Pornographique" : "Block Adult & Pornographic Content"}
+                  </h4>
+                </div>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  {lang === 'fr'
+                    ? "Intercepte les sites pornographiques, streaming adulte (.xxx, .porn) et plateformes explicites."
+                    : "Intercepts adult websites, pornography streams (.xxx, .porn) and explicit cam portals."}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => handleUpdatePolicy({ block_adult_content: !policySettings.block_adult_content })}
+                disabled={isUpdatingPolicy}
+                className={`w-14 h-8 rounded-full transition-colors p-1 flex items-center cursor-pointer shrink-0 ${
+                  policySettings.block_adult_content 
+                    ? 'bg-emerald-500 justify-end' 
+                    : 'bg-slate-300 dark:bg-slate-700 justify-start'
+                }`}
+              >
+                <div className="w-6 h-6 rounded-full bg-white shadow-md" />
+              </button>
+            </div>
+
+            {/* Toggle 2: Gambling & Casino */}
+            <div className="p-4 bg-slate-50 dark:bg-[#161d2b] border border-slate-200 dark:border-slate-800 rounded-2xl flex items-center justify-between gap-4">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <Zap className="w-4 h-4 text-amber-500" />
+                  <h4 className="text-xs font-bold text-slate-900 dark:text-white uppercase font-mono">
+                    {lang === 'fr' ? "Bloquer les Jeux d'Argent & Casinos" : "Block Gambling & Online Casinos"}
+                  </h4>
+                </div>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  {lang === 'fr'
+                    ? "Neutralise les bookmakers en ligne, paris sportifs (1xBet, etc.) et casinos virtuels."
+                    : "Neutralizes online sports betting (1xBet, etc.), poker rooms, and virtual casinos."}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => handleUpdatePolicy({ block_gambling: !policySettings.block_gambling })}
+                disabled={isUpdatingPolicy}
+                className={`w-14 h-8 rounded-full transition-colors p-1 flex items-center cursor-pointer shrink-0 ${
+                  policySettings.block_gambling 
+                    ? 'bg-emerald-500 justify-end' 
+                    : 'bg-slate-300 dark:bg-slate-700 justify-start'
+                }`}
+              >
+                <div className="w-6 h-6 rounded-full bg-white shadow-md" />
+              </button>
+            </div>
+
+          </div>
+
+          {/* Interactive URL Content Inspector Tester */}
+          <div className="p-5 bg-white dark:bg-[#0f141f] border border-emerald-500/20 rounded-2xl space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h4 className="text-xs font-black uppercase tracking-wider font-mono text-slate-900 dark:text-white flex items-center gap-2">
+                  <Terminal className="w-4 h-4 text-emerald-500" />
+                  {lang === 'fr' ? "Simulateur de Politique d'Accès en Temps Réel" : "Real-Time Access Policy Simulator"}
+                </h4>
+                <p className="text-[11px] text-slate-500">
+                  {lang === 'fr' 
+                    ? "Testez n'importe quelle adresse web pour vérifier la décision de blocage ou d'accès."
+                    : "Test any web URL to check if policy grants access or automatically blocks it."}
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={filterTestUrl}
+                  onChange={(e) => setFilterTestUrl(e.target.value)}
+                  placeholder="https://example.com"
+                  className="px-3 py-2 text-xs font-mono rounded-xl bg-slate-50 dark:bg-[#161d2b] border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white w-64 focus:outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={() => handleTestFilterUrl()}
+                  disabled={isTestingFilter}
+                  className="px-4 py-2 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 transition cursor-pointer disabled:opacity-50"
+                >
+                  {isTestingFilter ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Eye className="w-3.5 h-3.5" />}
+                  <span>{isTestingFilter ? "Analyse..." : "Tester l'accès"}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Quick Test Buttons */}
+            <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-slate-100 dark:border-slate-800 text-[11px]">
+              <span className="text-slate-400 font-mono">Exemples rapides :</span>
+              <button
+                type="button"
+                onClick={() => { setFilterTestUrl('https://pornhub.com'); handleTestFilterUrl('https://pornhub.com'); }}
+                className="px-2.5 py-1 rounded-lg bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/30 font-mono hover:bg-rose-500/20 transition cursor-pointer"
+              >
+                🔞 pornhub.com (Adulte)
+              </button>
+              <button
+                type="button"
+                onClick={() => { setFilterTestUrl('https://1xbet.cm'); handleTestFilterUrl('https://1xbet.cm'); }}
+                className="px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30 font-mono hover:bg-amber-500/20 transition cursor-pointer"
+              >
+                🎰 1xbet.cm (Paris)
+              </button>
+              <button
+                type="button"
+                onClick={() => { setFilterTestUrl('https://minesec.gov.cm'); handleTestFilterUrl('https://minesec.gov.cm'); }}
+                className="px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 font-mono hover:bg-emerald-500/20 transition cursor-pointer"
+              >
+                🏫 minesec.gov.cm (Scolaire)
+              </button>
+            </div>
+
+            {/* Test Verdict Result Display */}
+            {filterTestResult && (
+              <div className={`p-4 rounded-xl border font-mono space-y-2.5 ${
+                filterTestResult.action === 'BLOCK'
+                  ? 'bg-rose-500/10 border-rose-500/40 text-rose-300'
+                  : (filterTestResult.action === 'WARN'
+                      ? 'bg-amber-500/10 border-amber-500/40 text-amber-300'
+                      : 'bg-emerald-500/10 border-emerald-500/40 text-emerald-300')
+              }`}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    {filterTestResult.action === 'BLOCK' ? (
+                      <Ban className="w-5 h-5 text-rose-500" />
+                    ) : (filterTestResult.action === 'WARN' ? (
+                      <AlertTriangle className="w-5 h-5 text-amber-400" />
+                    ) : (
+                      <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                    ))}
+                    <span className="font-bold text-sm">
+                      {filterTestResult.action === 'BLOCK' 
+                        ? '⛔ ACCÈS BLOQUÉ PAR LA POLITIQUE' 
+                        : (filterTestResult.action === 'WARN' 
+                            ? '⚠️ ACCÈS SOUS AVERTISSEMENT' 
+                            : '✅ ACCÈS AUTORISÉ (CONFORME)')}
+                    </span>
+                  </div>
+
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-black uppercase border font-mono">
+                    {filterTestResult.category}
+                  </span>
+                </div>
+
+                <div className="text-xs text-slate-600 dark:text-slate-300">
+                  <strong>Cible :</strong> <code>{filterTestResult.url}</code>
+                </div>
+
+                {filterTestResult.reasons && filterTestResult.reasons.length > 0 && (
+                  <div className="space-y-1">
+                    <span className="text-[11px] font-bold uppercase text-slate-400">Motifs de décision :</span>
+                    <ul className="list-disc list-inside text-xs space-y-0.5 text-slate-700 dark:text-slate-300">
+                      {filterTestResult.reasons.map((r, idx) => (
+                        <li key={idx}>{r}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
         </div>
       )}
 

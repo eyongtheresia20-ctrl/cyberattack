@@ -85,3 +85,54 @@ def simulate_honeypot_probe(req: HoneypotSimulateRequest):
         payload=req.payload
     )
     return {"status": "trapped_and_banned", "event": hit}
+
+# ── 5. CONTENT FILTER & MINESEC SCHOOL PROTECTION POLICY ─────────────
+from app.services.content_filter_service import (
+    load_policy_settings, save_policy_settings, check_url_content_policy
+)
+
+class PolicySettingsUpdate(BaseModel):
+    block_adult_content: Optional[bool] = None
+    block_gambling: Optional[bool] = None
+    enforcement_mode: Optional[str] = None  # "BLOCK" | "WARN" | "ALLOW"
+    school_shield_active: Optional[bool] = None
+    custom_blacklist: Optional[list] = None
+    custom_whitelist: Optional[list] = None
+
+class ContentFilterTestRequest(BaseModel):
+    url: str
+
+@router.get("/policy-settings")
+def get_policy_settings():
+    """Retrieve current content filtering and school shield policy settings."""
+    return load_policy_settings()
+
+@router.post("/policy-settings")
+def update_policy_settings(req: PolicySettingsUpdate):
+    """Update content filtering policies (adult content, gambling, enforcement mode)."""
+    current = load_policy_settings()
+    if req.block_adult_content is not None:
+        current["block_adult_content"] = req.block_adult_content
+    if req.block_gambling is not None:
+        current["block_gambling"] = req.block_gambling
+    if req.enforcement_mode is not None:
+        current["enforcement_mode"] = req.enforcement_mode.upper()
+    if req.school_shield_active is not None:
+        current["school_shield_active"] = req.school_shield_active
+    if req.custom_blacklist is not None:
+        current["custom_blacklist"] = req.custom_blacklist
+    if req.custom_whitelist is not None:
+        current["custom_whitelist"] = req.custom_whitelist
+
+    success = save_policy_settings(current)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to save policy settings")
+    return {"status": "updated", "settings": current}
+
+@router.post("/content-filter/inspect")
+def inspect_url_content_policy(req: ContentFilterTestRequest):
+    """Inspect an URL against active adult content and gambling protection policies."""
+    if not req.url:
+        raise HTTPException(status_code=400, detail="URL cannot be empty")
+    return check_url_content_policy(req.url)
+

@@ -343,6 +343,39 @@ def realtime_background_check(req: RealtimeCheckRequest):
         raise HTTPException(status_code=400, detail="URL cannot be empty")
 
     norm_key = raw_url.lower().rstrip("/")
+
+    # Check Content Filtering Policy (MINESEC School Protection: Adult Content & Gambling)
+    from app.services.content_filter_service import check_url_content_policy
+    policy_res = check_url_content_policy(raw_url)
+    if policy_res.get("is_restricted"):
+        action = policy_res.get("action", "BLOCK")
+        if action == "BLOCK":
+            is_adult = policy_res.get("is_adult", False)
+            cat_label = "Contenu Adulte / Pornographie" if is_adult else "Jeux d'Argent / Casino"
+            res = {
+                "url": raw_url,
+                "is_safe": False,
+                "risk_score": 100.0,
+                "verdict": "CONTENU ADULTE BLOQUÉ" if is_adult else "JEU D'ARGENT BLOQUÉ",
+                "threat_level": "CRITIQUE",
+                "reasons": [
+                    f"Accès restreint par la politique MINESEC : {cat_label}",
+                    *policy_res.get("reasons", [])
+                ],
+                "checked_at": time.strftime("%H:%M:%S UTC", time.gmtime()),
+                "blocked_by_policy": True,
+                "is_adult_blocked": is_adult,
+                "is_gambling_blocked": policy_res.get("is_gambling", False),
+                "policy_info": policy_res,
+                "features": {
+                    "entropy": 4.1,
+                    "is_https": raw_url.startswith("https"),
+                    "has_ip": False,
+                    "keyword_count": 3
+                }
+            }
+            return res
+
     if norm_key in _REALTIME_SENTINEL_CACHE:
         cached = dict(_REALTIME_SENTINEL_CACHE[norm_key])
         cached["checked_at"] = time.strftime("%H:%M:%S UTC", time.gmtime())
