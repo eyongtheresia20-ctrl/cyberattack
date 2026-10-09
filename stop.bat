@@ -10,6 +10,16 @@ echo           ARRET COMPLET DE LA PLATEFORME CYBERGUARD SOC
 echo ==============================================================
 echo.
 
+REM Verification des privileges Administrateur pour la restauration reseau
+net session >nul 2>&1
+if %errorlevel% neq 0 (
+    if not "%1"=="--elevated" (
+        echo [*] Demande d'elevation Administrateur pour restaurer la configuration reseau...
+        powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath 'cmd.exe' -ArgumentList @('/k', ([char]34 + '%~f0' + [char]34), '--elevated') -Verb RunAs"
+        exit /b
+    )
+)
+
 REM 1. Restauration du reseau
 echo [1/3] Restauration des parametres reseau (DNS et Proxy)...
 cd /d "%ROOT%\agent"

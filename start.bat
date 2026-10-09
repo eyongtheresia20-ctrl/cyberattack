@@ -2,7 +2,7 @@
 setlocal
 title CyberGuard SOC - Universal Launcher
 
-REM Positionnement direct dans le dossier racine du projet
+REM Force le positionnement immediat dans le repertoire du script (evite C:\Windows\System32 en mode admin)
 cd /d "%~dp0"
 set "ROOT=%CD%"
 
@@ -18,8 +18,8 @@ net session >nul 2>&1
 if %errorlevel% neq 0 (
     if not "%1"=="--elevated" (
         echo [*] Demande d'elevation Administrateur pour la configuration reseau...
-        powershell -NoProfile -Command "Start-Process -FilePath 'cmd.exe' -WorkingDirectory '%ROOT%' -ArgumentList '/k start.bat --elevated' -Verb RunAs" >nul 2>&1
-        if not errorlevel 1 exit /b
+        powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath 'cmd.exe' -ArgumentList @('/k', ([char]34 + '%~f0' + [char]34), '--elevated') -Verb RunAs"
+        exit /b
     )
     echo [1/6] Mode utilisateur standard actif.
 ) else (
@@ -75,7 +75,7 @@ REM STEP 3: Launch Backend (FastAPI / Uvicorn Port 8000)
 REM --------------------------------------------------------------
 echo.
 echo [4/6] Demarrage du Backend FastAPI sur le Port 8000...
-start "CyberGuard Backend (Port 8000)" cmd /k "cd /d \"%ROOT%\backend\" && title CyberGuard Backend (Port 8000) && python -m uvicorn app.main:app --reload --port 8000"
+start "CyberGuard Backend (Port 8000)" /D "%ROOT%\backend" cmd /k "title CyberGuard Backend (Port 8000) & python -m uvicorn app.main:app --reload --port 8000"
 
 ping 127.0.0.1 -n 3 >nul
 
@@ -84,7 +84,7 @@ REM STEP 4: Launch Frontend (React / Vite Port 3000)
 REM --------------------------------------------------------------
 echo.
 echo [5/6] Demarrage du Frontend React sur le Port 3000...
-start "CyberGuard Frontend (Port 3000)" cmd /k "cd /d \"%ROOT%\frontend\" && title CyberGuard Frontend (Port 3000) && npm run dev"
+start "CyberGuard Frontend (Port 3000)" /D "%ROOT%\frontend" cmd /k "title CyberGuard Frontend (Port 3000) & npm run dev"
 
 ping 127.0.0.1 -n 3 >nul
 
@@ -93,7 +93,7 @@ REM STEP 5: Launch System-Wide Agent (DNS and Proxy)
 REM --------------------------------------------------------------
 echo.
 echo [6/6] Demarrage de l'Agent Systeme CyberGuard (DNS et Proxy)...
-start "CyberGuard System Agent" cmd /k "cd /d \"%ROOT%\agent\" && title CyberGuard System Agent (Admin) && python cyberguard_agent.py run"
+start "CyberGuard System Agent" /D "%ROOT%\agent" cmd /k "title CyberGuard System Agent (Admin) & python cyberguard_agent.py run"
 
 REM --------------------------------------------------------------
 REM STEP 6: Open Browser and Print Status
