@@ -1,3 +1,4 @@
+# CyberGuard SOC Platform v2.0 - Site Audit & Attacker Forensics Reload
 import os
 import sys
 backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -34,7 +35,9 @@ try:
             ("last_login", ts_type),
             ("password_raw", "VARCHAR(255)"),
             ("scan_count", "INTEGER DEFAULT 0"),
-            ("report_count", "INTEGER DEFAULT 0")
+            ("report_count", "INTEGER DEFAULT 0"),
+            ("blocked_sites", "TEXT DEFAULT '[]'"),
+            ("permissions", "TEXT DEFAULT '{}'")
         ]:
             try:
                 with engine.begin() as conn:
@@ -126,3 +129,4 @@ def root():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+# Uvicorn reload trigger - sync timestamp 2026-10-09

@@ -1,9 +1,14 @@
 import requests
 import urllib3
+import time
 from typing import Dict, Any, Tuple
 from app.core.config import settings
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+_VT_CACHE: Dict[str, Any] = {}
+_GSB_CACHE: Dict[str, Any] = {}
+_TI_CACHE_TTL = 300  # 5 minutes
 
 SUSPICIOUS_TERMS = [
     'paypal', 'appleid', 'microsoft', 'google', 'bank', 'login', 'signin', 'verify', 'update',
@@ -113,11 +118,19 @@ def query_virustotal_url_reputation(url: str,
       2. ML-powered simulation — on quota (429), auth failure, or timeout
     The analysis NEVER stops; ML fills in seamlessly.
     """
+    cache_key = url.strip()
+    now_ts = time.time()
+    if cache_key in _VT_CACHE:
+        c_ts, c_val = _VT_CACHE[cache_key]
+        if now_ts - c_ts < _TI_CACHE_TTL:
+            return c_val
+
     api_key = settings.VIRUSTOTAL_API_KEY
 
     if not api_key:
         result = _ml_simulate_vt(url, features)
         result["status"] = "ml_autonomous_no_key"
+        _VT_CACHE[cache_key] = (now_ts, result)
         return result
 
     headers = {"x-apikey": api_key}
@@ -126,7 +139,8 @@ def query_virustotal_url_reputation(url: str,
         url_id = base64.urlsafe_b64encode(url.encode()).decode().strip("=")
         response = requests.get(
             f"https://www.virustotal.com/api/v3/urls/{url_id}",
-            headers=headers, timeout=2.2, verify=False
+            headers=headers, timeout=1.2, verify=False,
+            proxies={"http": None, "https": None}
         )
 
         if response.status_code == 200:
@@ -140,7 +154,7 @@ def query_virustotal_url_reputation(url: str,
                 sim = _ml_simulate_vt(url, features)
                 categories = sim["categories"]
 
-            return {
+            res_obj = {
                 "status": "live",
                 "positives": positives,
                 "total_engines": sum(stats.values()) or 90,
@@ -149,17 +163,21 @@ def query_virustotal_url_reputation(url: str,
                 "source": "VirusTotal Live API v3",
                 "api_status": "live"
             }
+            _VT_CACHE[cache_key] = (now_ts, res_obj)
+            return res_obj
 
         # HTTP 429 = quota exhausted; 401 = bad key; 5xx = VT outage
         print(f"[VT] HTTP {response.status_code} — switching to ML autonomous mode.")
         result = _ml_simulate_vt(url, features)
         result["status"] = f"ml_fallback_http_{response.status_code}"
+        _VT_CACHE[cache_key] = (now_ts, result)
         return result
 
     except Exception as exc:
         print(f"[VT] Network exception ({exc}) — switching to ML autonomous mode.")
         result = _ml_simulate_vt(url, features)
         result["status"] = "ml_fallback_timeout"
+        _VT_CACHE[cache_key] = (now_ts, result)
         return result
 
 
@@ -173,11 +191,19 @@ def query_google_safebrowsing(url: str,
       2. ML-powered simulation — on quota, auth failure, or timeout
     The analysis NEVER stops; ML fills in seamlessly.
     """
+    cache_key = url.strip()
+    now_ts = time.time()
+    if cache_key in _GSB_CACHE:
+        c_ts, c_val = _GSB_CACHE[cache_key]
+        if now_ts - c_ts < _TI_CACHE_TTL:
+            return c_val
+
     api_key = settings.GOOGLE_SAFE_BROWSING_API_KEY
 
     if not api_key:
         result = _ml_simulate_gsb(url, features)
         result["status"] = "ml_autonomous_no_key"
+        _GSB_CACHE[cache_key] = (now_ts, result)
         return result
 
     endpoint = f"https://safebrowsing.googleapis.com/v4/threatMatches:find?key={api_key}"
@@ -194,7 +220,7 @@ def query_google_safebrowsing(url: str,
         }
     }
     try:
-        res = requests.post(endpoint, json=payload, timeout=2.2, verify=False)
+        res = requests.post(endpoint, json=payload, timeout=1.2, verify=False, proxies={"http": None, "https": None})
 
         if res.status_code == 200:
             matches = res.json().get("matches", [])
@@ -209,21 +235,25 @@ def query_google_safebrowsing(url: str,
                     threat_types = ml_sim["threat_types"]
                     is_flagged = True
 
-            return {
+            res_obj = {
                 "is_flagged": is_flagged,
                 "threat_types": list(set(threat_types)),
                 "platform_type": "ANY_PLATFORM",
                 "source": "Google Safe Browsing Live API v4 + ML Enrichment",
                 "api_status": "live"
             }
+            _GSB_CACHE[cache_key] = (now_ts, res_obj)
+            return res_obj
 
         print(f"[GSB] HTTP {res.status_code} — switching to ML autonomous mode.")
         result = _ml_simulate_gsb(url, features)
         result["status"] = f"ml_fallback_http_{res.status_code}"
+        _GSB_CACHE[cache_key] = (now_ts, result)
         return result
 
     except Exception as exc:
         print(f"[GSB] Network exception ({exc}) — switching to ML autonomous mode.")
         result = _ml_simulate_gsb(url, features)
         result["status"] = "ml_fallback_timeout"
+        _GSB_CACHE[cache_key] = (now_ts, result)
         return result

@@ -3,6 +3,19 @@
   "block_gambling": true,
   "enforcement_mode": "BLOCK",
   "school_shield_active": true,
-  "custom_blacklist": [],
-  "custom_whitelist": []
+  "custom_blacklist": [
+    "facebook.com",
+    "tiktok.com",
+    "1xbet.cm"
+  ],
+  "custom_whitelist": [],
+  "redirect_to_block_page": true,
+  "ml_auto_block_phishing": true,
+  "shannon_entropy_detection": true,
+  "external_threat_intel": true,
+  "waf_autoban_hostile_ips": true,
+  "honeypot_active_defense": true,
+  "sha256_forensic_sealing": true,
+  "sentinel_realtime_protection": true,
+  "audio_alert_chimes": true
 }

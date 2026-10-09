@@ -22,8 +22,7 @@ function getCleanUrl(rawUrl) {
 
 const TOP_LEGIT_DOMAINS = [
   "google.", "claude.ai", "anthropic.com", "chatgpt.com", "openai.com",
-  "nike.com", "github.com", "microsoft.com", "apple.com", "youtube.com",
-  "amazon.", "linkedin.com", "twitter.com", "x.com", "wikipedia.org"
+  "github.com", "microsoft.com", "apple.com", "wikipedia.org"
 ];
 
 function isKnownSafeDomain(rawUrl) {
@@ -55,6 +54,22 @@ function redirectToBlockPage(tabId, data) {
   chrome.tabs.update(tabId, { url: blockUrl }).catch(() => {});
 }
 
+// ── Identité de l'utilisateur connecté (token synchronisé depuis le tableau de bord) ──
+async function getAuthToken() {
+  try {
+    const s = await chrome.storage.local.get('cg_token');
+    return s.cg_token || null;
+  } catch {
+    return null;
+  }
+}
+
+function backendHeaders(token) {
+  const h = { 'Content-Type': 'application/json' };
+  if (token) h['Authorization'] = `Bearer ${token}`;
+  return h;
+}
+
 // Evaluate URL against CyberGuard Backend (strictly memory-only, no DB writes)
 // Policy: Exactly ONE pop-up per URL. When URL changes (e.g. Claude -> Claude Sign-In), pops up for the new URL.
 async function evaluateUrl(url, reasonLabel = "Navigation en direct", tabId = null) {
@@ -66,10 +81,10 @@ async function evaluateUrl(url, reasonLabel = "Navigation en direct", tabId = nu
   const now = Date.now();
   const lastChecked = urlCheckHistory.get(clean);
 
-  // Already-blocked URL: ALWAYS redirect again immediately (no cooldown for restricted content)
+  // Already-blocked URL: ALWAYS redirect again immediately (short TTL so policy changes take effect quickly)
   if (blockedUrls.has(clean)) {
     const entry = blockedUrls.get(clean);
-    if (now - entry.at < 10000) {
+    if (now - entry.at < 2500) {
       redirectToBlockPage(tabId, entry.data);
       return entry.data;
     }
@@ -78,15 +93,31 @@ async function evaluateUrl(url, reasonLabel = "Navigation en direct", tabId = nu
     urlCheckHistory.delete(clean);
   }
 
-  // If this exact URL has already popped up recently and this is not a 15-minute periodic re-check, skip duplicate
+  const token = await getAuthToken();
+
+  // URL déjà vérifiée récemment : pas de nouveau pop-up, MAIS on réapplique toujours le blocage
+  // (l'admin a pu bloquer ce site pour cet utilisateur entre-temps).
   if (lastChecked && (now - lastChecked < REVALIDATION_COOLDOWN_MS) && reasonLabel !== "periodic") {
+    if (token) {
+      try {
+        const r = await fetch(BACKEND_ENDPOINT, { method: 'POST', headers: backendHeaders(token), body: JSON.stringify({ url }) });
+        if (r.ok) {
+          const d = await r.json();
+          if (d.blocked_by_policy && d.redirect_to_block_page !== false) {
+            blockedUrls.set(clean, { data: d, at: Date.now() });
+            redirectToBlockPage(tabId, d);
+          }
+        }
+      } catch (e) {}
+    }
     return null;
   }
 
   urlCheckHistory.set(clean, now);
 
   // 1. INSTANT LOCAL DOMAIN RESOLUTION (0ms latency for Google, Claude, Nike, ChatGPT, etc.)
-  if (isKnownSafeDomain(url)) {
+  // (Sans utilisateur identifié uniquement : sinon le backend doit appliquer les blocages par utilisateur.)
+  if (!token && isKnownSafeDomain(url)) {
     const instantData = {
       url: url,
       is_safe: true,
@@ -108,7 +139,7 @@ async function evaluateUrl(url, reasonLabel = "Navigation en direct", tabId = nu
   try {
     const res = await fetch(BACKEND_ENDPOINT, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: backendHeaders(token),
       body: JSON.stringify({ url })
     });
 
@@ -237,6 +268,16 @@ async function transferToInvestigator(alertData) {
 
 // Handle message from content script injected on web pages
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.type === 'CYBERGUARD_AUTH_SYNC') {
+    urlCheckHistory.clear();
+    blockedUrls.clear();
+    const op = message.token
+      ? chrome.storage.local.set({ cg_token: message.token, cg_user: message.user || null })
+      : chrome.storage.local.remove(['cg_token', 'cg_user']);
+    Promise.resolve(op).then(() => sendResponse({ ok: true })).catch(() => sendResponse({ ok: false }));
+    return true;
+  }
+
   if (message.type === 'CYBERGUARD_INSPECT_PAGE' && message.url) {
     evaluateUrl(message.url, "Chargement de page", sender.tab?.id).then(data => {
       sendResponse({ success: true, data });

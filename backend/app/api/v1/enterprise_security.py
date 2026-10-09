@@ -101,9 +101,21 @@ class PolicySettingsUpdate(BaseModel):
     redirect_to_block_page: Optional[bool] = None
     custom_blacklist: Optional[list] = None
     custom_whitelist: Optional[list] = None
+    ml_auto_block_phishing: Optional[bool] = None
+    shannon_entropy_detection: Optional[bool] = None
+    external_threat_intel: Optional[bool] = None
+    waf_autoban_hostile_ips: Optional[bool] = None
+    honeypot_active_defense: Optional[bool] = None
+    sha256_forensic_sealing: Optional[bool] = None
+    sentinel_realtime_protection: Optional[bool] = None
+    audio_alert_chimes: Optional[bool] = None
+
+    class Config:
+        extra = "allow"
 
 class ContentFilterTestRequest(BaseModel):
     url: str
+    user_id: Optional[str] = None
 
 @router.get("/policy-settings")
 def get_policy_settings():
@@ -111,35 +123,39 @@ def get_policy_settings():
     return load_policy_settings()
 
 @router.post("/policy-settings")
-def update_policy_settings(req: PolicySettingsUpdate):
-    """Update content filtering policies (adult content, gambling, enforcement mode)."""
+def update_policy_settings(req: Dict[str, Any]):
+    """Update content filtering policies (adult content, gambling, enforcement mode) and system toggles."""
     current = load_policy_settings()
-    if req.block_adult_content is not None:
-        current["block_adult_content"] = req.block_adult_content
-    if req.block_gambling is not None:
-        current["block_gambling"] = req.block_gambling
-    if req.enforcement_mode is not None:
-        current["enforcement_mode"] = req.enforcement_mode.upper()
-    if req.school_shield_active is not None:
-        current["school_shield_active"] = req.school_shield_active
-    if req.redirect_to_block_page is not None:
-        current["redirect_to_block_page"] = req.redirect_to_block_page
-    if req.custom_blacklist is not None:
-        current["custom_blacklist"] = req.custom_blacklist
-    if req.custom_whitelist is not None:
-        current["custom_whitelist"] = req.custom_whitelist
+    for field, val in req.items():
+        if val is not None:
+            if field == "enforcement_mode" and isinstance(val, str):
+                current[field] = val.upper()
+            else:
+                current[field] = val
 
     success = save_policy_settings(current)
     if not success:
         raise HTTPException(status_code=500, detail="Failed to save policy settings")
+
+    # Invalidate in-memory caches so toggles take effect immediately without restart
+    try:
+        from app.api.v1.monitor import clear_sentinel_cache
+        clear_sentinel_cache()
+    except Exception:
+        pass
+
     return {"status": "updated", "settings": current}
+# Reload trigger - dynamic policy settings support
 
 @router.post("/content-filter/inspect")
-def inspect_url_content_policy(req: ContentFilterTestRequest):
+def inspect_url_content_policy(
+    req: ContentFilterTestRequest,
+    current_user = Depends(get_optional_user)
+):
     """Inspect an URL against active adult content and gambling protection policies."""
     if not req.url:
         raise HTTPException(status_code=400, detail="URL cannot be empty")
-    return check_url_content_policy(req.url)
+    return check_url_content_policy(req.url, user=current_user)
 
 
 # ── SYSTEM-WIDE AGENT (DNS + proxy) : état en mémoire ────────────────────

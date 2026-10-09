@@ -13,7 +13,9 @@
   "host_permissions": [
     "<all_urls>",
     "http://localhost:8000/*",
-    "http://localhost:3000/*"
+    "http://localhost:3000/*",
+    "http://127.0.0.1:8000/*",
+    "http://127.0.0.1:3000/*"
   ],
   "icons": {
     "16": "icon16.png",
@@ -29,6 +31,11 @@
       "css": ["sentinel.css"],
       "js": ["content.js"],
       "run_at": "document_start"
+    },
+    {
+      "matches": ["http://localhost:3000/*", "http://127.0.0.1:3000/*"],
+      "js": ["sync_auth.js"],
+      "run_at": "document_idle"
     }
   ],
   "action": {

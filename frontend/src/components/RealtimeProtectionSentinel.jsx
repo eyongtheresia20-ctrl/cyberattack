@@ -24,6 +24,8 @@ import { useAuth } from '../context/AuthContext';
 // Helper to synthesize subtle notification chimes without external mp3 files
 const playNotificationChime = (isSafe) => {
   try {
+    const audioSetting = localStorage.getItem('cyberguard_audio_chimes');
+    if (audioSetting === 'false') return;
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
     if (!AudioCtx) return;
     const ctx = new AudioCtx();
@@ -65,6 +67,17 @@ export default function RealtimeProtectionSentinel() {
     const saved = localStorage.getItem('cyberguard_sentinel_enabled');
     return saved !== null ? JSON.parse(saved) : true;
   });
+
+  // Listen to live settings changes from SettingsPage
+  useEffect(() => {
+    const onSettingsUpdated = (e) => {
+      if (e?.detail && typeof e.detail.sentinel_realtime_protection === 'boolean') {
+        setIsEnabled(e.detail.sentinel_realtime_protection);
+      }
+    };
+    window.addEventListener('cyberguard:settings-updated', onSettingsUpdated);
+    return () => window.removeEventListener('cyberguard:settings-updated', onSettingsUpdated);
+  }, []);
 
   // State: Stack of concurrent active alerts (allows multiple pop-ups simultaneously)
   const [activeAlerts, setActiveAlerts] = useState([]);

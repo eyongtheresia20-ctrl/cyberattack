@@ -222,6 +222,31 @@ class Guard:
 
 
 GUARD = Guard()
+_LAST_POLICY = {"v": None}
+
+
+def sync_policy() -> None:
+    """Détecte un changement des paramètres (page Paramètres) : vide le cache de décisions
+    de l'agent et le cache DNS Windows, pour que le (dé)blocage soit immédiat."""
+    try:
+        pol = api("/enterprise/policy-settings", timeout=2.0)
+    except Exception:
+        return
+    snap = json.dumps(pol, sort_keys=True)
+    if _LAST_POLICY["v"] is None:
+        _LAST_POLICY["v"] = snap
+        return
+    if snap != _LAST_POLICY["v"]:
+        _LAST_POLICY["v"] = snap
+        with GUARD.lock:
+            GUARD.cache.clear()
+        _recent.clear()
+        log("Paramètres modifiés -> cache de décisions vidé.")
+        if sys.platform == "win32":
+            try:
+                subprocess.run(["ipconfig", "/flushdns"], capture_output=True, timeout=10)
+            except Exception:
+                pass
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -279,6 +304,7 @@ def reporter_loop(stop: threading.Event) -> None:
                 last_beat = time.time()
         except Exception:
             pass
+        sync_policy()
         stop.wait(2.0)
 
 

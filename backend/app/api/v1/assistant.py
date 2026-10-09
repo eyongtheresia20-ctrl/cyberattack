@@ -80,23 +80,25 @@ SECURITY_KNOWLEDGE_BASE = {
     },
     "phishing": {
         "en": {
-            "title": "Defensive Guide: Countering Email & URL Phishing Campaigns",
-            "explanation": "Phishing deceives targets into disclosing sensitive credentials or clicking malicious download links by spoofing authentic brands, urgent bank alerts, or package delivery notices.",
+            "title": "Comprehensive Guide: What is Phishing & How to Defend Against It",
+            "explanation": "Phishing is a social engineering cyberattack where malicious actors impersonate trusted organizations (banks, delivery services, IT departments, cloud providers) to deceive victims into revealing sensitive information (passwords, 2FA codes, credit cards) or executing malicious payloads. Common variants include Smishing (SMS phishing), Spear Phishing (targeted attacks), Vishing (voice phishing), and Whaling (targeting executives).",
             "recommendations": [
-                "Always inspect the domain name in URLs for typosquatting (e.g., paypa1.com vs paypal.com).",
-                "Configure Email Authentication Protocols: SPF, DKIM, and DMARC (p=reject).",
-                "Never submit passwords or MFA codes via links sent in unsolicited emails or SMS messages.",
-                "Use CyberGuard's URL Scanner to verify suspicious links with Random Forest ML before opening."
+                "Inspect the domain name in URLs for typosquatting and suspicious TLDs (e.g., paypa1.com vs paypal.com, or .xyz/.top).",
+                "Analyze language patterns: Phishing frequently uses false urgency ('Account suspended in 24h!'), fear, or unrealistic rewards.",
+                "Verify email authentication protocols: Ensure SPF, DKIM, and DMARC (p=reject) are enforced.",
+                "Never submit passwords or MFA verification codes on links received via unsolicited emails, SMS, or chat messages.",
+                "Use CyberGuard's AI Scanner to verify suspicious links, messages, and emails with Machine Learning before interacting."
             ]
         },
         "fr": {
-            "title": "Guide Défensif : Contrer les Campagnes de Phishing par Email et URL",
-            "explanation": "Le phishing trompe les cibles pour qu'elles divulguent des identifiants sensibles ou cliquent sur des liens malveillants en se faisant passer pour des marques authentiques, des alertes bancaires urgentes ou des avis de livraison.",
+            "title": "Guide Complet : Qu'est-ce que le Phishing & Comment s'en Protéger",
+            "explanation": "Le phishing (ou hameçonnage) est une cyberattaque par ingénierie sociale dans laquelle des cybercriminels usurpent l'identité d'un organisme ou d'un contact de confiance (banque, transporteur, service RH, plateforme cloud) afin de tromper la victime et l'inciter à divulguer des données confidentielles (mots de passe, codes 2FA, coordonnées bancaires) ou à ouvrir un lien malveillant. Ses variantes incluent le Smishing (SMS frauduleux), le Spear-phishing (ciblé), le Vishing (vocal) et le Whaling (ciblant les dirigeants).",
             "recommendations": [
-                "Inspectez toujours le nom de domaine dans les URL pour détecter le typosquatting (ex. : paypa1.com vs paypal.com).",
-                "Configurez les protocoles d'authentification e-mail : SPF, DKIM et DMARC (p=reject).",
-                "Ne soumettez jamais de mots de passe ou de codes MFA via des liens envoyés dans des e-mails ou SMS non sollicités.",
-                "Utilisez le scanner URL de CyberGuard pour vérifier les liens suspects avec le ML Random Forest avant de les ouvrir."
+                "Inspectez systématiquement le nom de domaine complet dans l'URL pour repérer le typosquatting (ex: paypa1.com au lieu de paypal.com).",
+                "Identifiez les leviers psychologiques : fausse urgence ('Compte bloqué sous 24h !'), menaces juridiques ou promesses financières suspectes.",
+                "Configurez et auditez les protocoles de messagerie sécurisés : SPF, DKIM et DMARC (politique de rejet p=reject).",
+                "Ne saisissez JAMAIS d'identifiants, de mots de passe ou de codes bancaires via un lien reçu dans un message non sollicité.",
+                "Utilisez le scanner IA CyberGuard (Random Forest & NLP) pour analyser tout lien, SMS ou email suspect avant de cliquer."
             ]
         }
     },
@@ -228,7 +230,7 @@ def security_assistant_chat(
     if not ai_text and settings.GEMINI_API_KEY:
         try:
             lang_instruction = "Réponds entièrement en français." if lang == "fr" else "Respond in English."
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key={settings.GEMINI_API_KEY}"
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={settings.GEMINI_API_KEY}"
             res = requests.post(
                 url,
                 json={

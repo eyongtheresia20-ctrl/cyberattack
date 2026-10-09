@@ -1,4 +1,6 @@
+import json
 from datetime import datetime, timezone
+from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
@@ -7,6 +9,18 @@ from app.db.models import UtilisateurStandard, Enqueteur, Administrateur, AuditL
 from app.api.v1.auth import get_current_user, find_user_by_id
 
 router = APIRouter(prefix="/users", tags=["User Management"])
+
+def _extract_user_json(val, default):
+    if val is None:
+        return default
+    if isinstance(val, (list, dict)):
+        return val
+    if isinstance(val, str):
+        try:
+            return json.loads(val)
+        except Exception:
+            return default
+    return default
 
 class RoleUpdateRequest(BaseModel):
     new_role: str # UTILISATEUR_STANDARD or ENQUETEUR
@@ -30,7 +44,9 @@ def list_users(current_user=Depends(get_current_user), db: Session = Depends(get
                     hashed_password=std.hashed_password,
                     role="ENQUETEUR",
                     badge_number=f"SOC-{std.id[:8]}",
-                    is_active=std.is_active
+                    is_active=std.is_active,
+                    blocked_sites=_extract_user_json(getattr(std, "blocked_sites", None), []),
+                    permissions=_extract_user_json(getattr(std, "permissions", None), {})
                 )
                 db.delete(std)
                 db.add(new_enq)
@@ -47,18 +63,54 @@ def list_users(current_user=Depends(get_current_user), db: Session = Depends(get
         user_list.append({
             "id": u.id, "nom": u.nom, "prenom": u.prenom, "email": u.email,
             "role": u.role, "table": "utilisateurs_standards", "is_active": u.is_active,
+            "blocked_sites": _extract_user_json(getattr(u, "blocked_sites", None), []),
+            "permissions": _extract_user_json(getattr(u, "permissions", None), {
+                "can_analyze_url": True,
+                "can_analyze_message": True,
+                "can_view_reports": True,
+                "can_submit_incidents": True,
+                "can_export_pdf": True,
+                "block_social_media": False,
+                "block_streaming": False,
+                "block_adult_content": True,
+                "block_gambling": True
+            }),
             "created_at": u.created_at.isoformat() if u.created_at else None
         })
     for u in enqs:
         user_list.append({
             "id": u.id, "nom": u.nom, "prenom": u.prenom, "email": u.email,
             "role": u.role, "table": "enqueteurs", "is_active": u.is_active,
+            "blocked_sites": _extract_user_json(getattr(u, "blocked_sites", None), []),
+            "permissions": _extract_user_json(getattr(u, "permissions", None), {
+                "can_analyze_url": True,
+                "can_analyze_message": True,
+                "can_view_reports": True,
+                "can_submit_incidents": True,
+                "can_export_pdf": True,
+                "block_social_media": False,
+                "block_streaming": False,
+                "block_adult_content": True,
+                "block_gambling": True
+            }),
             "created_at": u.created_at.isoformat() if u.created_at else None
         })
     for u in adms:
         user_list.append({
             "id": u.id, "nom": u.nom, "prenom": u.prenom, "email": u.email,
             "role": u.role, "table": "administrateurs", "is_active": u.is_active,
+            "blocked_sites": [],
+            "permissions": {
+                "can_analyze_url": True,
+                "can_analyze_message": True,
+                "can_view_reports": True,
+                "can_submit_incidents": True,
+                "can_export_pdf": True,
+                "block_social_media": False,
+                "block_streaming": False,
+                "block_adult_content": False,
+                "block_gambling": False
+            },
             "created_at": u.created_at.isoformat() if u.created_at else None
         })
         
@@ -191,7 +243,9 @@ def update_user_role(
     }
 
 class StatusUpdateRequest(BaseModel):
-    is_active: bool
+    is_active: Optional[bool] = None
+    blocked_sites: Optional[List[str]] = None
+    permissions: Optional[Dict[str, Any]] = None
 
 @router.patch("/{user_id}/status", response_model=dict)
 def toggle_user_status(
@@ -208,33 +262,205 @@ def toggle_user_status(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Utilisateur introuvable")
 
     if target_user.role == "ADMINISTRATEUR" or isinstance(target_user, Administrateur):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Protégé : Les comptes Administrateur ne peuvent pas être désactivés.")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Protégé : Les comptes Administrateur ne peuvent pas être restreints.")
 
-    target_user.is_active = req.is_active
-    audit = AuditLog(
-        actor=f"{current_user.prenom} {current_user.nom}",
-        action="UPDATE_USER_STATUS",
-        target=target_user.email,
-        details=f"Statut utilisateur mis à jour : {'Activé / Approuvé' if req.is_active else 'Désactivé'}"
-    )
-    db.add(audit)
+    if req.is_active is not None:
+        target_user.is_active = req.is_active
+
+    if req.blocked_sites is not None:
+        clean_sites = []
+        for s in req.blocked_sites:
+            domain = (s or "").strip().lower().replace("http://", "").replace("https://", "").split("/")[0].strip()
+            if domain and domain not in clean_sites:
+                clean_sites.append(domain)
+        target_user.blocked_sites = clean_sites
+
+    if req.permissions is not None:
+        current_perms = _extract_user_json(getattr(target_user, "permissions", None), {})
+        current_perms.update(req.permissions)
+        target_user.permissions = current_perms
+
     db.commit()
 
     # Sync to MongoDB
     try:
         from app.db.mongodb import mongo_collections, log_mongo_audit
+        update_doc = {
+            "is_active": target_user.is_active,
+            "blocked_sites": getattr(target_user, "blocked_sites", []),
+            "permissions": getattr(target_user, "permissions", {})
+        }
         for col in [mongo_collections.users, mongo_collections.investigators]:
-            col.update_one({"id": str(user_id)}, {"$set": {"is_active": req.is_active}})
-        log_mongo_audit(
-            actor=f"{current_user.prenom} {current_user.nom}",
-            action="UPDATE_USER_STATUS",
-            target=target_user.email,
-            details=f"Statut utilisateur mis à jour : {'Activé / Approuvé' if req.is_active else 'Désactivé'}"
-        )
+            col.update_one({"id": str(user_id)}, {"$set": update_doc})
     except Exception as _me:
-        print(f"[MongoDB Sync Warning] Status: {_me}")
+        pass
 
-    return {"success": True, "message": f"Statut de {target_user.email} mis à jour : {'Activé' if req.is_active else 'Désactivé'}", "is_active": target_user.is_active}
+    return {
+        "success": True,
+        "message": f"Utilisateur {target_user.email} mis à jour avec succès",
+        "is_active": target_user.is_active,
+        "user": {
+            "id": target_user.id,
+            "email": target_user.email,
+            "is_active": target_user.is_active,
+            "blocked_sites": getattr(target_user, "blocked_sites", []) or [],
+            "permissions": getattr(target_user, "permissions", {}) or {}
+        }
+    }
+
+class UserPermissionsUpdateRequest(BaseModel):
+    role: Optional[str] = None
+    is_active: Optional[bool] = None
+    blocked_sites: Optional[List[str]] = None
+    permissions: Optional[Dict[str, Any]] = None
+
+@router.get("/{user_id}/permissions", response_model=dict)
+def get_user_permissions(
+    user_id: str,
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Retrieve fine-grained permissions and blocked sites for a specific user."""
+    if current_user.role != "ADMINISTRATEUR":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Accès réservé aux Administrateurs")
+
+    target_user = find_user_by_id(user_id, db)
+    if not target_user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Utilisateur introuvable")
+
+    blocked_sites = _extract_user_json(getattr(target_user, "blocked_sites", None), [])
+    permissions = _extract_user_json(getattr(target_user, "permissions", None), {
+        "can_analyze_url": True,
+        "can_analyze_message": True,
+        "can_view_reports": True,
+        "can_submit_incidents": True,
+        "can_export_pdf": True,
+        "block_social_media": False,
+        "block_streaming": False,
+        "block_adult_content": True,
+        "block_gambling": True
+    })
+
+    return {
+        "user_id": str(target_user.id),
+        "nom": target_user.nom,
+        "prenom": target_user.prenom,
+        "email": target_user.email,
+        "role": target_user.role,
+        "is_active": target_user.is_active,
+        "blocked_sites": blocked_sites,
+        "permissions": permissions
+    }
+
+@router.patch("/{user_id}/permissions", response_model=dict)
+def update_user_permissions(
+    user_id: str,
+    req: UserPermissionsUpdateRequest,
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Update role, account status, functional permissions, and custom blocked sites for a specific user."""
+    if current_user.role != "ADMINISTRATEUR":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Accès réservé aux Administrateurs")
+
+    target_user = find_user_by_id(user_id, db)
+    if not target_user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Utilisateur introuvable")
+
+    if target_user.role == "ADMINISTRATEUR" or isinstance(target_user, Administrateur):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Protégé : Les comptes Administrateur ne peuvent pas être restreints.")
+
+    # 1. Role Change
+    if req.role and req.role != target_user.role and req.role in ["UTILISATEUR_STANDARD", "ENQUETEUR"]:
+        old_role = target_user.role
+        if req.role == "ENQUETEUR" and not isinstance(target_user, Enqueteur):
+            new_u = Enqueteur(
+                id=target_user.id,
+                nom=target_user.nom,
+                prenom=target_user.prenom,
+                email=target_user.email,
+                hashed_password=target_user.hashed_password,
+                role="ENQUETEUR",
+                badge_number=f"SOC-{target_user.id[:8]}",
+                is_active=target_user.is_active,
+                blocked_sites=getattr(target_user, "blocked_sites", []),
+                permissions=getattr(target_user, "permissions", {})
+            )
+            db.delete(target_user)
+            db.add(new_u)
+            target_user = new_u
+        elif req.role == "UTILISATEUR_STANDARD" and not isinstance(target_user, UtilisateurStandard):
+            new_u = UtilisateurStandard(
+                id=target_user.id,
+                nom=target_user.nom,
+                prenom=target_user.prenom,
+                email=target_user.email,
+                hashed_password=target_user.hashed_password,
+                role="UTILISATEUR_STANDARD",
+                is_active=target_user.is_active,
+                blocked_sites=getattr(target_user, "blocked_sites", []),
+                permissions=getattr(target_user, "permissions", {})
+            )
+            db.delete(target_user)
+            db.add(new_u)
+            target_user = new_u
+
+    # 2. Account Status (is_active)
+    if req.is_active is not None:
+        target_user.is_active = req.is_active
+
+    # 3. Blocked Sites (Specific sites blocked for this user)
+    if req.blocked_sites is not None:
+        clean_sites = []
+        for s in req.blocked_sites:
+            domain = (s or "").strip().lower().replace("http://", "").replace("https://", "").split("/")[0].strip()
+            if domain and domain not in clean_sites:
+                clean_sites.append(domain)
+        target_user.blocked_sites = clean_sites
+
+    # 4. Functional Permissions
+    if req.permissions is not None:
+        current_perms = _extract_user_json(getattr(target_user, "permissions", None), {})
+        current_perms.update(req.permissions)
+        target_user.permissions = current_perms
+
+    audit = AuditLog(
+        actor=f"{current_user.prenom} {current_user.nom}",
+        action="UPDATE_USER_PERMISSIONS",
+        target=target_user.email,
+        details=f"Mise à jour des autorisations et restrictions de sites ({len(getattr(target_user, 'blocked_sites', []) or [])} sites bloqués)"
+    )
+    db.add(audit)
+    db.commit()
+
+    # Sync with MongoDB
+    try:
+        from app.db.mongodb import mongo_collections
+        update_doc = {
+            "is_active": target_user.is_active,
+            "role": target_user.role,
+            "blocked_sites": getattr(target_user, "blocked_sites", []),
+            "permissions": getattr(target_user, "permissions", {})
+        }
+        for col in [mongo_collections.users, mongo_collections.investigators]:
+            col.update_one({"id": str(target_user.id)}, {"$set": update_doc})
+    except Exception as _e:
+        pass
+
+    return {
+        "success": True,
+        "message": f"Autorisations de {target_user.prenom} {target_user.nom} mises à jour avec succès",
+        "user": {
+            "id": target_user.id,
+            "email": target_user.email,
+            "nom": target_user.nom,
+            "prenom": target_user.prenom,
+            "role": target_user.role,
+            "is_active": target_user.is_active,
+            "blocked_sites": getattr(target_user, "blocked_sites", []) or [],
+            "permissions": getattr(target_user, "permissions", {}) or {}
+        }
+    }
 
 @router.delete("/{user_id}", response_model=dict)
 def delete_user(

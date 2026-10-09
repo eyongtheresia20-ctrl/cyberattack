@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   Settings, Sliders, Shield, Lock, Ban, Zap, Eye, CheckCircle2, 
   AlertTriangle, RefreshCw, Save, Terminal, Radio, BellRing, 
-  Volume2, Cpu, HardDrive, KeyRound, ExternalLink, Globe
+  Volume2, Cpu, HardDrive, KeyRound, ExternalLink, Globe, Plus, Trash2, X
 } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
 import { useNavigate } from 'react-router-dom';
@@ -19,6 +19,8 @@ export default function SettingsPage() {
     enforcement_mode: 'BLOCK', // 'BLOCK' | 'WARN' | 'ALLOW'
     school_shield_active: true,
     redirect_to_block_page: true,
+    custom_blacklist: [],
+    custom_whitelist: [],
 
     // Machine Learning & Threat Intel
     ml_auto_block_phishing: true,
@@ -38,6 +40,27 @@ export default function SettingsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [newBlacklistDomain, setNewBlacklistDomain] = useState('');
+
+  const addBlacklistDomain = (domainToAdd = null) => {
+    const raw = (domainToAdd || newBlacklistDomain || '').trim().toLowerCase();
+    const clean = raw.replace(/^https?:\/\//, '').split('/')[0].trim();
+    if (!clean || !clean.includes('.')) return;
+    const currentList = Array.isArray(settings.custom_blacklist) ? settings.custom_blacklist : [];
+    if (!currentList.includes(clean)) {
+      const updated = { ...settings, custom_blacklist: [...currentList, clean] };
+      setSettings(updated);
+      persistSettings(updated);
+    }
+    setNewBlacklistDomain('');
+  };
+
+  const removeBlacklistDomain = (domainToRemove) => {
+    const currentList = Array.isArray(settings.custom_blacklist) ? settings.custom_blacklist : [];
+    const updated = { ...settings, custom_blacklist: currentList.filter(d => d !== domainToRemove) };
+    setSettings(updated);
+    persistSettings(updated);
+  };
 
   // Load existing settings
   useEffect(() => {
@@ -63,41 +86,43 @@ export default function SettingsPage() {
     fetchSettings();
   }, []);
 
-  const toggleSetting = (key) => {
-    setSettings(prev => ({ ...prev, [key]: !prev[key] }));
-    setSaveSuccess(false);
-  };
-
-  const handleSave = async () => {
+  const persistSettings = async (updatedSettings) => {
     setIsSaving(true);
     try {
-      // 1. Save to backend API
+      // 1. Save all settings to backend API
       const res = await fetch('/api/v1/enterprise/policy-settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          block_adult_content: settings.block_adult_content,
-          block_gambling: settings.block_gambling,
-          enforcement_mode: settings.enforcement_mode,
-          school_shield_active: settings.school_shield_active,
-          redirect_to_block_page: settings.redirect_to_block_page
-        })
+        body: JSON.stringify(updatedSettings)
       });
 
       // 2. Save local Sentinel preferences
-      localStorage.setItem('cyberguard_sentinel_enabled', JSON.stringify(settings.sentinel_realtime_protection));
-      localStorage.setItem('cyberguard_audio_chimes', JSON.stringify(settings.audio_alert_chimes));
-      localStorage.setItem('cyberguard_redirect_block_page', JSON.stringify(settings.redirect_to_block_page));
+      localStorage.setItem('cyberguard_sentinel_enabled', JSON.stringify(updatedSettings.sentinel_realtime_protection));
+      localStorage.setItem('cyberguard_audio_chimes', JSON.stringify(updatedSettings.audio_alert_chimes));
+      localStorage.setItem('cyberguard_redirect_block_page', JSON.stringify(updatedSettings.redirect_to_block_page));
+
+      // 3. Broadcast to all open tabs and active components
+      window.dispatchEvent(new CustomEvent('cyberguard:settings-updated', { detail: updatedSettings }));
 
       if (res.ok) {
         setSaveSuccess(true);
-        setTimeout(() => setSaveSuccess(false), 3000);
+        setTimeout(() => setSaveSuccess(false), 2500);
       }
     } catch (e) {
       console.error('Error saving settings:', e);
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const toggleSetting = (key) => {
+    const updated = { ...settings, [key]: !settings[key] };
+    setSettings(updated);
+    persistSettings(updated);
+  };
+
+  const handleSave = () => {
+    persistSettings(settings);
   };
 
   return (
@@ -185,8 +210,10 @@ export default function SettingsPage() {
             <select
               value={settings.enforcement_mode}
               onChange={(e) => {
-                setSettings(prev => ({ ...prev, enforcement_mode: e.target.value }));
-                setSaveSuccess(false);
+                const newMode = e.target.value;
+                const updated = { ...settings, enforcement_mode: newMode };
+                setSettings(updated);
+                persistSettings(updated);
               }}
               className="px-2.5 py-1 text-xs font-mono font-bold rounded-xl bg-slate-50 dark:bg-slate-800 border border-emerald-500/40 text-emerald-600 dark:text-emerald-400 focus:outline-none cursor-pointer"
             >
@@ -480,6 +507,117 @@ export default function SettingsPage() {
 
          {/* ── SECTION 5 : AGENT SYSTÈME ── */}
         <AgentCard lang={lang} />
+
+        {/* ── SECTION 6 : SITES BLOQUÉS DANS LES PARAMÈTRES (LISTE NOIRE DE L'ORGANISATION) ── */}
+        <div className="lg:col-span-2 p-6 bg-white dark:bg-[#111726] border border-rose-500/30 rounded-3xl space-y-5 shadow-sm">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800 gap-3">
+            <div className="flex items-center gap-2.5">
+              <span className="p-2 rounded-xl bg-rose-500/10 text-rose-600 dark:text-rose-400">
+                <Ban className="w-5 h-5" />
+              </span>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white uppercase font-mono">
+                  {lang === 'fr' ? "6. Sites Bloqués dans les Paramètres (Liste Noire de l'Organisation)" : "6. Blocked Sites in Settings (Organization Blacklist)"}
+                </h3>
+                <p className="text-[11px] text-slate-500">
+                  {lang === 'fr' 
+                    ? "Ces sites sont interdits dans la politique globale et peuvent être assignés individuellement aux utilisateurs."
+                    : "These sites are banned in global policy and can be specifically assigned to individual users."}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="px-3 py-1 rounded-full text-[11px] font-mono font-bold bg-rose-500/10 text-rose-500 border border-rose-500/30">
+                {(settings.custom_blacklist || []).length} {lang === 'fr' ? 'Site(s) Bloqué(s)' : 'Blocked Site(s)'}
+              </span>
+            </div>
+          </div>
+
+          {/* Quick-add suggestions */}
+          <div className="space-y-2">
+            <span className="text-[10px] uppercase font-mono font-bold text-slate-400 block">
+              {lang === 'fr' ? 'Ajout rapide en 1 clic (Sites les plus fréquents) :' : 'Quick 1-click presets:'}
+            </span>
+            <div className="flex flex-wrap gap-1.5">
+              {[
+                { label: 'Facebook', domain: 'facebook.com' },
+                { label: 'TikTok', domain: 'tiktok.com' },
+                { label: 'Instagram', domain: 'instagram.com' },
+                { label: 'Twitter / X', domain: 'x.com' },
+                { label: 'YouTube', domain: 'youtube.com' },
+                { label: 'Netflix', domain: 'netflix.com' },
+                { label: '1xBet', domain: '1xbet.com' },
+                { label: 'Betway', domain: 'betway.com' }
+              ].map(({ label, domain }) => {
+                const isAlready = (settings.custom_blacklist || []).includes(domain);
+                return (
+                  <button
+                    key={domain}
+                    type="button"
+                    onClick={() => isAlready ? removeBlacklistDomain(domain) : addBlacklistDomain(domain)}
+                    className={`px-2.5 py-1 rounded-xl text-xs font-mono font-bold border transition flex items-center gap-1.5 cursor-pointer ${
+                      isAlready 
+                        ? 'bg-rose-500/15 border-rose-500/40 text-rose-600 dark:text-rose-400' 
+                        : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-rose-400'
+                    }`}
+                  >
+                    <span>{isAlready ? '✓' : '+'}</span>
+                    <span>{label}</span>
+                    <span className="text-[10px] text-slate-400">({domain})</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Custom domain input */}
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={newBlacklistDomain}
+              onChange={(e) => setNewBlacklistDomain(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addBlacklistDomain(); } }}
+              placeholder={lang === 'fr' ? "Entrez un domaine à interdire (ex: reddit.com, telegram.org)..." : "Enter a domain to block (e.g. reddit.com)..."}
+              className="flex-1 px-3.5 py-2.5 bg-slate-50 dark:bg-[#161d2b] border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-rose-500 font-mono"
+            />
+            <button
+              type="button"
+              onClick={() => addBlacklistDomain()}
+              className="px-4 py-2.5 bg-rose-500 hover:bg-rose-600 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-md shadow-rose-500/20"
+            >
+              <Plus className="w-4 h-4" />
+              <span>{lang === 'fr' ? 'Bloquer ce site' : 'Block this site'}</span>
+            </button>
+          </div>
+
+          {/* Grid of currently blocked domains */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 max-h-60 overflow-y-auto pt-1">
+            {(settings.custom_blacklist || []).length === 0 ? (
+              <div className="col-span-full py-6 text-center text-xs text-slate-400 font-mono bg-slate-50/50 dark:bg-slate-800/30 rounded-2xl border border-dashed border-slate-200 dark:border-slate-800">
+                {lang === 'fr' 
+                  ? "Aucun domaine spécifique bloqué dans la liste personnalisée. Cliquez sur les suggestions ci-dessus ou ajoutez un domaine."
+                  : "No custom domains blocked yet. Click the presets above or enter a domain."}
+              </div>
+            ) : (
+              (settings.custom_blacklist || []).map((dom) => (
+                <div key={dom} className="flex items-center justify-between px-3 py-2 rounded-xl bg-rose-500/5 dark:bg-rose-950/20 border border-rose-500/20 text-xs font-mono">
+                  <span className="font-bold text-slate-900 dark:text-white flex items-center gap-2 truncate">
+                    <Ban className="w-3 h-3 text-rose-500 shrink-0" />
+                    <span className="truncate">{dom}</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => removeBlacklistDomain(dom)}
+                    className="p-1 text-slate-400 hover:text-rose-500 transition cursor-pointer"
+                    title={lang === 'fr' ? 'Débloquer' : 'Unblock'}
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
 
       </div>
 

@@ -29,7 +29,15 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "school_shield_active": True,
     "redirect_to_block_page": True,
     "custom_blacklist": [],
-    "custom_whitelist": []
+    "custom_whitelist": [],
+    "ml_auto_block_phishing": True,
+    "shannon_entropy_detection": True,
+    "external_threat_intel": True,
+    "waf_autoban_hostile_ips": True,
+    "honeypot_active_defense": True,
+    "sha256_forensic_sealing": True,
+    "sentinel_realtime_protection": True,
+    "audio_alert_chimes": True
 }
 
 # ── 1. SIGNATURES DE DOMAINES ADULTES & EXPLICITES CONNUS ───────────────────────
@@ -102,9 +110,9 @@ def save_policy_settings(settings: Dict[str, Any]) -> bool:
         return False
 
 
-def check_url_content_policy(raw_url: str) -> Dict[str, Any]:
+def check_url_content_policy(raw_url: str, user: Any = None) -> Dict[str, Any]:
     """
-    Inspecte une URL contre les politiques de filtrage de contenu adulte et de jeux d'argent.
+    Inspecte une URL contre les politiques de filtrage de contenu (globales et spécifiques à l'utilisateur).
     Renvoie le verdict, la catégorie, les raisons et l'action à appliquer (BLOCK / WARN / ALLOW).
     """
     settings = load_policy_settings()
@@ -113,7 +121,7 @@ def check_url_content_policy(raw_url: str) -> Dict[str, Any]:
     enforcement = settings.get("enforcement_mode", "BLOCK")
 
     url = (raw_url or "").strip().lower()
-    if not url or not settings.get("school_shield_active", True):
+    if not url:
         return {
             "is_restricted": False,
             "category": "CLEAN",
@@ -128,6 +136,114 @@ def check_url_content_policy(raw_url: str) -> Dict[str, Any]:
     path = parsed.path or ""
     query = parsed.query or ""
     full_target = f"{domain}{path}?{query}"
+
+    # 0. VÉRIFICATION STRICTE DES SITES BLOQUÉS SPÉCIFIQUEMENT POUR CET UTILISATEUR
+    if user:
+        raw_bs = getattr(user, "blocked_sites", None)
+        user_blocked_sites = []
+        if isinstance(raw_bs, list):
+            user_blocked_sites = list(raw_bs)
+        elif isinstance(raw_bs, str):
+            try:
+                user_blocked_sites = json.loads(raw_bs)
+            except Exception:
+                user_blocked_sites = []
+
+        # Check real-time user restrictions dynamically synced in settings
+        u_id = str(getattr(user, "id", ""))
+        u_email = str(getattr(user, "email", "")).lower()
+        user_res_map = settings.get("user_restrictions", {})
+        specific_res = user_res_map.get(u_id) or user_res_map.get(u_email) or {}
+        if specific_res.get("blocked_sites"):
+            for s in specific_res["blocked_sites"]:
+                if s not in user_blocked_sites:
+                    user_blocked_sites.append(s)
+
+        for bs in user_blocked_sites:
+            clean_bs = (bs or "").strip().lower()
+            if clean_bs and (domain == clean_bs or domain.endswith("." + clean_bs) or clean_bs in domain):
+                return {
+                    "url": raw_url,
+                    "is_restricted": True,
+                    "is_adult": False,
+                    "is_gambling": False,
+                    "category": "SITE BLOQUÉ PAR L'ADMINISTRATEUR",
+                    "action": "BLOCK",
+                    "reasons": [f"L'accès au site '{clean_bs}' est formellement interdit pour votre compte par l'Administrateur SOC."],
+                    "blocked_by_user_policy": True,
+                    "redirect_to_block_page": True,
+                    "enforcement_mode": "BLOCK"
+                }
+
+        # Vérification des catégories personnalisées de l'utilisateur
+        raw_perms = getattr(user, "permissions", None)
+        user_perms = {}
+        if isinstance(raw_perms, dict):
+            user_perms = dict(raw_perms)
+        elif isinstance(raw_perms, str):
+            try:
+                user_perms = json.loads(raw_perms)
+            except Exception:
+                user_perms = {}
+        if specific_res.get("permissions"):
+            user_perms.update(specific_res["permissions"])
+        # Si l'administrateur a coché "Bloquer tous les sites assignés dans les paramètres"
+        if user_perms.get("block_all_settings_sites"):
+            blacklist = settings.get("custom_blacklist", [])
+            for b in blacklist:
+                clean_b = (b or "").strip().lower()
+                if clean_b and (domain == clean_b or domain.endswith("." + clean_b) or clean_b in domain):
+                    return {
+                        "url": raw_url,
+                        "is_restricted": True,
+                        "is_adult": False,
+                        "is_gambling": False,
+                        "category": "SITE BLOQUÉ PAR L'ADMINISTRATEUR",
+                        "action": "BLOCK",
+                        "reasons": [f"Ce site '{clean_b}' fait partie des sites interdits assignés depuis les Paramètres pour votre compte."],
+                        "blocked_by_user_policy": True,
+                        "redirect_to_block_page": True,
+                        "enforcement_mode": "BLOCK"
+                    }
+
+        if user_perms.get("block_social_media"):
+            social_domains = ["facebook.com", "instagram.com", "twitter.com", "x.com", "tiktok.com", "linkedin.com", "snapchat.com", "reddit.com", "pinterest.com"]
+            if any(domain == sd or domain.endswith("." + sd) or sd in domain for sd in social_domains):
+                return {
+                    "url": raw_url,
+                    "is_restricted": True,
+                    "is_adult": False,
+                    "is_gambling": False,
+                    "category": "RÉSEAU SOCIAL BLOQUÉ",
+                    "action": "BLOCK",
+                    "reasons": ["Les réseaux sociaux sont bloqués pour votre profil utilisateur par l'administrateur."],
+                    "blocked_by_user_policy": True,
+                    "redirect_to_block_page": True
+                }
+
+        if user_perms.get("block_streaming"):
+            stream_domains = ["youtube.com", "netflix.com", "twitch.tv", "dailymotion.com", "disneyplus.com", "primevideo.com", "tiktok.com"]
+            if any(domain == st or domain.endswith("." + st) or st in domain for st in stream_domains):
+                return {
+                    "url": raw_url,
+                    "is_restricted": True,
+                    "is_adult": False,
+                    "is_gambling": False,
+                    "category": "STREAMING VIDÉO BLOQUÉ",
+                    "action": "BLOCK",
+                    "reasons": ["Les plateformes de streaming vidéo sont bloquées pour votre profil utilisateur."],
+                    "blocked_by_user_policy": True,
+                    "redirect_to_block_page": True
+                }
+
+    if not settings.get("school_shield_active", True):
+        return {
+            "is_restricted": False,
+            "category": "CLEAN",
+            "action": "ALLOW",
+            "reasons": [],
+            "redirect_to_block_page": settings.get("redirect_to_block_page", True)
+        }
 
     matched_reasons: List[str] = []
     category = "CLEAN"
@@ -147,11 +263,20 @@ def check_url_content_policy(raw_url: str) -> Dict[str, Any]:
     # 2. Vérification Blacklist personnalisée
     blacklist = settings.get("custom_blacklist", [])
     for b in blacklist:
-        if b.strip() and b.lower() in domain:
-            is_adult = True
-            category = "CUSTOM_BLACKLIST"
-            matched_reasons.append(f"Domaine explicitement bloqué par l'administrateur ({b})")
-            break
+        clean_b = (b or "").strip().lower()
+        if clean_b and (domain == clean_b or domain.endswith("." + clean_b) or clean_b in domain):
+            return {
+                "url": raw_url,
+                "is_restricted": True,
+                "is_adult": False,
+                "is_gambling": False,
+                "category": "SITE BLOQUÉ PAR L'ADMINISTRATEUR (PARAMÈTRES)",
+                "action": "BLOCK",
+                "reasons": [f"Ce domaine '{clean_b}' est expressément bloqué dans les Paramètres de sécurité SOC."],
+                "blocked_by_user_policy": False,
+                "redirect_to_block_page": settings.get("redirect_to_block_page", True),
+                "enforcement_mode": "BLOCK"
+            }
 
     # 3. Vérification des Domaines Adultes Réputés
     if not is_adult:
@@ -206,27 +331,32 @@ def check_url_content_policy(raw_url: str) -> Dict[str, Any]:
                 matched_reasons.append(f"Présence d'indicateurs de paris ou casino en ligne : {', '.join(set(found_gkw[:2]))}")
 
     # 7. Détermination de la restriction selon la politique configurée
+    effective_is_adult = is_adult if block_adult else False
+    effective_is_gambling = is_gambling if block_gambling else False
+
     is_restricted = False
     action = "ALLOW"
 
-    if is_adult and block_adult:
+    if enforcement == "ALLOW":
+        is_restricted = False
+        action = "ALLOW"
+    elif effective_is_adult:
         is_restricted = True
         action = enforcement
-    elif is_gambling and block_gambling:
+    elif effective_is_gambling:
         is_restricted = True
         action = enforcement
-    elif (is_adult or is_gambling) and enforcement == "WARN":
-        is_restricted = True
-        action = "WARN"
 
     return {
         "url": raw_url,
         "is_restricted": is_restricted,
-        "is_adult": is_adult,
-        "is_gambling": is_gambling,
-        "category": category,
+        "is_adult": effective_is_adult,
+        "is_gambling": effective_is_gambling,
+        "raw_is_adult": is_adult,
+        "raw_is_gambling": is_gambling,
+        "category": category if is_restricted else "CLEAN",
         "action": action,
-        "reasons": matched_reasons,
+        "reasons": matched_reasons if is_restricted else [],
         "enforcement_mode": enforcement,
         "redirect_to_block_page": settings.get("redirect_to_block_page", True),
         "school_shield_active": settings.get("school_shield_active", True)

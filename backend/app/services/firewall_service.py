@@ -91,6 +91,12 @@ def block_ip_address(ip: str, reason: str = "Interception WAF d'attaque critique
     Ajoute ou actualise une adresse IP dans la liste noire active du pare-feu dynamique.
     Appliqué immédiatement sans redémarrage du serveur.
     """
+    from app.services.content_filter_service import load_policy_settings
+    settings = load_policy_settings()
+    # Check if automated ban is disabled
+    if "Auto" in blocked_by and not settings.get("waf_autoban_hostile_ips", True):
+        return {"ip": ip, "reason": reason, "status": "AUTO_BAN_DISABLED_BY_POLICY"}
+
     entry = {
         "ip": ip,
         "reason": reason,
@@ -118,13 +124,20 @@ def record_honeypot_hit(trap_endpoint: str, attacker_ip: str, user_agent: str = 
     Enregistre une tentative d'intrusion sur un leurre Honeypot et applique
     instantanément un bannissement automatique de l'IP hostile dans le pare-feu.
     """
-    # Bannissement automatique immédiat de l'attaquant dans la blacklist active
-    block_ip_address(
-        ip=attacker_ip,
-        reason=f"Sonde hostile interceptée sur le piège Honeypot {trap_endpoint}",
-        severity="CRITICAL",
-        blocked_by="CyberGuard Honeypot Auto-Blacklist"
-    )
+    from app.services.content_filter_service import load_policy_settings
+    settings = load_policy_settings()
+
+    if not settings.get("honeypot_active_defense", True):
+        return {"status": "HONEYPOT_INACTIF"}
+
+    # Bannissement automatique de l'attaquant si l'auto-ban est activé
+    if settings.get("waf_autoban_hostile_ips", True):
+        block_ip_address(
+            ip=attacker_ip,
+            reason=f"Sonde hostile interceptée sur le piège Honeypot {trap_endpoint}",
+            severity="CRITICAL",
+            blocked_by="CyberGuard Honeypot Auto-Blacklist"
+        )
     hit = {
         "id": f"HNY-{len(_HONEYPOT_HITS) + 1:02d}",
         "trap_endpoint": trap_endpoint,
@@ -133,7 +146,7 @@ def record_honeypot_hit(trap_endpoint: str, attacker_ip: str, user_agent: str = 
         "timestamp": time.strftime("%d/%m/%Y %H:%M:%S", time.localtime()),
         "user_agent": user_agent[:60],
         "payload": payload[:100] or "Sonde d'empreinte automatisée",
-        "status": "PIÉGÉ & BANNI AUTOMATIQUEMENT"
+        "status": "PIÉGÉ & BANNI AUTOMATIQUEMENT" if settings.get("waf_autoban_hostile_ips", True) else "PIÉGÉ (Bannissement Désactivé)"
     }
     _HONEYPOT_HITS.insert(0, hit)
     return hit

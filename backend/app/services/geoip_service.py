@@ -1,7 +1,11 @@
 import requests
 import socket
+import time
 from urllib.parse import urlparse
 from typing import Dict, Any
+
+_GEOIP_CACHE: Dict[str, Any] = {}
+_CACHE_TTL = 300  # Cache GeoIP results for 5 minutes
 
 # CDN & Cloud Provider ASNs — legitimate traffic
 CDN_PROVIDERS = {
@@ -143,6 +147,14 @@ def lookup_ip_geolocation(ip_address: str, domain_context: str = "",
     if not ip_address:
         ip_address = "104.28.19.44"
 
+    # Fast in-memory TTL Cache check
+    cache_key = ip_address.strip()
+    now_ts = time.time()
+    if cache_key in _GEOIP_CACHE:
+        cached_ts, cached_val = _GEOIP_CACHE[cache_key]
+        if now_ts - cached_ts < _CACHE_TTL:
+            return cached_val
+
     country = "United States"
     city = "San Francisco"
     asn = "AS13335 (Cloudflare)"
@@ -152,11 +164,11 @@ def lookup_ip_geolocation(ip_address: str, domain_context: str = "",
     isp = "Cloudflare Inc"
     api_live = False
 
-    # ── 1. Live GeoIP Lookup ────────────────────────────────────────────────
+    # ── 1. Live GeoIP Lookup (Low-latency) ──────────────────────────────────
     try:
         url = (f"http://ip-api.com/json/{ip_address}"
                f"?fields=status,message,country,city,isp,org,as,mobile,proxy,hosting")
-        res = requests.get(url, timeout=3)
+        res = requests.get(url, timeout=1.2, proxies={"http": None, "https": None})
         if res.status_code == 200:
             info = res.json()
             if info.get("status") == "success":
@@ -170,7 +182,9 @@ def lookup_ip_geolocation(ip_address: str, domain_context: str = "",
                 api_live     = True
     except Exception as exc:
         print(f"[GeoIP] ip-api.com unavailable ({exc}) — switching to ML autonomous mode.")
-        return _ml_simulate_geoip(ip_address, features, domain_context)
+        sim_res = _ml_simulate_geoip(ip_address, features, domain_context)
+        _GEOIP_CACHE[cache_key] = (now_ts, sim_res)
+        return sim_res
 
     # ── 2. Post-process live result with ML enrichment ──────────────────────
     asn_upper = asn.upper()
@@ -229,7 +243,7 @@ def lookup_ip_geolocation(ip_address: str, domain_context: str = "",
     display_city       = f"{city} (Nœud Edge POP)" if is_cdn else city
     display_city_en    = f"{city} (Edge POP Node)" if is_cdn else city
 
-    return {
+    result_payload = {
         "ip":                    ip_address,
         "country":               display_country,
         "country_en":            display_country_en,
@@ -255,3 +269,6 @@ def lookup_ip_geolocation(ip_address: str, domain_context: str = "",
         "source":                "ip-api.com Live + ML ASN Enrichment",
         "api_status":            "live"
     }
+
+    _GEOIP_CACHE[cache_key] = (now_ts, result_payload)
+    return result_payload

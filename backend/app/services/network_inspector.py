@@ -32,6 +32,15 @@ POPULAR_BRANDS = {
     "creditagricole": ["credit-agricole.fr"]
 }
 
+def is_valid_hostname(hostname: str) -> bool:
+    """Check if the string is a syntactically valid domain name or IPv4 address."""
+    if not hostname or " " in hostname:
+        return False
+    parts = hostname.split('.')
+    if len(parts) == 4 and all(p.isdigit() for p in parts):
+        return True
+    return bool(re.match(r'^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', hostname)) or hostname == 'localhost'
+
 def clean_url_and_domain(raw_input: str):
     """Normalize input into target URL, hostname, and scheme."""
     raw = raw_input.strip()
@@ -43,7 +52,7 @@ def clean_url_and_domain(raw_input: str):
         scheme = 'https' if raw.startswith('https://') else 'http'
 
     parsed = urlparse(target_url)
-    hostname = parsed.netloc.split(':')[0] or parsed.path.split('/')[0]
+    hostname = (parsed.netloc.split(':')[0] if parsed.netloc else parsed.path.split('/')[0]).strip()
     return target_url, hostname.lower(), scheme
 
 def resolve_dns_records(hostname: str) -> Dict[str, Any]:
@@ -56,6 +65,10 @@ def resolve_dns_records(hostname: str) -> Dict[str, Any]:
         "dns_error": None
     }
     
+    if not is_valid_hostname(hostname):
+        dns_res["dns_error"] = "Hôte ou domaine invalide"
+        return dns_res
+
     # Check if hostname is already raw IP
     parts = hostname.split('.')
     if len(parts) == 4 and all(p.isdigit() for p in parts):
@@ -64,35 +77,43 @@ def resolve_dns_records(hostname: str) -> Dict[str, Any]:
 
     resolver = dns.resolver.Resolver()
     resolver.nameservers = ['8.8.8.8', '1.1.1.1']
-    resolver.lifetime = 1.8
-    resolver.timeout = 1.5
+    resolver.lifetime = 1.2
+    resolver.timeout = 1.0
 
     # A Records
+    domain_exists = True
     try:
         answers = resolver.resolve(hostname, 'A')
         dns_res["a_records"] = [str(r) for r in answers]
-    except Exception:
+    except (dns.resolver.NXDOMAIN, dns.resolver.NoNameservers):
+        domain_exists = False
+        dns_res["dns_error"] = "Domaine non résolu (NXDOMAIN)"
+        return dns_res
+    except Exception as e:
         # Fallback to system socket
         try:
             ip = socket.gethostbyname(hostname)
             dns_res["a_records"] = [ip]
-        except Exception as e:
+        except Exception:
+            domain_exists = False
             dns_res["dns_error"] = str(e)
+            return dns_res
 
-    # AAAA Records
-    try:
-        answers = resolver.resolve(hostname, 'AAAA')
-        dns_res["aaaa_records"] = [str(r) for r in answers]
-    except Exception:
-        pass
+    if domain_exists and dns_res["a_records"]:
+        # AAAA Records
+        try:
+            answers = resolver.resolve(hostname, 'AAAA')
+            dns_res["aaaa_records"] = [str(r) for r in answers]
+        except Exception:
+            pass
 
-    # MX Records
-    try:
-        answers = resolver.resolve(hostname, 'MX')
-        dns_res["mx_records"] = [str(r.exchange).rstrip('.') for r in answers]
-        dns_res["has_mx"] = len(dns_res["mx_records"]) > 0
-    except Exception:
-        dns_res["has_mx"] = False
+        # MX Records
+        try:
+            answers = resolver.resolve(hostname, 'MX')
+            dns_res["mx_records"] = [str(r.exchange).rstrip('.') for r in answers]
+            dns_res["has_mx"] = len(dns_res["mx_records"]) > 0
+        except Exception:
+            dns_res["has_mx"] = False
 
     return dns_res
 
@@ -116,11 +137,16 @@ def inspect_ssl_certificate(hostname: str, port: int = 443) -> Dict[str, Any]:
         "error": None
     }
 
+    if not is_valid_hostname(hostname):
+        ssl_data["ssl_status"] = "Non Détecté (Hôte Invalide)"
+        ssl_data["ssl_status_en"] = "Not Detected (Invalid Host)"
+        return ssl_data
+
     try:
         # First attempt with standard verification to check trust & full cert
         ctx = ssl.create_default_context()
         try:
-            with socket.create_connection((hostname, port), timeout=2.5) as sock:
+            with socket.create_connection((hostname, port), timeout=1.2) as sock:
                 with ctx.wrap_socket(sock, server_hostname=hostname) as ssock:
                     cert = ssock.getpeercert()
                     ssl_data["tls_version"] = ssock.version()
@@ -203,7 +229,7 @@ def inspect_http_connection(target_url: str) -> Dict[str, Any]:
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 PhishGuard-Auditor/2.0"
         }
-        res = requests.get(target_url, headers=headers, timeout=3.0, allow_redirects=True, verify=False)
+        res = requests.get(target_url, headers=headers, timeout=1.2, allow_redirects=True, verify=False)
         latency = int((time.time() - start_time) * 1000)
 
         http_data["is_reachable"] = True
@@ -347,17 +373,18 @@ def inspect_endpoint_deeply(url_or_domain: str) -> Dict[str, Any]:
     """
     target_url, hostname, scheme = clean_url_and_domain(url_or_domain)
 
-    # 1. DNS Resolution
-    dns_info = resolve_dns_records(hostname)
+    # Concurrent execution of DNS, SSL, HTTP and Brand audits
+    import concurrent.futures
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+        fut_dns = executor.submit(resolve_dns_records, hostname)
+        fut_ssl = executor.submit(inspect_ssl_certificate, hostname, 443 if scheme == 'https' else 80)
+        fut_http = executor.submit(inspect_http_connection, target_url)
+        fut_brand = executor.submit(detect_brand_impersonation, hostname)
 
-    # 2. SSL/TLS Certificate (if https or port 443 accessible)
-    ssl_info = inspect_ssl_certificate(hostname, port=443)
-
-    # 3. HTTP Connection & Security Headers
-    http_info = inspect_http_connection(target_url)
-
-    # 4. Brand Impersonation check
-    brand_info = detect_brand_impersonation(hostname)
+        dns_info = fut_dns.result()
+        ssl_info = fut_ssl.result()
+        http_info = fut_http.result()
+        brand_info = fut_brand.result()
 
     return {
         "hostname": hostname,

@@ -67,6 +67,27 @@ def analyze_url(req: URLAnalysisRequest, db: Session = Depends(get_db), current_
     if not url:
         raise HTTPException(status_code=400, detail="URL cannot be empty")
 
+    # Check User Functional Permissions (Admin configured permissions)
+    if current_user:
+        u_perms = getattr(current_user, "permissions", {})
+        if isinstance(u_perms, str):
+            try:
+                import json
+                u_perms = json.loads(u_perms)
+            except Exception:
+                u_perms = {}
+        if isinstance(u_perms, dict) and u_perms.get("can_analyze_url") is False:
+            raise HTTPException(status_code=403, detail="Votre profil utilisateur n'a pas la permission d'analyser des URLs (restreint par l'Administrateur).")
+
+    # If the user submitted text/question/sentence (contains spaces or no domain dot),
+    # smoothly route to NLP text analysis so it never fails with network/DNS socket errors!
+    if " " in url or ("." not in url and not url.lower().startswith(("http://", "https://", "localhost"))):
+        return analyze_text(
+            TextAnalysisRequest(text=url, sender="", analysis_type="MESSAGE"),
+            db=db,
+            current_user=current_user
+        )
+
     try:
         # 1. Feature Extraction
         features = extract_url_features(url)
@@ -110,8 +131,15 @@ def analyze_url(req: URLAnalysisRequest, db: Session = Depends(get_db), current_
         if not features["is_https"]:
             rule_triggers.append("Insecure HTTP connection (+15 risk)")
             rule_score += 15.0
+        from app.services.content_filter_service import load_policy_settings
+        sys_policy = load_policy_settings()
+
         if features["num_subdomains"] >= 2:
             rule_triggers.append(f"Excessive subdomains ({features['num_subdomains']} count) (+15 risk)")
+            rule_score += 15.0
+
+        if features.get("entropy", 0.0) > 4.2 and sys_policy.get("shannon_entropy_detection", True):
+            rule_triggers.append(f"High Shannon entropy ({features['entropy']:.2f}) (+15 risk)")
             rule_score += 15.0
 
         # 4 & 5. High-Speed Concurrent Execution: Network Audit, Threat Intel & GeoIP
@@ -125,21 +153,26 @@ def analyze_url(req: URLAnalysisRequest, db: Session = Depends(get_db), current_
         from app.services.geoip_service import lookup_ip_geolocation, resolve_domain_to_ip
 
         target_url_clean, hostname, scheme = clean_url_and_domain(url)
+        use_threat_intel = sys_policy.get("external_threat_intel", True)
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=6) as executor:
             fut_dns = executor.submit(resolve_dns_records, hostname)
             fut_ssl = executor.submit(inspect_ssl_certificate, hostname, 443 if scheme == 'https' else 80)
             fut_http = executor.submit(inspect_http_connection, target_url_clean)
             fut_brand = executor.submit(detect_brand_impersonation, hostname)
-            fut_vt = executor.submit(query_virustotal_url_reputation, url, features)
-            fut_gsb = executor.submit(query_google_safebrowsing, url, features)
+            fut_vt = executor.submit(query_virustotal_url_reputation, url, features) if use_threat_intel else None
+            fut_gsb = executor.submit(query_google_safebrowsing, url, features) if use_threat_intel else None
 
             dns_info = fut_dns.result()
             ssl_info = fut_ssl.result()
             http_info = fut_http.result()
             brand_spoof = fut_brand.result()
-            vt_data = fut_vt.result()
-            gsb_data = fut_gsb.result()
+            vt_data = fut_vt.result() if fut_vt else {
+                "status": "disabled_by_policy", "positives": 0, "total_engines": 0, "categories": [], "source": "Désactivé dans les paramètres"
+            }
+            gsb_data = fut_gsb.result() if fut_gsb else {
+                "is_flagged": False, "threat_types": [], "source": "Désactivé dans les paramètres"
+            }
 
         technical_inspection = {
             "hostname": hostname,
@@ -163,14 +196,36 @@ def analyze_url(req: URLAnalysisRequest, db: Session = Depends(get_db), current_
             rule_triggers.append("Expired SSL certificate (+25 risk)")
             rule_score += 25.0
 
-        # GeoIP Lookup
+        # GeoIP Lookup (Fast & Non-blocking)
         dns_a = dns_info.get("a_records", [])
-        resolved_ip = (dns_a[0] if dns_a else None) or resolve_domain_to_ip(url)
-        target_host_ip = (resolved_ip or features.get("host_ip")
-                          or ("185.220.101.5" if features["has_ip"] or features["keyword_count"] > 0
-                              else "104.28.19.44"))
-        features["host_ip"] = target_host_ip
-        geoip_info = lookup_ip_geolocation(target_host_ip, domain_context=url, features=features)
+        resolved_ip = dns_a[0] if dns_a else (hostname if features.get("has_ip") else None)
+        if not resolved_ip and not features.get("has_ip"):
+            geoip_info = {
+                "ip": "Non Résolu",
+                "country": "Inconnu (Domaine non résolu)",
+                "country_en": "Unknown (Unresolved Domain)",
+                "city": "Inconnu",
+                "city_en": "Unknown",
+                "asn": "Non Assigné",
+                "org": "Hôte Non Résolu ou Inexistant",
+                "network_type": "Inconnu",
+                "network_type_en": "Unknown",
+                "proxy_label": "Non Déterminé",
+                "proxy_label_en": "Not Determined",
+                "proxy_status_display": "Non Déterminé",
+                "proxy_status_display_en": "Not Determined",
+                "is_cdn": False,
+                "is_vpn_proxy": False,
+                "country_risk_tier": "LOW",
+                "asn_risk_ml": 0.0,
+                "disclaimer": "L'adresse IP n'a pas pu être résolue sur les serveurs DNS publics.",
+                "disclaimer_en": "IP address could not be resolved on public DNS servers.",
+                "api_status": "unresolved"
+            }
+        else:
+            target_host_ip = (resolved_ip or features.get("host_ip") or "185.220.101.5")
+            features["host_ip"] = target_host_ip
+            geoip_info = lookup_ip_geolocation(target_host_ip, domain_context=url, features=features)
 
         # 6. Hybrid Correlation — adaptive weighting based on API availability
         correlation = calculate_correlated_risk(
@@ -208,24 +263,101 @@ def analyze_url(req: URLAnalysisRequest, db: Session = Depends(get_db), current_
             "autonomous_mode":     correlation.get("autonomous_mode", True),
         }
 
-        # Check Content Filtering Policy (MINESEC Policy: Adult & Gambling Protection)
+        # Check if WAF telemetry has logged cyberattacks targeting this domain
+        from sqlalchemy import or_, desc
+        from app.db.models import SecurityEvent
+        naked_hostname = hostname[4:] if hostname.startswith("www.") else hostname
+        domain_events = db.query(SecurityEvent).filter(
+            or_(
+                SecurityEvent.website_domain.ilike(f"%{naked_hostname}%"),
+                SecurityEvent.website_domain.ilike(f"%{hostname}%")
+            )
+        ).order_by(desc(SecurityEvent.timestamp)).all()
+
+        attackers_traced = []
+        attack_summary = {}
+        for evt in domain_events:
+            atype = evt.attack_type
+            attack_summary[atype] = attack_summary.get(atype, 0) + 1
+            geo_dict = evt.ip_geo_info
+            if isinstance(geo_dict, str):
+                try:
+                    import json
+                    geo_dict = json.loads(geo_dict)
+                except Exception:
+                    geo_dict = None
+            if not isinstance(geo_dict, dict):
+                geo_dict = lookup_ip_geolocation(evt.source_ip, domain_context=hostname)
+            
+            time_str = evt.timestamp.strftime("%d/%m/%Y %H:%M:%S") if evt.timestamp else "Récemment"
+            attackers_traced.append({
+                "id": evt.id,
+                "ip": evt.source_ip,
+                "attack": evt.attack_type,
+                "severity": evt.severity,
+                "timestamp": time_str,
+                "request_path": evt.request_path or "/login",
+                "http_method": evt.http_method or "POST",
+                "status_code": evt.status_code or 403,
+                "payload": evt.evidence_payload or f"Tentative d'exploitation {evt.attack_type}",
+                "country": geo_dict.get("country", "Unknown") if geo_dict else "Unknown",
+                "city": geo_dict.get("city", "Unknown") if geo_dict else "Unknown",
+                "asn": geo_dict.get("asn", "Unknown") if geo_dict else "Unknown",
+                "is_vpn_proxy": geo_dict.get("is_vpn_proxy", False) if geo_dict else False
+            })
+
+        total_waf_attacks = len(domain_events)
+        response_payload["total_attacks_logged"] = total_waf_attacks
+        response_payload["traced_attackers"] = attackers_traced
+        response_payload["attack_breakdown"] = attack_summary
+        if total_waf_attacks > 0:
+            response_payload["has_waf_attacks"] = True
+            response_payload["site_audit"] = True
+            response_payload["risk_score"] = min(100.0, max(response_payload["risk_score"], 40.0 + min(55.0, total_waf_attacks * 15.0)))
+            if response_payload["risk_score"] >= 75.0:
+                response_payload["risk_level"] = "CRITICAL"
+                response_payload["verdict"] = f"MENACES ACTIVES ({total_waf_attacks} ATTAQUES DÉTECTÉES)"
+            elif response_payload["risk_score"] >= 50.0:
+                response_payload["risk_level"] = "HIGH"
+                response_payload["verdict"] = f"ATTAQUES INTERCEPTÉES ({total_waf_attacks})"
+
+        # Check Content Filtering Policy (MINESEC Policy & User-Specific Blocked Sites)
         from app.services.content_filter_service import check_url_content_policy
-        content_policy = check_url_content_policy(url)
+        content_policy = check_url_content_policy(url, user=current_user)
         response_payload["content_filter"] = content_policy
         if content_policy.get("is_restricted") and content_policy.get("action") == "BLOCK":
             is_ad = content_policy.get("is_adult", False)
-            rule_triggers.append(f"POLITIQUE SCOLAIRE MINESEC : Contenu non autorisé ({content_policy.get('category')})")
-            if is_ad:
+            if content_policy.get("blocked_by_user_policy"):
+                response_payload["verdict"] = content_policy.get("category", "SITE BLOQUÉ PAR L'ADMINISTRATEUR")
+                response_payload["risk_level"] = "CRITICAL"
+                response_payload["risk_score"] = 100.0
+                rule_triggers.append(content_policy.get("reasons", ["Accès interdit par l'Administrateur"])[0])
+            elif "PARAMÈTRES" in content_policy.get("category", "") or content_policy.get("category") == "CUSTOM_BLACKLIST":
+                response_payload["verdict"] = "SITE BLOQUÉ PAR L'ADMINISTRATEUR"
+                response_payload["risk_level"] = "CRITICAL"
+                response_payload["risk_score"] = 100.0
+                rule_triggers.append(content_policy.get("reasons", ["Site bloqué dans les Paramètres"])[0])
+            elif is_ad:
+                rule_triggers.append(f"POLITIQUE SCOLAIRE MINESEC : Contenu non autorisé ({content_policy.get('category')})")
                 response_payload["verdict"] = "CONTENU ADULTE BLOQUÉ"
                 response_payload["risk_level"] = "CRITICAL"
                 response_payload["risk_score"] = 100.0
             elif content_policy.get("is_gambling"):
+                rule_triggers.append(f"POLITIQUE SCOLAIRE MINESEC : Contenu non autorisé ({content_policy.get('category')})")
                 response_payload["verdict"] = "JEU D'ARGENT BLOQUÉ"
                 response_payload["risk_level"] = "HIGH"
                 response_payload["risk_score"] = max(85.0, response_payload["risk_score"])
 
-        # Generate SHA-256 integrity hash
-        integrity_hash = generate_sha256_hash(response_payload)
+        # Check ML Auto-Block toggle
+        if not sys_policy.get("ml_auto_block_phishing", True) and "PHISHING" in response_payload.get("verdict", ""):
+            response_payload["verdict"] = "SUSPECT (Auto-Blocage Désactivé)"
+            response_payload["risk_level"] = "HIGH"
+
+        # Generate SHA-256 integrity hash (governed by toggle)
+        if sys_policy.get("sha256_forensic_sealing", True):
+            integrity_hash = generate_sha256_hash(response_payload)
+        else:
+            integrity_hash = "DÉSACTIVÉ DANS LES PARAMÈTRES"
         response_payload["integrity_hash"] = integrity_hash
 
         # Save Analysis Record in DB
@@ -235,9 +367,9 @@ def analyze_url(req: URLAnalysisRequest, db: Session = Depends(get_db), current_
             analysis_code=analysis_code,
             analysis_type="URL",
             target_content=url,
-            verdict=correlation["verdict"],
-            risk_score=correlation["final_risk_score"],
-            risk_level=correlation["risk_level"],
+            verdict=response_payload["verdict"],
+            risk_score=response_payload["risk_score"],
+            risk_level=response_payload["risk_level"],
             ml_confidence=round(phishing_prob * 100.0, 2),
             details_json=response_payload,
             integrity_hash=integrity_hash
@@ -263,9 +395,9 @@ def analyze_url(req: URLAnalysisRequest, db: Session = Depends(get_db), current_
                 "analysis_code": analysis_code,
                 "analysis_type": "URL",
                 "target_content": url,
-                "verdict": correlation["verdict"],
-                "risk_score": correlation["final_risk_score"],
-                "risk_level": correlation["risk_level"],
+                "verdict": response_payload["verdict"],
+                "risk_score": response_payload["risk_score"],
+                "risk_level": response_payload["risk_level"],
                 "ml_confidence": round(phishing_prob * 100.0, 2),
                 "details_json": response_payload,
                 "integrity_hash": integrity_hash,
@@ -300,6 +432,18 @@ def analyze_text(req: TextAnalysisRequest, db: Session = Depends(get_db), curren
     text = req.text.strip()
     if not text:
         raise HTTPException(status_code=400, detail="Text content cannot be empty")
+
+    # Check User Functional Permissions (Admin configured permissions)
+    if current_user:
+        u_perms = getattr(current_user, "permissions", {})
+        if isinstance(u_perms, str):
+            try:
+                import json
+                u_perms = json.loads(u_perms)
+            except Exception:
+                u_perms = {}
+        if isinstance(u_perms, dict) and u_perms.get("can_analyze_message") is False:
+            raise HTTPException(status_code=403, detail="Votre profil utilisateur n'a pas la permission d'analyser des messages ou emails (restreint par l'Administrateur).")
 
     try:
         # 1. NLP Feature Extraction
@@ -350,7 +494,12 @@ def analyze_text(req: TextAnalysisRequest, db: Session = Depends(get_db), curren
             "defensive_advice": correlation["defensive_advice"]
         }
 
-        integrity_hash = generate_sha256_hash(response_payload)
+        from app.services.content_filter_service import load_policy_settings
+        sys_policy = load_policy_settings()
+        if sys_policy.get("sha256_forensic_sealing", True):
+            integrity_hash = generate_sha256_hash(response_payload)
+        else:
+            integrity_hash = "DÉSACTIVÉ DANS LES PARAMÈTRES"
         response_payload["integrity_hash"] = integrity_hash
 
         authenticated_user_id = str(current_user.id) if (current_user and hasattr(current_user, "id")) else None
@@ -479,7 +628,7 @@ def get_analysis_history(db: Session = Depends(get_db), current_user = Depends(g
         details = r.details_json
         
         # If older DB record lacks details_json, generate comprehensive details dynamically on the fly
-        if not details or not isinstance(details, dict) or "features" not in details:
+        if not details or not isinstance(details, dict) or (r.analysis_type != "AUDIT SITE" and "features" not in details):
             target_url = r.target_content
             features = extract_url_features(target_url) if r.analysis_type == "URL" else extract_text_indicators(target_url)
             
@@ -515,6 +664,11 @@ def get_analysis_history(db: Session = Depends(get_db), current_user = Depends(g
                 ],
                 "integrity_hash": r.integrity_hash
             }
+
+        if r.analysis_type == "AUDIT SITE" and isinstance(details, dict):
+            details["site_audit"] = True
+            if "total_attacks_logged" not in details and "traced_attackers" in details:
+                details["total_attacks_logged"] = len(details["traced_attackers"])
 
         from datetime import timezone
         dt_rec = r.created_at

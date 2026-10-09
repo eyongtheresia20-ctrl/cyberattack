@@ -24,6 +24,8 @@ class UtilisateurStandard(Base):
     report_count = Column(Integer, default=0)
     is_active = Column(Boolean, default=True)
     password_raw = Column(String(255), nullable=True)
+    blocked_sites = Column(JSON, default=list, nullable=True)
+    permissions = Column(JSON, default=dict, nullable=True)
     last_login = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
@@ -46,6 +48,8 @@ class Enqueteur(Base):
     report_count = Column(Integer, default=0)
     is_active = Column(Boolean, default=True)
     password_raw = Column(String(255), nullable=True)
+    blocked_sites = Column(JSON, default=list, nullable=True)
+    permissions = Column(JSON, default=dict, nullable=True)
     last_login = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
